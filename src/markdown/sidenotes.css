@@ -1,0 +1,71 @@
+#content [data-footnote-ref]::before { content: "["; }
+#content [data-footnote-ref]::after { content: "]"; }
+
+/* Asides sit beside prose; each collapsible heading section owns its notes. */
+#content,
+#content .heading-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17.8%;
+  column-gap: 1.5rem;
+  align-content: start;
+}
+
+#content > :not(aside),
+#content .heading-content > :not(aside) {
+  grid-column: 1;
+  min-width: 0;
+}
+
+#content section.heading-section,
+#content .heading-content,
+#content .heading-summary { grid-column: 1 / -1; }
+
+#content > :is(h1, h2) {
+  position: relative;
+  border-bottom: 0;
+}
+
+#content > :is(h1, h2)::after {
+  position: absolute;
+  right: auto;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  content: "";
+  background-color: var(--md-border-muted);
+}
+
+#content > aside,
+#content .heading-content > aside {
+  grid-column: 2;
+  min-width: 0;
+  margin: 0 0 1rem;
+  color: var(--md-muted);
+  font-size: .8rem;
+  align-self: start;
+}
+
+#content > aside > :first-child,
+#content .heading-content > aside > :first-child { margin-top: 0; }
+#content aside:target { color: var(--md-fg); }
+#content aside figure { max-width: 100%; }
+#content figure { min-width: 0; max-width: 100%; }
+
+/* Keep a tall sidenote from increasing the height of its prose grid row. */
+@media (min-width: 1001px) {
+  #content > aside,
+  #content .heading-content > aside {
+    height: 0;
+    min-height: 0;
+    margin-bottom: 0;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 1000px) {
+  #content,
+  #content .heading-content { grid-template-columns: minmax(0, 1fr); }
+  #content > aside,
+  #content .heading-content > aside { grid-column: 1; padding-left: 1rem; }
+}
