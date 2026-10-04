@@ -1,3 +1,4 @@
+import { apiBase } from './urls.mjs';
 import DOMPurify from 'dompurify';
 
 const assetSelector = 'img[src], source[src], audio[src], video[src], video[poster]';
@@ -23,7 +24,7 @@ export function prepareMarkdown(document, linkFor) {
     const path = resolvedLocalPath(element.getAttribute(attribute), document.path);
     if (!path) continue;
     assets.add(path);
-    element.setAttribute(attribute, `/api/asset?path=${encodeURIComponent(path)}`);
+    element.setAttribute(attribute, `${apiBase}/asset?path=${encodeURIComponent(path)}`);
     element.setAttribute('data-library-asset-path', path);
     element.setAttribute('data-library-asset-attribute', attribute);
   }
@@ -40,6 +41,6 @@ export function updateAssetVersions(root, versions) {
     const version = versions[path];
     if (!version) return;
     const attribute = element.getAttribute('data-library-asset-attribute');
-    element.setAttribute(attribute, `/api/asset?path=${encodeURIComponent(path)}&v=${version}`);
+    element.setAttribute(attribute, `${apiBase}/asset?path=${encodeURIComponent(path)}&v=${version}`);
   });
 }

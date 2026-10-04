@@ -49,6 +49,7 @@
 #content > aside > :first-child,
 #content .heading-content > aside > :first-child { margin-top: 0; }
 #content aside:target { color: var(--md-fg); }
+.sidenote-label { font: inherit; }
 #content aside figure { max-width: 100%; }
 #content figure { min-width: 0; max-width: 100%; }
 

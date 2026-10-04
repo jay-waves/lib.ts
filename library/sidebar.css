@@ -1,0 +1,107 @@
+/* Shared sidebar hierarchy, including the narrow-screen drawer. */
+:root {
+  --sidebar-font: "Mona Sans VF", var(--BaseStyles-fontFamily, sans-serif);
+  --sidebar-text-size: 13px;
+  --sidebar-meta-size: 12px;
+  --sidebar-text-weight: 400;
+  --sidebar-emphasis-weight: 600;
+  --sidebar-row-height: 32px;
+  --sidebar-radius: 6px;
+}
+.sidebar, .sidebar-drawer-header {
+  font-family: var(--sidebar-font);
+  font-size: var(--sidebar-text-size);
+  font-weight: var(--sidebar-text-weight);
+  line-height: 20px;
+  --text-body-size-medium: var(--sidebar-text-size);
+  --text-body-size-small: var(--sidebar-meta-size);
+  --control-transparent-bgColor-hover: var(--library-subtle);
+  --control-transparent-bgColor-selected: var(--bgColor-accent-muted);
+}
+.sidebar .tree-scroll { padding: 4px 8px 16px; }
+.sidebar .file-search { box-sizing: border-box; min-height: 38px; padding: 4px 12px 5px; }
+.sidebar .file-search input,
+.sidebar [data-component="ActionList.Item.Label"],
+.sidebar .PRIVATE_TreeView-item-content-text,
+.sidebar .symbol-name,
+.sidebar .search-facet-value,
+.sidebar .git-change-path,
+.sidebar .repo-picker-list a > span,
+.sidebar .git-panel-branch {
+  color: var(--fgColor-default);
+  font-family: var(--sidebar-font);
+  font-size: var(--sidebar-text-size);
+  font-weight: var(--sidebar-text-weight);
+  line-height: 20px;
+}
+.sidebar .PRIVATE_TreeView-item-container { --min-item-height: var(--sidebar-row-height); border-radius: var(--sidebar-radius); }
+.sidebar [data-component="ActionList.Item"] > [data-size] { min-height: var(--sidebar-row-height); border-radius: var(--sidebar-radius); }
+.sidebar .search-facet h2,
+.sidebar .git-changes-label {
+  margin: 12px 8px 6px;
+  color: var(--fgColor-muted);
+  font-size: var(--sidebar-meta-size);
+  font-weight: var(--sidebar-emphasis-weight);
+  line-height: 18px;
+}
+.sidebar .code-search-filters .search-facet { padding: 0 0 10px; }
+.sidebar .tree-empty,
+.sidebar .repo-picker-list small,
+.sidebar [data-component="CounterLabel"],
+.sidebar .git-change-status,
+.sidebar .repo-picker-error,
+.sidebar .git-panel-error {
+  font-family: var(--sidebar-font);
+  font-size: var(--sidebar-meta-size);
+  font-weight: var(--sidebar-text-weight);
+  line-height: 18px;
+}
+.sidebar .repo-picker-list small,
+.sidebar [data-component="CounterLabel"] { color: var(--fgColor-muted); }
+.sidebar .git-change-status { font-weight: var(--sidebar-emphasis-weight); }
+.sidebar [data-component="ActionList.Item"][data-active="true"] [data-component="ActionList.Item.Label"],
+.sidebar [data-component="ActionList.Item"][data-active="true"] .search-facet-value,
+.sidebar .PRIVATE_TreeView-item[aria-current="true"] > .PRIVATE_TreeView-item-container .PRIVATE_TreeView-item-content-text,
+.sidebar .repo-picker-list a[aria-current] > span {
+  font-weight: var(--sidebar-emphasis-weight);
+}
+.sidebar .PRIVATE_TreeView-item[aria-current="true"] > .PRIVATE_TreeView-item-container,
+.sidebar .repo-picker-list a[aria-current] { background: var(--bgColor-accent-muted); }
+.sidebar .repo-picker { padding-top: 12px; }
+.sidebar .repo-picker-list a { gap: 2px; padding: 7px 8px; border-radius: var(--sidebar-radius); }
+.sidebar .repo-picker-list a:hover { background: var(--library-subtle); }
+.sidebar .repo-picker-list a[aria-current]:hover { background: var(--bgColor-accent-muted); }
+.sidebar .repo-picker-list a:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
+.sidebar .repo-add-more,
+.sidebar .search-facet > button,
+.sidebar .search-options button {
+  font-family: var(--sidebar-font);
+  font-size: var(--sidebar-meta-size);
+  font-weight: var(--sidebar-text-weight);
+  color: var(--fgColor-muted);
+}
+.sidebar .repo-add-more { padding: 8px; }
+.sidebar .repo-add-more:hover,
+.sidebar .search-facet > button:hover,
+.sidebar .search-options button:hover { color: var(--fgColor-accent); }
+.sidebar .git-panel-heading { min-height: 38px; box-sizing: border-box; flex: none; }
+.sidebar .git-panel-branch { font-weight: var(--sidebar-emphasis-weight); }
+.sidebar .PRIVATE_TreeView-item-visual svg { width: 16px; height: 16px; }
+
+.sidebar .files-toolbar { position: relative; display: flex; align-items: center; justify-content: center; min-height: 38px; box-sizing: border-box; flex: none; padding: 4px 8px; border-bottom: 1px solid var(--library-border-muted); }
+.sidebar .files-toolbar button { flex: none; color: var(--fgColor-muted); }
+.sidebar .files-toolbar button[aria-pressed="true"] { color: var(--fgColor-accent); background: var(--bgColor-accent-muted); }
+
+.sidebar .file-tree-link { display: block; color: inherit; text-decoration: none; }
+.sidebar .file-tree-link:hover { text-decoration: none; }
+/* Clicking a file retains link focus; only hover should keep its path visible. */
+.sidebar .file-path-tooltip:not(:hover)::after,
+.sidebar .file-path-tooltip.is-context-menu-open::after { display: none; }
+
+.sidebar .files-toolbar-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.sidebar .files-search { display: flex; align-items: center; gap: 4px; flex: none; max-height: 64px; opacity: 1; transform: translateY(0); overflow: hidden; transition: max-height 200ms ease, padding 200ms ease, opacity 150ms ease, transform 200ms ease; }
+.sidebar .files-search > span { flex: 1; min-width: 0; width: 0; }
+.sidebar .files-search.is-collapsed { min-height: 0; max-height: 0; padding-top: 0; padding-bottom: 0; border-bottom: 0; opacity: 0; transform: translateY(18px) scale(.92); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar .files-search { transition: none; }
+}

@@ -135,7 +135,8 @@ export function createTypstRuntime({ emit, memorySample, unvirtual }) {
       const builder = runtime.createTypstFontBuilder();
       await builder.init();
       for (const file of fonts) {
-        const data = new Uint8Array(readFileSync(file));
+        // Yield between fonts so startup prewarming can coexist with HTTP requests.
+        const data = new Uint8Array(await readFile(file));
         if (extname(file).toLowerCase() !== '.ttc' && data.byteLength >= 4 * 1024 * 1024) {
           try {
             const info = await builder.getFontInfo(data);

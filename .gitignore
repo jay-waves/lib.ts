@@ -7,6 +7,7 @@
 
 # Retired local work and tool state
 /.archive/
+/.work/
 /preview-py/
 /experiments/
 /.claude/
@@ -16,3 +17,6 @@
 *.log
 .DS_Store
 Thumbs.db
+
+# Local repository registry and application data
+/data/

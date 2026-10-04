@@ -1,0 +1,2 @@
+export const READING_RECORD_LIMIT = 100;
+export const READING_FLUSH_INTERVAL = 2000;

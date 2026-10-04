@@ -10,20 +10,11 @@ import texmath from 'markdown-it-texmath';
 import markdownItGithubAlerts from 'markdown-it-github-alerts';
 import { sidenotes } from './src/markdown/sidenotes.js';
 import { headingSections } from './src/markdown/heading-sections.js';
+import { createByteCache } from './library/byte-cache.mjs';
 
 const renderers = new Map();
-const renderedMarkdown = new Map();
-const renderCacheLimit = 64;
-const renderCacheTtl = 5 * 60 * 1000;
-
-function pruneRenderCache(now = Date.now()) {
-  for (const [key, entry] of renderedMarkdown) {
-    if (entry.expiresAt <= now) renderedMarkdown.delete(key);
-  }
-}
-
-const renderCacheCleanup = setInterval(() => pruneRenderCache(), 60 * 1000);
-renderCacheCleanup.unref?.();
+const renderedMarkdown = createByteCache({ maxEntries: 64, maxBytes: 8 * 1024 * 1024,
+  sizeOf: html => html.length * 2, ttl: 5 * 60 * 1000 });
 
 function createRenderer(allowRawHtml) {
   const md = new MarkdownIt({
@@ -75,11 +66,9 @@ function createRenderer(allowRawHtml) {
     }
     return renderer.renderToken(tokens, index, options, env, renderer);
   }
-  md.renderer.rules.paragraph_open = injectLineNumbers;
-  md.renderer.rules.heading_open = injectLineNumbers;
-  md.renderer.rules.list_item_open = injectLineNumbers;
-  md.renderer.rules.table_open = injectLineNumbers;
-  md.renderer.rules.blockquote_open = injectLineNumbers;
+  for (const rule of ['paragraph_open', 'heading_open', 'list_item_open', 'table_open', 'blockquote_open']) {
+    md.renderer.rules[rule] = injectLineNumbers;
+  }
 
   const defaultFence = md.renderer.rules.fence;
   md.renderer.rules.fence = (tokens, index, options, env, renderer) => {
@@ -100,20 +89,11 @@ export function renderMarkdown(source, { allowRawHtml = true } = {}) {
   source = String(source);
   const key = allowRawHtml ? 'html' : 'safe';
   const cacheKey = `${key}:${createHash('sha256').update(source).digest('hex')}`;
-  const now = Date.now();
   const cached = renderedMarkdown.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    renderedMarkdown.delete(cacheKey);
-    renderedMarkdown.set(cacheKey, { html: cached.html, expiresAt: now + renderCacheTtl });
-    return cached.html;
-  }
-  if (cached) renderedMarkdown.delete(cacheKey);
+  if (cached !== undefined) return cached;
   let renderer = renderers.get(key);
   if (!renderer) { renderer = createRenderer(allowRawHtml); renderers.set(key, renderer); }
   const html = renderer.render(source);
-  renderedMarkdown.set(cacheKey, { html, expiresAt: now + renderCacheTtl });
-  while (renderedMarkdown.size > renderCacheLimit) {
-    renderedMarkdown.delete(renderedMarkdown.keys().next().value);
-  }
+  renderedMarkdown.set(cacheKey, html);
   return html;
 }

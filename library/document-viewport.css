@@ -1,0 +1,25 @@
+.main-panel.has-document-viewport { display: flex; flex-direction: column; overflow: hidden; }
+.has-document-viewport .page-header {
+  flex: none; height: 50px; min-height: 0; overflow: hidden;
+  transition: height 320ms ease-in-out, opacity 320ms ease-in-out, visibility 320ms;
+}
+.has-document-viewport .page-header .path-row { flex-shrink: 0; }
+.has-document-viewport > .content-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; margin-bottom: 16px; transition: margin-bottom 320ms ease-in-out; }
+.has-document-viewport .file-toolbar { position: relative; flex: none; }
+.document-viewer { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.document-viewport { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; touch-action: none; background: var(--library-subtle); scrollbar-gutter: stable; }
+.document-viewport:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
+.document-stage { box-sizing: border-box; min-height: 100%; padding: 24px; }
+.document-stage .typst-pages, .document-stage .pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 0; overflow: visible; }
+.document-stage .typst-page-window { width: 100%; min-width: 0; }
+.document-viewport.is-panning, .document-viewport.is-panning * { cursor: grabbing !important; user-select: none !important; }
+.document-viewport img { -webkit-user-drag: none; }
+
+.has-document-viewport.path-bar-hidden .page-header { height: 0; opacity: 0; visibility: hidden; }
+
+.has-document-viewport.path-bar-hidden > .content-panel { margin-bottom: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .has-document-viewport .page-header,
+  .has-document-viewport > .content-panel { transition: none; }
+}

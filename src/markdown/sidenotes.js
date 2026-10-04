@@ -18,6 +18,20 @@ export function sidenotes(md) {
                     id = token.meta.id;
                     body = [];
                 } else if (token.type === 'footnote_close') {
+                    const label = new state.Token('html_inline', '', 0);
+                    label.content = `<span class="sidenote-label">[${id + 1}]</span> `;
+                    // Keep the number beside the first line, including rich text.
+                    const firstInline = body[0]?.type === 'paragraph_open' && body[1]?.type === 'inline'
+                        ? body[1] : null;
+                    if (firstInline) firstInline.children.unshift(label);
+                    else {
+                        // A note can contain only a code block or other block content.
+                        const open = new state.Token('paragraph_open', 'p', 1);
+                        const inline = new state.Token('inline', '', 0);
+                        inline.children = [label];
+                        const close = new state.Token('paragraph_close', 'p', -1);
+                        body.unshift(open, inline, close);
+                    }
                     notes.set(id, body);
                     id = null;
                 } else if (id !== null) {

@@ -45,6 +45,25 @@ test('heading sections preserve document hierarchy and sidenotes', () => {
   assert.match(html, /<\/section>\s*<\/section>\s*<section class="heading-section"[^>]*data-heading-key="H1:next:0"/);
 });
 
+test('heading DOM anchors survive edits before a section', () => {
+  const anchor = html => html.match(/id="(heading-section-[^"]+)"/g);
+  assert.deepEqual(anchor(renderMarkdown('# First\n\nText\n\n## Child\n\nMore')),
+    anchor(renderMarkdown('New introduction\n\n# First\n\nChanged text\n\n## Child\n\nMore')));
+});
+
+test('sidenotes show the matching reference number once, in reference order', () => {
+  const html = renderMarkdown('First[^b], second[^a], repeated[^b].\n\n[^a]: Alpha **bold**\n[^b]: Beta');
+  assert.match(html, /<aside id="fn1" role="doc-footnote">\s*<p[^>]*><span class="sidenote-label">\[1\]<\/span> Beta/);
+  assert.match(html, /<aside id="fn2" role="doc-footnote">\s*<p[^>]*><span class="sidenote-label">\[2\]<\/span> Alpha <strong>bold<\/strong>/);
+  assert.equal((html.match(/class="sidenote-label"/g) || []).length, 2);
+});
+
+test('sidenotes containing only a code block still have a number', () => {
+  const html = renderMarkdown('Text[^code]\n\n[^code]:\n    ```js\n    const x = 1;\n    ```');
+  assert.match(html, /<aside id="fn1" role="doc-footnote">\s*<p><span class="sidenote-label">\[1\]<\/span> <\/p>/);
+  assert.match(html, /<code class="language-js">/);
+});
+
 test('raw HTML headings stay ordinary content inside Markdown sections', () => {
   const html = renderMarkdown('# Markdown\n\n<h2 id="raw">Raw</h2>\n\nText');
   assert.match(html, /<section class="heading-section has-heading-content"[^>]*data-heading-key="H1:markdown:0"/);

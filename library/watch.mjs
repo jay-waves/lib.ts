@@ -1,5 +1,5 @@
 import { statSync, watch } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 function signature(file) {
   try {
@@ -13,6 +13,7 @@ function signature(file) {
 
 const watchedFiles = new Map();
 const watchedDirectories = new Map();
+const dirtyFiles = new Set();
 let flushTimer;
 let firstChange = 0;
 
@@ -25,7 +26,11 @@ function flush() {
   flushTimer = undefined;
   firstChange = 0;
   const changes = new Map();
-  for (const [key, entry] of watchedFiles) {
+  const dirty = [...dirtyFiles];
+  dirtyFiles.clear();
+  for (const key of dirty) {
+    const entry = watchedFiles.get(key);
+    if (!entry) continue;
     const next = signature(entry.file);
     if (next === entry.signature) continue;
     entry.signature = next;
@@ -52,18 +57,22 @@ function registerDirectory(file) {
   const key = fileKey(directory);
   let entry = watchedDirectories.get(key);
   if (!entry) {
-    const pathKey = fileKey(file);
     const watcher = watch(directory, (_event, filename) => {
       if (filename != null) {
         const changed = Buffer.isBuffer(filename) ? filename.toString() : String(filename);
-        const matches = [...entry.files.values()].some(path => process.platform === 'win32'
-          ? basename(path).toLowerCase() === changed.toLowerCase() : basename(path) === changed);
-        if (!matches) return;
+        const key = fileKey(resolve(directory, changed));
+        if (!entry.files.has(key)) return;
+        dirtyFiles.add(key);
+      } else {
+        for (const key of entry.files.keys()) dirtyFiles.add(key);
       }
       schedule();
     });
-    entry = { watcher, files: new Map([[pathKey, resolve(file)]]) };
-    watcher.on('error', schedule);
+    entry = { watcher, files: new Map() };
+    watcher.on('error', () => {
+      for (const key of entry.files.keys()) dirtyFiles.add(key);
+      schedule();
+    });
     watchedDirectories.set(key, entry);
   }
   const pathKey = fileKey(file);
@@ -73,7 +82,7 @@ function registerDirectory(file) {
   return key;
 }
 
-function unregisterDirectory(directoryKey, fileKeyValue, file) {
+function unregisterDirectory(directoryKey, fileKeyValue) {
   const directory = watchedDirectories.get(directoryKey);
   if (!directory) return;
   directory.files.delete(fileKeyValue);
@@ -91,6 +100,18 @@ export function watchLibraryFiles(documentFile, assetFiles, notify) {
     if (!files.has(key)) files.set(key, { file: resolve(file), kind: 'asset' });
   }
   const registrations = [];
+  function stop() {
+    for (const [key, directory] of registrations) {
+      const entry = watchedFiles.get(key);
+      if (!entry) continue;
+      entry.subscribers.delete(subscriber);
+      entry.kinds.delete(subscriber);
+      if (!entry.subscribers.size) {
+        watchedFiles.delete(key);
+        unregisterDirectory(directory, key);
+      }
+    }
+  }
   try {
     for (const [key, item] of files) {
       let entry = watchedFiles.get(key);
@@ -103,27 +124,8 @@ export function watchLibraryFiles(documentFile, assetFiles, notify) {
       registrations.push([key, entry.directory]);
     }
   } catch (error) {
-    for (const [key, directory] of registrations) {
-      const entry = watchedFiles.get(key);
-      entry?.subscribers.delete(subscriber);
-      entry?.kinds.delete(subscriber);
-      if (entry && !entry.subscribers.size) {
-        watchedFiles.delete(key);
-        unregisterDirectory(directory, key, entry.file);
-      }
-    }
+    stop();
     throw error;
   }
-  return () => {
-    for (const [key, directory] of registrations) {
-      const entry = watchedFiles.get(key);
-      if (!entry) continue;
-      entry.subscribers.delete(subscriber);
-      entry.kinds.delete(subscriber);
-      if (!entry.subscribers.size) {
-        watchedFiles.delete(key);
-        unregisterDirectory(directory, key, entry.file);
-      }
-    }
-  };
+  return stop;
 }

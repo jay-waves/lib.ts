@@ -38,6 +38,7 @@ export function headingSections(md) {
         const section = make('heading_section_open', 'section', 1, {
           class: 'heading-section', 'data-heading-level': level,
           'data-heading-key': `${base}:${occurrence}`,
+          id: `heading-section-${encodeURIComponent(`${base}:${occurrence}`)}`,
         });
         const entry = { level, section, contentOpen: false, hasContent: false };
         stack.push(entry);

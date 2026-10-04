@@ -19,3 +19,18 @@ test('Typst grammar identifies headings and large markup blocks', async () => {
   assert.equal(marked.text.split('\n')[5], '', 'blank line inside code remains untouched');
   assert.deepEqual([...marked.positions.values()], [3, 5, 10, 12, 14, 16]);
 });
+
+test('sparse library anchors keep all heading positions and preserve source lines and labels', async () => {
+  const source = '= First <first>\n' + Array.from({ length: 20 }, (_, index) => `\nParagraph ${index}\n`).join('')
+    + '\n== Last <last>\n\nEnd';
+  const parsed = await analyzeTypst(source);
+  const dense = anchorBlocks(source, parsed.blocks);
+  const sparse = anchorBlocks(source, parsed.blocks, { headings: parsed.headings, minLineGap: 24 });
+  assert.equal(sparse.text.split('\n').length, source.split('\n').length);
+  assert.ok(sparse.positions.size < dense.positions.size / 2);
+  for (const heading of parsed.headings) {
+    assert.equal(sparse.positions.get(`preview-heading-${heading.line}`), heading.line);
+    assert.match(sparse.text.split('\n')[heading.line - 1], /#context metadata.*<[\w-]+>$/);
+  }
+  assert.ok([...sparse.positions.values()].includes(parsed.blocks.at(-1).line));
+});
