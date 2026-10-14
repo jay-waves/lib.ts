@@ -1,0 +1,5 @@
+.bookmarks-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.bookmark-file { display: flex; flex-direction: column; min-width: 0; font-size: var(--sidebar-text-size); line-height: 20px; }
+.bookmark-file > span, .bookmark-file small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bookmark-file small { font-size: var(--sidebar-meta-size); font-weight: var(--sidebar-text-weight); color: var(--fgColor-muted); line-height: 18px; }
+.bookmarks-error { padding: 0 12px 8px; color: var(--fgColor-danger); font-size: var(--sidebar-meta-size); }

@@ -1,0 +1,496 @@
+{
+  "date": "2026-10-13T08:15:37.986Z",
+  "node": "v24.21.0",
+  "cpu": "Intel(R) Core(TM) Ultra 7 258V",
+  "methodology": "Three fresh workers, five warmups, 21 measurements per mode, median of per-worker medians. Same synthetic corpora as worker comparison. Stage AST transform includes KaTeX; render/import includes highlighting, so substage times must not be summed twice. Direct Rust path has no custom sections, highlighting or KaTeX. Environment normalization excluded from microbench modes, included in production. Placeholder experiment compares equivalent HTML with precomputed KaTeX, no custom render hooks; outputs asserted identical. JSON byte counts are size proxies, not a claim that the binding uses JSON. Microbench stage medians need not add up to totals; GC and JIT affect runs. MathML-only timings do not measure browser layout or visual compatibility.",
+  "summary": [
+    {
+      "name": "prose",
+      "stages": {
+        "katexMs": 0,
+        "highlightMs": 0,
+        "formulas": 0,
+        "environmentMs": 0.0072000000000116415,
+        "parseExportMs": 12.674599999998463,
+        "astTransformMs": 1.0879000000059023,
+        "setupMs": 0.0020000000004074536,
+        "renderImportMs": 16.364800000003015,
+        "postprocessMs": 0.8115999999999985,
+        "totalMs": 31.749199999998382,
+        "nodes": 5403
+      },
+      "modes": {
+        "productionUninstrumentedMs": 31.91739999999845,
+        "markdownItProductionMs": 9.802000000003318,
+        "directRustHtmlMs": 6.158100000000559,
+        "parseExportMs": 12.860999999997148,
+        "importRenderUnmodifiedAstMs": 15.09910000000309,
+        "parseExportImportRenderMs": 35.62059999999474,
+        "importRenderKatexExpandedAstMs": 23.447499999999764,
+        "importRenderPlaceholderAndInsertMs": 23.120500000000902,
+        "katexBatchMs": 0.0001999999999497959,
+        "katexMathmlBatchMs": 0.00019999999858555384
+      },
+      "expandedAstJsonBytes": 1501008,
+      "placeholderAstJsonBytes": 1501008
+    },
+    {
+      "name": "mixed",
+      "stages": {
+        "katexMs": 3.7406000000028143,
+        "highlightMs": 3.380599999997685,
+        "formulas": 80,
+        "environmentMs": 0.008099999999103602,
+        "parseExportMs": 16.285100000000057,
+        "astTransformMs": 4.986499999999978,
+        "setupMs": 0.0031999999991967343,
+        "renderImportMs": 22.193399999996473,
+        "postprocessMs": 2.3913000000002285,
+        "totalMs": 47.3144999999995,
+        "nodes": 4323
+      },
+      "modes": {
+        "productionUninstrumentedMs": 49.4377999999997,
+        "markdownItProductionMs": 15.168600000000879,
+        "directRustHtmlMs": 5.130600000004051,
+        "parseExportMs": 10.484900000003108,
+        "importRenderUnmodifiedAstMs": 19.78650000000198,
+        "parseExportImportRenderMs": 34.22990000000027,
+        "importRenderKatexExpandedAstMs": 24.269000000000233,
+        "importRenderPlaceholderAndInsertMs": 21.29399999999805,
+        "katexBatchMs": 2.5964999999996508,
+        "katexMathmlBatchMs": 0.48699999999735155
+      },
+      "expandedAstJsonBytes": 1312538,
+      "placeholderAstJsonBytes": 1186848
+    },
+    {
+      "name": "math",
+      "stages": {
+        "katexMs": 13.14919999999438,
+        "highlightMs": 0,
+        "formulas": 200,
+        "environmentMs": 0.007499999999708962,
+        "parseExportMs": 1.6572000000014668,
+        "astTransformMs": 13.405399999999645,
+        "setupMs": 0.004000000000814907,
+        "renderImportMs": 14.952999999994063,
+        "postprocessMs": 4.63459999999759,
+        "totalMs": 35.7609999999986,
+        "nodes": 803
+      },
+      "modes": {
+        "productionUninstrumentedMs": 36.90480000000025,
+        "markdownItProductionMs": 14.951999999997497,
+        "directRustHtmlMs": 0.4578000000001339,
+        "parseExportMs": 1.3760999999976775,
+        "importRenderUnmodifiedAstMs": 2.128000000000611,
+        "parseExportImportRenderMs": 3.5634999999983847,
+        "importRenderKatexExpandedAstMs": 14.574300000000221,
+        "importRenderPlaceholderAndInsertMs": 2.279500000000553,
+        "katexBatchMs": 11.689500000000407,
+        "katexMathmlBatchMs": 2.2184999999990396
+      },
+      "expandedAstJsonBytes": 734351,
+      "placeholderAstJsonBytes": 211921
+    },
+    {
+      "name": "environments",
+      "stages": {
+        "katexMs": 9.054600000008577,
+        "highlightMs": 0,
+        "formulas": 100,
+        "environmentMs": 3.2018000000025495,
+        "parseExportMs": 1.3667000000004919,
+        "astTransformMs": 9.185100000000602,
+        "setupMs": 0.003599999996367842,
+        "renderImportMs": 23.06999999999971,
+        "postprocessMs": 0.7049999999999272,
+        "totalMs": 37.913699999997334,
+        "nodes": 403
+      },
+      "modes": {
+        "productionUninstrumentedMs": 48.598799999999756,
+        "markdownItProductionMs": 9.869000000000597,
+        "directRustHtmlMs": 0.41010000000096625,
+        "parseExportMs": 0.815600000001723,
+        "importRenderUnmodifiedAstMs": 1.820900000002439,
+        "parseExportImportRenderMs": 3.3008999999983644,
+        "importRenderKatexExpandedAstMs": 9.41990000000078,
+        "importRenderPlaceholderAndInsertMs": 1.1908000000003085,
+        "katexBatchMs": 7.612499999999272,
+        "katexMathmlBatchMs": 2.2151000000012573
+      },
+      "expandedAstJsonBytes": 433936,
+      "placeholderAstJsonBytes": 108726
+    }
+  ],
+  "runs": [
+    [
+      {
+        "name": "prose",
+        "stages": {
+          "katexMs": 0,
+          "highlightMs": 0,
+          "formulas": 0,
+          "environmentMs": 0.005199999999945248,
+          "parseExportMs": 8.051199999999994,
+          "astTransformMs": 0.45029999999997017,
+          "setupMs": 0.00100000000009004,
+          "renderImportMs": 10.82770000000005,
+          "postprocessMs": 0.8115999999999985,
+          "totalMs": 20.21969999999999,
+          "nodes": 5403
+        },
+        "modes": {
+          "productionUninstrumentedMs": 20.149900000000116,
+          "markdownItProductionMs": 5.1469999999999345,
+          "directRustHtmlMs": 4.176300000000083,
+          "parseExportMs": 8.791400000000067,
+          "importRenderUnmodifiedAstMs": 10.838700000000244,
+          "parseExportImportRenderMs": 26.58239999999978,
+          "importRenderKatexExpandedAstMs": 23.447499999999764,
+          "importRenderPlaceholderAndInsertMs": 23.304099999999835,
+          "katexBatchMs": 0.0001999999999497959,
+          "katexMathmlBatchMs": 0.0001999999999497959
+        },
+        "expandedAstJsonBytes": 1501008,
+        "placeholderAstJsonBytes": 1501008
+      },
+      {
+        "name": "mixed",
+        "stages": {
+          "katexMs": 3.7406000000028143,
+          "highlightMs": 3.380599999997685,
+          "formulas": 80,
+          "environmentMs": 0.007400000000416185,
+          "parseExportMs": 16.285100000000057,
+          "astTransformMs": 4.986499999999978,
+          "setupMs": 0.003800000000410364,
+          "renderImportMs": 22.089600000000246,
+          "postprocessMs": 2.3913000000002285,
+          "totalMs": 47.3144999999995,
+          "nodes": 4323
+        },
+        "modes": {
+          "productionUninstrumentedMs": 49.4377999999997,
+          "markdownItProductionMs": 14.57129999999961,
+          "directRustHtmlMs": 5.384500000000116,
+          "parseExportMs": 10.406600000000253,
+          "importRenderUnmodifiedAstMs": 19.554399999999987,
+          "parseExportImportRenderMs": 34.22990000000027,
+          "importRenderKatexExpandedAstMs": 24.269000000000233,
+          "importRenderPlaceholderAndInsertMs": 21.729099999998652,
+          "katexBatchMs": 2.5964999999996508,
+          "katexMathmlBatchMs": 0.4768000000003667
+        },
+        "expandedAstJsonBytes": 1312538,
+        "placeholderAstJsonBytes": 1186848
+      },
+      {
+        "name": "math",
+        "stages": {
+          "katexMs": 13.14919999999438,
+          "highlightMs": 0,
+          "formulas": 200,
+          "environmentMs": 0.007400000000416185,
+          "parseExportMs": 1.6572000000014668,
+          "astTransformMs": 13.405399999999645,
+          "setupMs": 0.003999999998995918,
+          "renderImportMs": 14.974899999999252,
+          "postprocessMs": 5.0864999999994325,
+          "totalMs": 37.018299999999726,
+          "nodes": 803
+        },
+        "modes": {
+          "productionUninstrumentedMs": 35.009400000000824,
+          "markdownItProductionMs": 15.21900000000096,
+          "directRustHtmlMs": 0.4578000000001339,
+          "parseExportMs": 1.3891999999996187,
+          "importRenderUnmodifiedAstMs": 2.1354000000010274,
+          "parseExportImportRenderMs": 3.5634999999983847,
+          "importRenderKatexExpandedAstMs": 14.735199999999168,
+          "importRenderPlaceholderAndInsertMs": 2.37329999999929,
+          "katexBatchMs": 11.838300000001254,
+          "katexMathmlBatchMs": 2.2778999999991356
+        },
+        "expandedAstJsonBytes": 734351,
+        "placeholderAstJsonBytes": 211921
+      },
+      {
+        "name": "environments",
+        "stages": {
+          "katexMs": 9.054600000008577,
+          "highlightMs": 0,
+          "formulas": 100,
+          "environmentMs": 3.2399999999997817,
+          "parseExportMs": 1.3667000000004919,
+          "astTransformMs": 9.185100000000602,
+          "setupMs": 0.0033000000003085006,
+          "renderImportMs": 21.829099999999016,
+          "postprocessMs": 0.7049999999999272,
+          "totalMs": 36.87830000000031,
+          "nodes": 403
+        },
+        "modes": {
+          "productionUninstrumentedMs": 48.598799999999756,
+          "markdownItProductionMs": 9.869000000000597,
+          "directRustHtmlMs": 0.41990000000078,
+          "parseExportMs": 0.815600000001723,
+          "importRenderUnmodifiedAstMs": 1.820900000002439,
+          "parseExportImportRenderMs": 3.3008999999983644,
+          "importRenderKatexExpandedAstMs": 8.09059999999954,
+          "importRenderPlaceholderAndInsertMs": 1.1908000000003085,
+          "katexBatchMs": 7.612499999999272,
+          "katexMathmlBatchMs": 2.312000000001717
+        },
+        "expandedAstJsonBytes": 433936,
+        "placeholderAstJsonBytes": 108726
+      }
+    ],
+    [
+      {
+        "name": "prose",
+        "stages": {
+          "katexMs": 0,
+          "highlightMs": 0,
+          "formulas": 0,
+          "environmentMs": 0.010300000001734588,
+          "parseExportMs": 13.055199999998877,
+          "astTransformMs": 1.4163000000007742,
+          "setupMs": 0.0022000000026309863,
+          "renderImportMs": 17.25920000000042,
+          "postprocessMs": 0.8977000000013504,
+          "totalMs": 33.38429999999789,
+          "nodes": 5403
+        },
+        "modes": {
+          "productionUninstrumentedMs": 32.20880000000034,
+          "markdownItProductionMs": 9.835700000003271,
+          "directRustHtmlMs": 6.268100000001141,
+          "parseExportMs": 13.177199999998265,
+          "importRenderUnmodifiedAstMs": 15.09910000000309,
+          "parseExportImportRenderMs": 37.22150000000329,
+          "importRenderKatexExpandedAstMs": 24.263600000002043,
+          "importRenderPlaceholderAndInsertMs": 23.120500000000902,
+          "katexBatchMs": 0.00020000000222353265,
+          "katexMathmlBatchMs": 0.00019999999858555384
+        },
+        "expandedAstJsonBytes": 1501008,
+        "placeholderAstJsonBytes": 1501008
+      },
+      {
+        "name": "mixed",
+        "stages": {
+          "katexMs": 3.650000000005093,
+          "highlightMs": 3.5547999999798776,
+          "formulas": 80,
+          "environmentMs": 0.008400000002438901,
+          "parseExportMs": 17.931899999999587,
+          "astTransformMs": 4.756199999999808,
+          "setupMs": 0.002799999998387648,
+          "renderImportMs": 22.56039999999848,
+          "postprocessMs": 2.560300000001007,
+          "totalMs": 49.16429999999673,
+          "nodes": 4323
+        },
+        "modes": {
+          "productionUninstrumentedMs": 50.25510000000213,
+          "markdownItProductionMs": 15.168600000000879,
+          "directRustHtmlMs": 5.124299999999494,
+          "parseExportMs": 10.637900000001537,
+          "importRenderUnmodifiedAstMs": 20.92280000000028,
+          "parseExportImportRenderMs": 34.30080000000089,
+          "importRenderKatexExpandedAstMs": 24.38260000000082,
+          "importRenderPlaceholderAndInsertMs": 21.29399999999805,
+          "katexBatchMs": 2.754799999998795,
+          "katexMathmlBatchMs": 0.48699999999735155
+        },
+        "expandedAstJsonBytes": 1312538,
+        "placeholderAstJsonBytes": 1186848
+      },
+      {
+        "name": "math",
+        "stages": {
+          "katexMs": 13.049100000043836,
+          "highlightMs": 0,
+          "formulas": 200,
+          "environmentMs": 0.007499999999708962,
+          "parseExportMs": 1.684000000001106,
+          "astTransformMs": 13.31880000000092,
+          "setupMs": 0.004199999999400461,
+          "renderImportMs": 13.586199999997916,
+          "postprocessMs": 4.63459999999759,
+          "totalMs": 35.7609999999986,
+          "nodes": 803
+        },
+        "modes": {
+          "productionUninstrumentedMs": 36.90480000000025,
+          "markdownItProductionMs": 14.951999999997497,
+          "directRustHtmlMs": 0.4709000000002561,
+          "parseExportMs": 1.3760999999976775,
+          "importRenderUnmodifiedAstMs": 2.128000000000611,
+          "parseExportImportRenderMs": 3.6381000000001222,
+          "importRenderKatexExpandedAstMs": 14.574300000000221,
+          "importRenderPlaceholderAndInsertMs": 2.279500000000553,
+          "katexBatchMs": 11.689500000000407,
+          "katexMathmlBatchMs": 2.2184999999990396
+        },
+        "expandedAstJsonBytes": 734351,
+        "placeholderAstJsonBytes": 211921
+      },
+      {
+        "name": "environments",
+        "stages": {
+          "katexMs": 9.718100000020058,
+          "highlightMs": 0,
+          "formulas": 100,
+          "environmentMs": 3.2018000000025495,
+          "parseExportMs": 1.3839000000007218,
+          "astTransformMs": 9.889900000001944,
+          "setupMs": 0.0044999999954598024,
+          "renderImportMs": 23.365100000002712,
+          "postprocessMs": 0.8263000000006286,
+          "totalMs": 39.60989999999947,
+          "nodes": 403
+        },
+        "modes": {
+          "productionUninstrumentedMs": 47.72989999999845,
+          "markdownItProductionMs": 9.611700000001292,
+          "directRustHtmlMs": 0.41010000000096625,
+          "parseExportMs": 0.8156999999991967,
+          "importRenderUnmodifiedAstMs": 1.6697999999960302,
+          "parseExportImportRenderMs": 3.093399999997928,
+          "importRenderKatexExpandedAstMs": 9.41990000000078,
+          "importRenderPlaceholderAndInsertMs": 1.149199999999837,
+          "katexBatchMs": 7.5613999999986845,
+          "katexMathmlBatchMs": 2.1837000000014086
+        },
+        "expandedAstJsonBytes": 433936,
+        "placeholderAstJsonBytes": 108726
+      }
+    ],
+    [
+      {
+        "name": "prose",
+        "stages": {
+          "katexMs": 0,
+          "highlightMs": 0,
+          "formulas": 0,
+          "environmentMs": 0.0072000000000116415,
+          "parseExportMs": 12.674599999998463,
+          "astTransformMs": 1.0879000000059023,
+          "setupMs": 0.0020000000004074536,
+          "renderImportMs": 16.364800000003015,
+          "postprocessMs": 0.7877999999982421,
+          "totalMs": 31.749199999998382,
+          "nodes": 5403
+        },
+        "modes": {
+          "productionUninstrumentedMs": 31.91739999999845,
+          "markdownItProductionMs": 9.802000000003318,
+          "directRustHtmlMs": 6.158100000000559,
+          "parseExportMs": 12.860999999997148,
+          "importRenderUnmodifiedAstMs": 15.608399999997346,
+          "parseExportImportRenderMs": 35.62059999999474,
+          "importRenderKatexExpandedAstMs": 22.110099999998056,
+          "importRenderPlaceholderAndInsertMs": 22.062799999999697,
+          "katexBatchMs": 0.00019999999494757503,
+          "katexMathmlBatchMs": 0.00019999999494757503
+        },
+        "expandedAstJsonBytes": 1501008,
+        "placeholderAstJsonBytes": 1501008
+      },
+      {
+        "name": "mixed",
+        "stages": {
+          "katexMs": 3.768300000039744,
+          "highlightMs": 3.0984000000025844,
+          "formulas": 80,
+          "environmentMs": 0.008099999999103602,
+          "parseExportMs": 16.110799999994924,
+          "astTransformMs": 4.993099999999686,
+          "setupMs": 0.0031999999991967343,
+          "renderImportMs": 22.193399999996473,
+          "postprocessMs": 1.9821000000010827,
+          "totalMs": 46.840500000005704,
+          "nodes": 4323
+        },
+        "modes": {
+          "productionUninstrumentedMs": 47.93089999999938,
+          "markdownItProductionMs": 15.300400000000081,
+          "directRustHtmlMs": 5.130600000004051,
+          "parseExportMs": 10.484900000003108,
+          "importRenderUnmodifiedAstMs": 19.78650000000198,
+          "parseExportImportRenderMs": 31.546300000001793,
+          "importRenderKatexExpandedAstMs": 23.032899999998335,
+          "importRenderPlaceholderAndInsertMs": 19.830300000001444,
+          "katexBatchMs": 2.4882999999972526,
+          "katexMathmlBatchMs": 0.48700000000098953
+        },
+        "expandedAstJsonBytes": 1312538,
+        "placeholderAstJsonBytes": 1186848
+      },
+      {
+        "name": "math",
+        "stages": {
+          "katexMs": 13.535800000034214,
+          "highlightMs": 0,
+          "formulas": 200,
+          "environmentMs": 0.007599999997182749,
+          "parseExportMs": 1.6212000000014086,
+          "astTransformMs": 13.789700000001176,
+          "setupMs": 0.004000000000814907,
+          "renderImportMs": 14.952999999994063,
+          "postprocessMs": 1.7538999999960652,
+          "totalMs": 32.72229999999399,
+          "nodes": 803
+        },
+        "modes": {
+          "productionUninstrumentedMs": 36.970900000000256,
+          "markdownItProductionMs": 9.630900000003749,
+          "directRustHtmlMs": 0.3974000000016531,
+          "parseExportMs": 1.2328999999954249,
+          "importRenderUnmodifiedAstMs": 1.4447000000000116,
+          "parseExportImportRenderMs": 2.4191999999966356,
+          "importRenderKatexExpandedAstMs": 6.559499999995751,
+          "importRenderPlaceholderAndInsertMs": 1.6534000000028755,
+          "katexBatchMs": 7.462899999998626,
+          "katexMathmlBatchMs": 1.2540999999982887
+        },
+        "expandedAstJsonBytes": 734351,
+        "placeholderAstJsonBytes": 211921
+      },
+      {
+        "name": "environments",
+        "stages": {
+          "katexMs": 8.39290000001347,
+          "highlightMs": 0,
+          "formulas": 100,
+          "environmentMs": 3.0857000000032713,
+          "parseExportMs": 1.346799999999348,
+          "astTransformMs": 8.524900000003981,
+          "setupMs": 0.003599999996367842,
+          "renderImportMs": 23.06999999999971,
+          "postprocessMs": 0.7001000000018394,
+          "totalMs": 37.913699999997334,
+          "nodes": 403
+        },
+        "modes": {
+          "productionUninstrumentedMs": 50.878600000003644,
+          "markdownItProductionMs": 10.83679999999731,
+          "directRustHtmlMs": 0.4098999999987427,
+          "parseExportMs": 0.8143999999956577,
+          "importRenderUnmodifiedAstMs": 1.8917999999976018,
+          "parseExportImportRenderMs": 3.5685000000012224,
+          "importRenderKatexExpandedAstMs": 9.745900000001711,
+          "importRenderPlaceholderAndInsertMs": 1.2122000000017579,
+          "katexBatchMs": 8.13459999999759,
+          "katexMathmlBatchMs": 2.2151000000012573
+        },
+        "expandedAstJsonBytes": 433936,
+        "placeholderAstJsonBytes": 108726
+      }
+    ]
+  ]
+}

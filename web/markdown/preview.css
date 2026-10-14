@@ -1,0 +1,5 @@
+.rendered-markdown { padding: 29px 36px !important; max-width: 980px; }
+#content.rendered-markdown { width: 100%; background: var(--library-surface); }
+@media (max-width: 960px) {
+  .rendered-markdown { padding: 20px !important; }
+}

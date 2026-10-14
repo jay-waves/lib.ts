@@ -1,0 +1,3 @@
+Original Microsoft Core Fonts Georgia installer
+https://downloads.sourceforge.net/project/corefonts/the%20fonts/final/georgi32.exe
+Extracted without modification. Original installer and license/support files retained.

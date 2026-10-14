@@ -1,0 +1,22 @@
+# Local dependencies and generated browser assets
+/node_modules/
+/dist/
+/.vite/
+/coverage/
+/release/
+
+# Retired local work and tool state
+/.archive/
+/.work/
+/preview-py/
+/experiments/
+/.claude/
+/.playwright-mcp/
+
+# Machine-generated files
+*.log
+.DS_Store
+Thumbs.db
+
+# Local repository registry and application data
+/data/

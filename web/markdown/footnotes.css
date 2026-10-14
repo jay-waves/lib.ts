@@ -1,0 +1,13 @@
+#content .inline-footnote { min-width: 0; }
+#content .inline-footnote[hidden] { display: none; }
+#content .footnote-label {
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  text-underline-offset: .12em;
+}
+#content .footnote-label:hover {
+  color: var(--md-fg);
+}
+#content figure { min-width: 0; max-width: 100%; }

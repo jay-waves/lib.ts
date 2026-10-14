@@ -1,0 +1,11 @@
+.git-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.git-panel-heading { display: flex; align-items: center; gap: 8px; min-height: 38px; box-sizing: border-box; flex: none; padding: 0 12px; border-bottom: 1px solid var(--library-border-muted); }
+.git-panel-heading > svg { flex: none; color: var(--fgColor-muted); }
+.git-panel-branch { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.git-group-summary { margin-top: 6px; font-size: var(--sidebar-text-size); }
+.git-panel-error { padding: 0 14px; color: var(--fgColor-danger); font-size: 13px; overflow-wrap: anywhere; }
+.git-changes-label { margin: 10px 8px; font-size: 12px; color: var(--fgColor-muted); }
+.git-change-path { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.git-change-status { font-size: 12px; font-weight: 600; color: var(--fgColor-attention); }
+.git-change-status[data-kind="Added"], .git-change-status[data-kind="Untracked"] { color: var(--fgColor-success); }
+.git-change-status[data-kind="Deleted"], .git-change-status[data-kind="Conflict"] { color: var(--fgColor-danger); }

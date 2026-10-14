@@ -1,0 +1,557 @@
+{
+  "date": "2026-10-13T08:41:36.722Z",
+  "node": "v24.21.0",
+  "platform": "win32",
+  "arch": "x64",
+  "cpu": "Intel(R) Core(TM) Ultra 7 258V",
+  "repetitions": 3,
+  "warmups": 5,
+  "iterations": 15,
+  "methodology": "Fresh isolated child per engine/run, actual production worker entry. No service cache. Cold includes worker startup/import/WASM and first small KaTeX render. Render time uses worker profile; round trip includes string transfer. RSS is whole child process, sampled every 5ms. Worker heap/external are unforced-GC snapshots; external includes WASM. Comrak uses direct HTML + parse5 + MathML; markdown-it retains folded sections, sidenotes and HTML+MathML formulas. Synthetic corpora; environment formulas now use explicit dollar delimiters. Feature/output differences mean this is an application comparison, not parser-core or isolated AST-speedup measurement. Browser layout not measured.",
+  "summary": [
+    {
+      "engine": "markdown-it",
+      "coldMs": 90.30879999999999,
+      "rssIncreaseMiB": 187.328125,
+      "finalHeapUsedMiB": 51.51628875732422,
+      "finalExternalMiB": 3.341798782348633,
+      "cases": [
+        {
+          "name": "prose",
+          "inputBytes": 33203,
+          "htmlBytes": 204794,
+          "renderMs": 4.272400000000005,
+          "roundTripMs": 5.088399999999979
+        },
+        {
+          "name": "mixed",
+          "inputBytes": 27893,
+          "htmlBytes": 282048,
+          "renderMs": 7.294399999999996,
+          "roundTripMs": 8.441100000000006
+        },
+        {
+          "name": "math",
+          "inputBytes": 8493,
+          "htmlBytes": 555738,
+          "renderMs": 8.715200000000095,
+          "roundTripMs": 10.42330000000004
+        },
+        {
+          "name": "environments",
+          "inputBytes": 7903,
+          "htmlBytes": 359393,
+          "renderMs": 5.513300000000072,
+          "roundTripMs": 6.305100000000039
+        }
+      ]
+    },
+    {
+      "engine": "comrak",
+      "coldMs": 100.11019999999999,
+      "rssIncreaseMiB": 121.28515625,
+      "finalHeapUsedMiB": 41.768104553222656,
+      "finalExternalMiB": 11.279306411743164,
+      "cases": [
+        {
+          "name": "prose",
+          "inputBytes": 33203,
+          "htmlBytes": 180677,
+          "renderMs": 10.49879999999996,
+          "roundTripMs": 11.66270000000003
+        },
+        {
+          "name": "mixed",
+          "inputBytes": 27893,
+          "htmlBytes": 208325,
+          "renderMs": 12.760600000000068,
+          "roundTripMs": 14.105500000000006
+        },
+        {
+          "name": "math",
+          "inputBytes": 8493,
+          "htmlBytes": 105409,
+          "renderMs": 5.754500000000007,
+          "roundTripMs": 6.261799999999994
+        },
+        {
+          "name": "environments",
+          "inputBytes": 7903,
+          "htmlBytes": 97769,
+          "renderMs": 5.094600000000014,
+          "roundTripMs": 5.473299999999995
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "engine": "markdown-it",
+      "baselineRss": 54681600,
+      "coldMs": 88.69420000000001,
+      "loaded": {
+        "rss": 80392192,
+        "heapTotal": 22757376,
+        "heapUsed": 14537344,
+        "external": 3590456,
+        "arrayBuffers": 233391
+      },
+      "cases": [
+        {
+          "name": "prose",
+          "inputBytes": 33203,
+          "htmlBytes": 204794,
+          "roundTripMedianMs": 5.088399999999979,
+          "renderMedianMs": 4.272400000000005,
+          "memory": {
+            "rss": 119164928,
+            "heapTotal": 54095872,
+            "heapUsed": 27132920,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        },
+        {
+          "name": "mixed",
+          "inputBytes": 27893,
+          "htmlBytes": 282048,
+          "roundTripMedianMs": 8.789499999999975,
+          "renderMedianMs": 7.7742999999999824,
+          "memory": {
+            "rss": 176799744,
+            "heapTotal": 104587264,
+            "heapUsed": 36227352,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        },
+        {
+          "name": "math",
+          "inputBytes": 8493,
+          "htmlBytes": 555738,
+          "roundTripMedianMs": 10.42330000000004,
+          "renderMedianMs": 8.715200000000095,
+          "memory": {
+            "rss": 242925568,
+            "heapTotal": 174641152,
+            "heapUsed": 58258120,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        },
+        {
+          "name": "environments",
+          "inputBytes": 7903,
+          "htmlBytes": 359393,
+          "roundTripMedianMs": 6.725999999999999,
+          "renderMedianMs": 5.53449999999998,
+          "memory": {
+            "rss": 244920320,
+            "heapTotal": 175300608,
+            "heapUsed": 54029792,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        }
+      ],
+      "final": {
+        "rss": 244920320,
+        "heapTotal": 175300608,
+        "heapUsed": 54030096,
+        "external": 3504130,
+        "arrayBuffers": 167855
+      },
+      "sampledPeakRss": 251109376
+    },
+    {
+      "engine": "comrak",
+      "baselineRss": 54697984,
+      "coldMs": 100.11019999999999,
+      "loaded": {
+        "rss": 85934080,
+        "heapTotal": 22700032,
+        "heapUsed": 15535696,
+        "external": 10057698,
+        "arrayBuffers": 167863
+      },
+      "cases": [
+        {
+          "name": "prose",
+          "inputBytes": 33203,
+          "htmlBytes": 180677,
+          "roundTripMedianMs": 11.423200000000008,
+          "renderMedianMs": 10.479600000000005,
+          "memory": {
+            "rss": 130166784,
+            "heapTotal": 55746560,
+            "heapUsed": 33141600,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        },
+        {
+          "name": "mixed",
+          "inputBytes": 27893,
+          "htmlBytes": 208325,
+          "roundTripMedianMs": 14.165000000000077,
+          "renderMedianMs": 12.760600000000068,
+          "memory": {
+            "rss": 176435200,
+            "heapTotal": 99192832,
+            "heapUsed": 31071520,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        },
+        {
+          "name": "math",
+          "inputBytes": 8493,
+          "htmlBytes": 105409,
+          "roundTripMedianMs": 6.317000000000007,
+          "renderMedianMs": 5.794300000000021,
+          "memory": {
+            "rss": 177868800,
+            "heapTotal": 100929536,
+            "heapUsed": 53226216,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        },
+        {
+          "name": "environments",
+          "inputBytes": 7903,
+          "htmlBytes": 97769,
+          "roundTripMedianMs": 5.473299999999995,
+          "renderMedianMs": 5.094600000000014,
+          "memory": {
+            "rss": 181964800,
+            "heapTotal": 102338560,
+            "heapUsed": 43783840,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        }
+      ],
+      "final": {
+        "rss": 181968896,
+        "heapTotal": 102338560,
+        "heapUsed": 43784144,
+        "external": 11827210,
+        "arrayBuffers": 167863
+      },
+      "sampledPeakRss": 181968896
+    },
+    {
+      "engine": "comrak",
+      "baselineRss": 54652928,
+      "coldMs": 100.28399999999999,
+      "loaded": {
+        "rss": 85786624,
+        "heapTotal": 22437888,
+        "heapUsed": 15491864,
+        "external": 10057698,
+        "arrayBuffers": 167863
+      },
+      "cases": [
+        {
+          "name": "prose",
+          "inputBytes": 33203,
+          "htmlBytes": 180677,
+          "roundTripMedianMs": 11.66270000000003,
+          "renderMedianMs": 10.775499999999965,
+          "memory": {
+            "rss": 129220608,
+            "heapTotal": 55746560,
+            "heapUsed": 33083232,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        },
+        {
+          "name": "mixed",
+          "inputBytes": 27893,
+          "htmlBytes": 208325,
+          "roundTripMedianMs": 14.105500000000006,
+          "renderMedianMs": 12.939799999999991,
+          "memory": {
+            "rss": 175988736,
+            "heapTotal": 99192832,
+            "heapUsed": 31003584,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        },
+        {
+          "name": "math",
+          "inputBytes": 8493,
+          "htmlBytes": 105409,
+          "roundTripMedianMs": 6.261799999999994,
+          "renderMedianMs": 5.754500000000007,
+          "memory": {
+            "rss": 177360896,
+            "heapTotal": 100929536,
+            "heapUsed": 53159680,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        },
+        {
+          "name": "environments",
+          "inputBytes": 7903,
+          "htmlBytes": 97769,
+          "roundTripMedianMs": 5.271799999999985,
+          "renderMedianMs": 4.974199999999996,
+          "memory": {
+            "rss": 180678656,
+            "heapTotal": 102862848,
+            "heapUsed": 43796728,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        }
+      ],
+      "final": {
+        "rss": 180682752,
+        "heapTotal": 102862848,
+        "heapUsed": 43797032,
+        "external": 11827210,
+        "arrayBuffers": 167863
+      },
+      "sampledPeakRss": 181829632
+    },
+    {
+      "engine": "markdown-it",
+      "baselineRss": 54665216,
+      "coldMs": 97.74279999999999,
+      "loaded": {
+        "rss": 80523264,
+        "heapTotal": 22757376,
+        "heapUsed": 14427888,
+        "external": 3590456,
+        "arrayBuffers": 233391
+      },
+      "cases": [
+        {
+          "name": "prose",
+          "inputBytes": 33203,
+          "htmlBytes": 204794,
+          "roundTripMedianMs": 4.961299999999994,
+          "renderMedianMs": 4.128399999999999,
+          "memory": {
+            "rss": 122834944,
+            "heapTotal": 56455168,
+            "heapUsed": 21323680,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        },
+        {
+          "name": "mixed",
+          "inputBytes": 27893,
+          "htmlBytes": 282048,
+          "roundTripMedianMs": 8.441100000000006,
+          "renderMedianMs": 7.294399999999996,
+          "memory": {
+            "rss": 170598400,
+            "heapTotal": 98701312,
+            "heapUsed": 41442744,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        },
+        {
+          "name": "math",
+          "inputBytes": 8493,
+          "htmlBytes": 555738,
+          "roundTripMedianMs": 9.595000000000027,
+          "renderMedianMs": 8.253500000000031,
+          "memory": {
+            "rss": 173830144,
+            "heapTotal": 102191104,
+            "heapUsed": 59826640,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        },
+        {
+          "name": "environments",
+          "inputBytes": 7903,
+          "htmlBytes": 359393,
+          "roundTripMedianMs": 6.305100000000039,
+          "renderMedianMs": 5.513300000000072,
+          "memory": {
+            "rss": 174706688,
+            "heapTotal": 102264832,
+            "heapUsed": 48044856,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        }
+      ],
+      "final": {
+        "rss": 174751744,
+        "heapTotal": 102264832,
+        "heapUsed": 48045160,
+        "external": 3504130,
+        "arrayBuffers": 167855
+      },
+      "sampledPeakRss": 179671040
+    },
+    {
+      "engine": "markdown-it",
+      "baselineRss": 54685696,
+      "coldMs": 90.30879999999999,
+      "loaded": {
+        "rss": 80224256,
+        "heapTotal": 22757376,
+        "heapUsed": 14406288,
+        "external": 3590456,
+        "arrayBuffers": 233391
+      },
+      "cases": [
+        {
+          "name": "prose",
+          "inputBytes": 33203,
+          "htmlBytes": 204794,
+          "roundTripMedianMs": 5.2672000000000025,
+          "renderMedianMs": 4.4051000000000045,
+          "memory": {
+            "rss": 119750656,
+            "heapTotal": 53571584,
+            "heapUsed": 27116920,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        },
+        {
+          "name": "mixed",
+          "inputBytes": 27893,
+          "htmlBytes": 282048,
+          "roundTripMedianMs": 8.366299999999967,
+          "renderMedianMs": 7.118300000000033,
+          "memory": {
+            "rss": 177811456,
+            "heapTotal": 104849408,
+            "heapUsed": 36175352,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        },
+        {
+          "name": "math",
+          "inputBytes": 8493,
+          "htmlBytes": 555738,
+          "roundTripMedianMs": 10.445999999999913,
+          "renderMedianMs": 9.057199999999966,
+          "memory": {
+            "rss": 243445760,
+            "heapTotal": 174641152,
+            "heapUsed": 58246656,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        },
+        {
+          "name": "environments",
+          "inputBytes": 7903,
+          "htmlBytes": 359393,
+          "roundTripMedianMs": 6.1743000000000166,
+          "renderMedianMs": 5.2350999999999885,
+          "memory": {
+            "rss": 245846016,
+            "heapTotal": 175562752,
+            "heapUsed": 54018440,
+            "external": 3504130,
+            "arrayBuffers": 167855
+          }
+        }
+      ],
+      "final": {
+        "rss": 245862400,
+        "heapTotal": 175562752,
+        "heapUsed": 54018744,
+        "external": 3504130,
+        "arrayBuffers": 167855
+      },
+      "sampledPeakRss": 252559360
+    },
+    {
+      "engine": "comrak",
+      "baselineRss": 54640640,
+      "coldMs": 98.1527,
+      "loaded": {
+        "rss": 85745664,
+        "heapTotal": 22437888,
+        "heapUsed": 15460168,
+        "external": 10057698,
+        "arrayBuffers": 167863
+      },
+      "cases": [
+        {
+          "name": "prose",
+          "inputBytes": 33203,
+          "htmlBytes": 180677,
+          "roundTripMedianMs": 11.734900000000039,
+          "renderMedianMs": 10.49879999999996,
+          "memory": {
+            "rss": 129044480,
+            "heapTotal": 55484416,
+            "heapUsed": 33059704,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        },
+        {
+          "name": "mixed",
+          "inputBytes": 27893,
+          "htmlBytes": 208325,
+          "roundTripMedianMs": 13.819600000000037,
+          "renderMedianMs": 12.619699999999966,
+          "memory": {
+            "rss": 176332800,
+            "heapTotal": 98930688,
+            "heapUsed": 31014952,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        },
+        {
+          "name": "math",
+          "inputBytes": 8493,
+          "htmlBytes": 105409,
+          "roundTripMedianMs": 6.229799999999955,
+          "renderMedianMs": 5.6159999999999854,
+          "memory": {
+            "rss": 177483776,
+            "heapTotal": 101191680,
+            "heapUsed": 53207856,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        },
+        {
+          "name": "environments",
+          "inputBytes": 7903,
+          "htmlBytes": 97769,
+          "roundTripMedianMs": 5.631399999999985,
+          "renderMedianMs": 5.270200000000045,
+          "memory": {
+            "rss": 180846592,
+            "heapTotal": 102338560,
+            "heapUsed": 43801544,
+            "external": 11827210,
+            "arrayBuffers": 167863
+          }
+        }
+      ],
+      "final": {
+        "rss": 180850688,
+        "heapTotal": 102338560,
+        "heapUsed": 43801848,
+        "external": 11827210,
+        "arrayBuffers": 167863
+      },
+      "sampledPeakRss": 181780480
+    }
+  ]
+}

@@ -1,0 +1,4202 @@
+[
+  {
+    "corpus": "short",
+    "repetition": 1,
+    "threshold": 256,
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 16,
+    "elapsedSeconds": 14.73,
+    "peakTotalRssMiB": 189.1,
+    "compileMedianMs": 1.74,
+    "compileP95Ms": 2.75,
+    "compileP99Ms": 7.5,
+    "warmMedianMs": 1.74,
+    "coldMedianMs": 186.52,
+    "coldMaxMs": 292.81,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 170
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 174.3
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 175.1
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 180.3
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 171.8
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 177.7
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 177.9
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 180.1
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 172.4
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 176.2
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 177.5
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 180.4
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 173.3
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 179
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 177.2
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 182.9
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 172.7
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 175.9
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 176.6
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 180
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 173.3
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 177.5
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 177.8
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 180.8
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 172.4
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 174.8
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 177
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 180.5
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 173.8
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 175.9
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 177.2
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 180.2
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 174.4
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 178.2
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 179
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 182.1
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 174.2
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 177.1
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 178.4
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 182.1
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 175.2
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 179.2
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 179.9
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 180.5
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 174.5
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 178.4
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 179.7
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 182.6
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 173.7
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 176.1
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 180
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 185.1
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 177.1
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 181.4
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 182.3
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 183.9
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 179.1
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 183.3
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 183.9
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 187.4
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 179.8
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 181.7
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 182.9
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 186.3
+      }
+    ]
+  },
+  {
+    "corpus": "short",
+    "repetition": 2,
+    "threshold": 256,
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 16,
+    "elapsedSeconds": 14.88,
+    "peakTotalRssMiB": 189,
+    "compileMedianMs": 1.8,
+    "compileP95Ms": 2.84,
+    "compileP99Ms": 6.74,
+    "warmMedianMs": 1.8,
+    "coldMedianMs": 202.55,
+    "coldMaxMs": 227.87,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 170.1
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 174.3
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 175
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 179.5
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 172.4
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 178
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 177
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 183.3
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 172.1
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 176.6
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 177.9
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 180.1
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 172.8
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 177
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 177.7
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 181.6
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 173.4
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 177.5
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 177.6
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 181.2
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 172.9
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 176.3
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 177.1
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 178.9
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 172.5
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 174.9
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 177.6
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 181.4
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 173.7
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 177.6
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 177.4
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 179
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 174.1
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 178.2
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 179.2
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 181.4
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 174
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 178.6
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 179.5
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 181
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 174.4
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 176.9
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 177.4
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 180
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 174.1
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 179.4
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 179.2
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 182.9
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 174.1
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 177.2
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 180.8
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 186
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 178
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 182.2
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 183.4
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 185
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 179.5
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 182.5
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 183.5
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 186.9
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 177.8
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 180.5
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 182.4
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 185.5
+      }
+    ]
+  },
+  {
+    "corpus": "short",
+    "repetition": 1,
+    "threshold": 512,
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 8,
+    "elapsedSeconds": 11.86,
+    "peakTotalRssMiB": 200,
+    "compileMedianMs": 1.64,
+    "compileP95Ms": 2.32,
+    "compileP99Ms": 4.04,
+    "warmMedianMs": 1.63,
+    "coldMedianMs": 185.25,
+    "coldMaxMs": 213.29,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 170.4
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 174.2
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 174.1
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 178.9
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 179.8
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 188.5
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 191.3
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 194.3
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 171.4
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 175.5
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 175.1
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 179.4
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 179.2
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 181.8
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 189.3
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 192.1
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 173.3
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 177.4
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 177.6
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 180.8
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 182.2
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 190
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 192.1
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 195.4
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 173.9
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 176.9
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 178.6
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 181.9
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 181.4
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 189.5
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 192
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 196.6
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 174.1
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 178.6
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 177.6
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 182.7
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 181.5
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 189.7
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 192.3
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 195.8
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 172.4
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 177.9
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 177
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 179.6
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 180.7
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 189.1
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 191.5
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 193.7
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 174.3
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 176.9
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 179.3
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 182.5
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 185.7
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 193.6
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 196.4
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 198.6
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 176.6
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 180.8
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 181.2
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 184.7
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 185.6
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 193.7
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 196.1
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 199.8
+      }
+    ]
+  },
+  {
+    "corpus": "short",
+    "repetition": 2,
+    "threshold": 512,
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 8,
+    "elapsedSeconds": 11.8,
+    "peakTotalRssMiB": 201.1,
+    "compileMedianMs": 1.64,
+    "compileP95Ms": 2.48,
+    "compileP99Ms": 4.14,
+    "warmMedianMs": 1.64,
+    "coldMedianMs": 191.37,
+    "coldMaxMs": 228.72,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 170.6
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 174.2
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 174.5
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 179.8
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 180.4
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 189
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 191.2
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 195.2
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 173
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 177.1
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 177.7
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 181.7
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 182.4
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 183.7
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 192.7
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 196.7
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 173.6
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 178
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 178.5
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 182.9
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 182.2
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 190.3
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 193.1
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 195.7
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 173.7
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 176
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 178.6
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 181.6
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 182.3
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 190.3
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 192.9
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 195.2
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 174.4
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 178
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 178.8
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 183.8
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 182.7
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 189.6
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 192
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 193.7
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 173.5
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 178.1
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 178
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 180.6
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 181
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 189
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 191.8
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 195
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 174.8
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 178.9
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 178.9
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 182
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 184.3
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 194.3
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 197.3
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 200
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 180.2
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 183
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 182.6
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 185.4
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 186.6
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 195
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 197.4
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 201.1
+      }
+    ]
+  },
+  {
+    "corpus": "short",
+    "repetition": 1,
+    "threshold": 1024,
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 4,
+    "elapsedSeconds": 10.44,
+    "peakTotalRssMiB": 211.6,
+    "compileMedianMs": 1.55,
+    "compileP95Ms": 2.23,
+    "compileP99Ms": 3.67,
+    "warmMedianMs": 1.55,
+    "coldMedianMs": 211.95,
+    "coldMaxMs": 230.33,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 170.7
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 174.4
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 175.3
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 178.9
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 180.7
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 189.2
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 191.5
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 194.6
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 196.3
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 197.6
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 200
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 202.2
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 204.2
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 205.8
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 195.2
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 196.6
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 172.7
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 176.5
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 176.1
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 181.5
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 180.8
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 187.9
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 190.4
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 193.1
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 194.7
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 197.8
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 199.2
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 201.4
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 203.9
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 206.1
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 209.2
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 195
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 172.6
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 177
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 177.5
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 180.5
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 181.3
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 185.8
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 190.9
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 194.4
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 189.4
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 191.7
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 193
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 194.5
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 190.5
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 193.3
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 195.3
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 196.2
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 174.5
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 176.9
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 178.2
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 181.4
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 182.3
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 191.9
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 195.7
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 199.3
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 200.8
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 203.9
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 205.7
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 208
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 210.2
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 197.5
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 201
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 202.6
+      }
+    ]
+  },
+  {
+    "corpus": "short",
+    "repetition": 2,
+    "threshold": 1024,
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 4,
+    "elapsedSeconds": 10.48,
+    "peakTotalRssMiB": 215.1,
+    "compileMedianMs": 1.56,
+    "compileP95Ms": 2.22,
+    "compileP99Ms": 3.64,
+    "warmMedianMs": 1.56,
+    "coldMedianMs": 185.94,
+    "coldMaxMs": 245.24,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 169.7
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 173.2
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 175.4
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 179.3
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 181
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 188.5
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 191.4
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 194.9
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 195.7
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 198
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 199.8
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 202.1
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 204.4
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 191.1
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 194.9
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 196.2
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 172.9
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 177
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 176.2
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 181.8
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 181.4
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 189.6
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 191.3
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 194.1
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 195.8
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 198.6
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 200
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 202.2
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 204.4
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 205.8
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 196.4
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 197.5
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 171.9
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 176.1
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 176.4
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 179.4
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 179.6
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 187.9
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 190.7
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 194.1
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 195
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 198.2
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 200
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 201.2
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 203.4
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 205.6
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 208.8
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 195.6
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 174
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 175.2
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 177.5
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 180.4
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 181.1
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 191.3
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 195.3
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 198.6
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 199.8
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 202.9
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 204.7
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 207.1
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 209.7
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 211.9
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 213.9
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 199.2
+      }
+    ]
+  },
+  {
+    "corpus": "short",
+    "repetition": 1,
+    "threshold": 2048,
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 2,
+    "elapsedSeconds": 9.88,
+    "peakTotalRssMiB": 226.6,
+    "compileMedianMs": 1.55,
+    "compileP95Ms": 2.22,
+    "compileP99Ms": 3.38,
+    "warmMedianMs": 1.54,
+    "coldMedianMs": 183.8,
+    "coldMaxMs": 183.8,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 170
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 174.1
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 175.2
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 179.7
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 180
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 187.8
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 190.8
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 194.2
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 195.7
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 197.4
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 199.8
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 202.1
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 204.3
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 205.6
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 196.6
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 198
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 199.9
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 199.1
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 201
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 203
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 198.9
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 201.8
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 203.5
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 204.2
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 202.9
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 204.3
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 204.8
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 205.9
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 207.4
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 209.2
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 218
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 219.8
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 172.4
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 176.2
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 177.4
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 180
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 181.9
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 188.3
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 190.8
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 194.5
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 195.6
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 198
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 200.1
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 202
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 204.5
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 206.9
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 209
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 195.6
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 198.2
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 198.4
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 200.3
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 202.1
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 203.3
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 202.8
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 205
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 207.8
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 208.8
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 210
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 212
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 207.4
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 212.8
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 223.6
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 225.4
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 226.6
+      }
+    ]
+  },
+  {
+    "corpus": "short",
+    "repetition": 2,
+    "threshold": 2048,
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 2,
+    "elapsedSeconds": 13.86,
+    "peakTotalRssMiB": 226,
+    "compileMedianMs": 1.86,
+    "compileP95Ms": 4.3,
+    "compileP99Ms": 5.29,
+    "warmMedianMs": 1.86,
+    "coldMedianMs": 276.51,
+    "coldMaxMs": 276.51,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 169.2
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 172.7
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 173.7
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 178.7
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 178.7
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 187.9
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 190.7
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 193.8
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 194.4
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 197.8
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 199.4
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 200.7
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 203.1
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 205.2
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 208.3
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 194
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 197.2
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 198.3
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 200.4
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 201.6
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 203.6
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 200.5
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 202.4
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 203.8
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 205.4
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 206.9
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 208.3
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 209.2
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 211.8
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 219.6
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 220.7
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 222.6
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 171.9
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 175.9
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 176.9
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 180.3
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 180.7
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 185.5
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 190.7
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 194
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 195.8
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 198.8
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 199.9
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 202.7
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 204.7
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 206.8
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 209.2
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 195.4
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 197.7
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 197.7
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 199.9
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 201.7
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 203.8
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 200.3
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 203.2
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 207.3
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 209.5
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 211.1
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 212.4
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 212.4
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 208
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 216.7
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 222.9
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 225.2
+      }
+    ]
+  },
+  {
+    "corpus": "short",
+    "repetition": 1,
+    "threshold": "none",
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 1,
+    "elapsedSeconds": 9.04,
+    "peakTotalRssMiB": 250.5,
+    "compileMedianMs": 1.46,
+    "compileP95Ms": 2.02,
+    "compileP99Ms": 2.57,
+    "warmMedianMs": 1.46,
+    "coldMedianMs": 168.52,
+    "coldMaxMs": 168.52,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 169.8
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 174.1
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 174.3
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 179
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 180.6
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 188.8
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 191.4
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 194
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 195.9
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 198.4
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 200
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 202.1
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 204.6
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 206.1
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 207.9
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 194.6
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 196.9
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 197.1
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 199
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 200.6
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 201.8
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 199.6
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 200.9
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 201.8
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 203.4
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 205.3
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 205.7
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 207.7
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 203.8
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 205.4
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 217
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 218.5
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 219.9
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 221.4
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 222.2
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 224.2
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 226
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 224.2
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 225.2
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 226.5
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 227.5
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 228.4
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 224.4
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 226.9
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 228.6
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 230.1
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 231.9
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 233.6
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 233.8
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 229.4
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 232
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 234.1
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 235.5
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 236.9
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 238.4
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 242.9
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 240.2
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 241.9
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 243.5
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 245
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 246.3
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 247.2
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 248.5
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 246.5
+      }
+    ]
+  },
+  {
+    "corpus": "short",
+    "repetition": 2,
+    "threshold": "none",
+    "compilations": 4096,
+    "sourceLines": 4,
+    "starts": 1,
+    "elapsedSeconds": 9.47,
+    "peakTotalRssMiB": 250.7,
+    "compileMedianMs": 1.49,
+    "compileP95Ms": 2.09,
+    "compileP99Ms": 3.11,
+    "warmMedianMs": 1.49,
+    "coldMedianMs": 173.92,
+    "coldMaxMs": 173.92,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 168.5
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 172.6
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 173.4
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 177.9
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 178.5
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 186.6
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 189.6
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 192.7
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 193.9
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 196.9
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 199.3
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 201.3
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 202.5
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 204.7
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 208
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 193.2
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 197
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 197.6
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 198.4
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 199.8
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 201.8
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 200.8
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 202.4
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 203.6
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 204.5
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 205.4
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 206.7
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 208.4
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 205.6
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 217.5
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 218.8
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 219.8
+      },
+      {
+        "compilations": 2112,
+        "totalRssMiB": 220.9
+      },
+      {
+        "compilations": 2176,
+        "totalRssMiB": 222.6
+      },
+      {
+        "compilations": 2240,
+        "totalRssMiB": 225.1
+      },
+      {
+        "compilations": 2304,
+        "totalRssMiB": 227
+      },
+      {
+        "compilations": 2368,
+        "totalRssMiB": 224.5
+      },
+      {
+        "compilations": 2432,
+        "totalRssMiB": 226.8
+      },
+      {
+        "compilations": 2496,
+        "totalRssMiB": 227.5
+      },
+      {
+        "compilations": 2560,
+        "totalRssMiB": 224.5
+      },
+      {
+        "compilations": 2624,
+        "totalRssMiB": 226.8
+      },
+      {
+        "compilations": 2688,
+        "totalRssMiB": 228.4
+      },
+      {
+        "compilations": 2752,
+        "totalRssMiB": 229.9
+      },
+      {
+        "compilations": 2816,
+        "totalRssMiB": 231
+      },
+      {
+        "compilations": 2880,
+        "totalRssMiB": 230.3
+      },
+      {
+        "compilations": 2944,
+        "totalRssMiB": 231.7
+      },
+      {
+        "compilations": 3008,
+        "totalRssMiB": 232.5
+      },
+      {
+        "compilations": 3072,
+        "totalRssMiB": 233.9
+      },
+      {
+        "compilations": 3136,
+        "totalRssMiB": 235.3
+      },
+      {
+        "compilations": 3200,
+        "totalRssMiB": 237.1
+      },
+      {
+        "compilations": 3264,
+        "totalRssMiB": 233.1
+      },
+      {
+        "compilations": 3328,
+        "totalRssMiB": 236.1
+      },
+      {
+        "compilations": 3392,
+        "totalRssMiB": 237.2
+      },
+      {
+        "compilations": 3456,
+        "totalRssMiB": 237.8
+      },
+      {
+        "compilations": 3520,
+        "totalRssMiB": 239
+      },
+      {
+        "compilations": 3584,
+        "totalRssMiB": 242.1
+      },
+      {
+        "compilations": 3648,
+        "totalRssMiB": 245.5
+      },
+      {
+        "compilations": 3712,
+        "totalRssMiB": 241.4
+      },
+      {
+        "compilations": 3776,
+        "totalRssMiB": 242.8
+      },
+      {
+        "compilations": 3840,
+        "totalRssMiB": 244.7
+      },
+      {
+        "compilations": 3904,
+        "totalRssMiB": 246.4
+      },
+      {
+        "compilations": 3968,
+        "totalRssMiB": 248.3
+      },
+      {
+        "compilations": 4032,
+        "totalRssMiB": 249.1
+      },
+      {
+        "compilations": 4096,
+        "totalRssMiB": 250.7
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 1,
+    "threshold": 256,
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 8,
+    "elapsedSeconds": 47.7,
+    "peakTotalRssMiB": 294.9,
+    "compileMedianMs": 14.27,
+    "compileP95Ms": 32.87,
+    "compileP99Ms": 45.24,
+    "warmMedianMs": 14.27,
+    "coldMedianMs": 249.07,
+    "coldMaxMs": 373.92,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 230.6
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 266.4
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 273.7
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 284.8
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 237.2
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 271.2
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 273.1
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 276.9
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 242
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 244.9
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 279.6
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 284.3
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 242.9
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 244.4
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 285.4
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 286.6
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 243.8
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 247
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 274.6
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 289.5
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 243.9
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 259.3
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 290.8
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 291.6
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 237.5
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 272.5
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 277.5
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 291
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 244.2
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 247
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 273.3
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 282
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 2,
+    "threshold": 256,
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 8,
+    "elapsedSeconds": 53.8,
+    "peakTotalRssMiB": 296.8,
+    "compileMedianMs": 14.69,
+    "compileP95Ms": 35.59,
+    "compileP99Ms": 50.59,
+    "warmMedianMs": 14.68,
+    "coldMedianMs": 281.46,
+    "coldMaxMs": 321.72,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 231
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 272.1
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 275.4
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 276.5
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 237.1
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 253.7
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 283.1
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 280.2
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 235.4
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 266.3
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 283.3
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 281.4
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 245.2
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 260.6
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 289.1
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 289.5
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 244.1
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 246.8
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 278.3
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 292.3
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 244.8
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 252.3
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 276.8
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 290.8
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 245.5
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 263
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 279.5
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 280.1
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 235
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 259
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 285.6
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 289.7
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 1,
+    "threshold": 512,
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 4,
+    "elapsedSeconds": 53.07,
+    "peakTotalRssMiB": 369.8,
+    "compileMedianMs": 14.99,
+    "compileP95Ms": 34.4,
+    "compileP99Ms": 39.83,
+    "warmMedianMs": 14.99,
+    "coldMedianMs": 301.43,
+    "coldMaxMs": 330.97,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 232.6
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 264.6
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 277.4
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 280.2
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 284.9
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 283.7
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 339
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 346.6
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 236
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 257.5
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 270.5
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 274.5
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 288.9
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 284
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 312.2
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 340.3
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 238.8
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 243.7
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 276.2
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 274.9
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 286.9
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 293.2
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 361.3
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 343.3
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 239.6
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 237
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 277.8
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 276.1
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 279.5
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 282.6
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 303.9
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 351.7
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 2,
+    "threshold": 512,
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 4,
+    "elapsedSeconds": 47.61,
+    "peakTotalRssMiB": 367.3,
+    "compileMedianMs": 14.67,
+    "compileP95Ms": 33.1,
+    "compileP99Ms": 40.94,
+    "warmMedianMs": 14.67,
+    "coldMedianMs": 279.13,
+    "coldMaxMs": 290.64,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 235.6
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 243.3
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 269.2
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 271.1
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 286.4
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 279.9
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 281.4
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 336.9
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 237.6
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 279.1
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 279.8
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 282.5
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 283
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 284.1
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 338.9
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 343.3
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 243.7
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 236.2
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 284.7
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 279.2
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 280.7
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 317.7
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 348.5
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 355.3
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 235.2
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 244
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 278.2
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 279.6
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 286.3
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 289.8
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 320.9
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 356.1
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 1,
+    "threshold": 1024,
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 2,
+    "elapsedSeconds": 50.75,
+    "peakTotalRssMiB": 395.7,
+    "compileMedianMs": 14.48,
+    "compileP95Ms": 33.76,
+    "compileP99Ms": 38.59,
+    "warmMedianMs": 14.48,
+    "coldMedianMs": 251.53,
+    "coldMaxMs": 251.53,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 231.2
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 271.9
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 277.8
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 279.4
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 278.7
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 282.1
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 285.1
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 354.5
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 357.5
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 363.7
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 368.4
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 371.5
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 374.5
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 375.9
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 380.8
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 364.1
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 232.9
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 274
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 278.3
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 278.1
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 282.8
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 292.9
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 324.8
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 334.9
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 357.9
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 357.5
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 364.8
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 371.5
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 357.7
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 360.3
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 363.6
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 374.9
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 2,
+    "threshold": 1024,
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 2,
+    "elapsedSeconds": 57.73,
+    "peakTotalRssMiB": 388.9,
+    "compileMedianMs": 16.49,
+    "compileP95Ms": 35.1,
+    "compileP99Ms": 41.16,
+    "warmMedianMs": 16.49,
+    "coldMedianMs": 307.94,
+    "coldMaxMs": 307.94,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 232.7
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 239.6
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 266.7
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 280.2
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 282.6
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 283
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 284.4
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 339.6
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 349.6
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 356.5
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 358.3
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 360.7
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 363.9
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 370.6
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 376.7
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 376.4
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 233.8
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 274.1
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 278.7
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 281.2
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 285.3
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 290.5
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 348.6
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 353.9
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 356.3
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 357.3
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 361
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 370.1
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 372.7
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 373.8
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 379.1
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 384.7
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 1,
+    "threshold": 2048,
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 1,
+    "elapsedSeconds": 54.59,
+    "peakTotalRssMiB": 444.6,
+    "compileMedianMs": 15.02,
+    "compileP95Ms": 38.36,
+    "compileP99Ms": 55.38,
+    "warmMedianMs": 15.02,
+    "coldMedianMs": 217.53,
+    "coldMaxMs": 217.53,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 230.4
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 274.9
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 276.4
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 281.3
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 282.4
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 282.7
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 294.3
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 288.3
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 341.9
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 342.9
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 350.8
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 352.8
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 359.7
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 364.8
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 373.7
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 380.4
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 384.3
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 386.6
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 391.3
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 392.7
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 395.2
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 401.2
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 398.4
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 398.2
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 404.7
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 405.6
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 405.1
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 405.9
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 413
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 419.6
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 425.5
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 430.3
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 2,
+    "threshold": 2048,
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 1,
+    "elapsedSeconds": 38.1,
+    "peakTotalRssMiB": 449,
+    "compileMedianMs": 13.97,
+    "compileP95Ms": 16.72,
+    "compileP99Ms": 19.91,
+    "warmMedianMs": 13.97,
+    "coldMedianMs": 240.69,
+    "coldMaxMs": 240.69,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 233.3
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 276.1
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 276.6
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 285.4
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 285.3
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 281.7
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 348.3
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 355.5
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 357.7
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 357.4
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 363.1
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 372.2
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 374.8
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 356.5
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 380.7
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 365.8
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 373.2
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 381.2
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 387.2
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 401.2
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 405.4
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 409.9
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 393.8
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 395.7
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 404.2
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 404.5
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 407.4
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 419.4
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 430.5
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 436
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 442.8
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 440.6
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 1,
+    "threshold": "none",
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 1,
+    "elapsedSeconds": 60.44,
+    "peakTotalRssMiB": 444.9,
+    "compileMedianMs": 23.39,
+    "compileP95Ms": 36.2,
+    "compileP99Ms": 43.08,
+    "warmMedianMs": 23.36,
+    "coldMedianMs": 225.28,
+    "coldMaxMs": 225.28,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 237.5
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 241
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 270.8
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 276.1
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 287.3
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 290.3
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 315.5
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 349.2
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 356.3
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 334.7
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 342.8
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 373.8
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 361.3
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 369.7
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 366
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 371.8
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 374.4
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 379.9
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 385.2
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 391.3
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 397.7
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 404.6
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 393
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 399.3
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 410.1
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 411.7
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 416
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 418.7
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 425
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 425.4
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 428.8
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 434.4
+      }
+    ]
+  },
+  {
+    "corpus": "note",
+    "repetition": 2,
+    "threshold": "none",
+    "compilations": 2048,
+    "sourceLines": 422,
+    "starts": 1,
+    "elapsedSeconds": 38.92,
+    "peakTotalRssMiB": 444.6,
+    "compileMedianMs": 14.01,
+    "compileP95Ms": 18.46,
+    "compileP99Ms": 23.07,
+    "warmMedianMs": 14.01,
+    "coldMedianMs": 238.58,
+    "coldMaxMs": 238.58,
+    "samples": [
+      {
+        "compilations": 64,
+        "totalRssMiB": 238.7
+      },
+      {
+        "compilations": 128,
+        "totalRssMiB": 273.3
+      },
+      {
+        "compilations": 192,
+        "totalRssMiB": 271.7
+      },
+      {
+        "compilations": 256,
+        "totalRssMiB": 280.3
+      },
+      {
+        "compilations": 320,
+        "totalRssMiB": 287.2
+      },
+      {
+        "compilations": 384,
+        "totalRssMiB": 287.4
+      },
+      {
+        "compilations": 448,
+        "totalRssMiB": 314.8
+      },
+      {
+        "compilations": 512,
+        "totalRssMiB": 343.1
+      },
+      {
+        "compilations": 576,
+        "totalRssMiB": 348.4
+      },
+      {
+        "compilations": 640,
+        "totalRssMiB": 353
+      },
+      {
+        "compilations": 704,
+        "totalRssMiB": 356.8
+      },
+      {
+        "compilations": 768,
+        "totalRssMiB": 358.2
+      },
+      {
+        "compilations": 832,
+        "totalRssMiB": 362.7
+      },
+      {
+        "compilations": 896,
+        "totalRssMiB": 367.7
+      },
+      {
+        "compilations": 960,
+        "totalRssMiB": 371.9
+      },
+      {
+        "compilations": 1024,
+        "totalRssMiB": 382.4
+      },
+      {
+        "compilations": 1088,
+        "totalRssMiB": 389.2
+      },
+      {
+        "compilations": 1152,
+        "totalRssMiB": 393.8
+      },
+      {
+        "compilations": 1216,
+        "totalRssMiB": 375.5
+      },
+      {
+        "compilations": 1280,
+        "totalRssMiB": 378.7
+      },
+      {
+        "compilations": 1344,
+        "totalRssMiB": 385.3
+      },
+      {
+        "compilations": 1408,
+        "totalRssMiB": 390.2
+      },
+      {
+        "compilations": 1472,
+        "totalRssMiB": 392.6
+      },
+      {
+        "compilations": 1536,
+        "totalRssMiB": 398.7
+      },
+      {
+        "compilations": 1600,
+        "totalRssMiB": 397.7
+      },
+      {
+        "compilations": 1664,
+        "totalRssMiB": 398.4
+      },
+      {
+        "compilations": 1728,
+        "totalRssMiB": 419.9
+      },
+      {
+        "compilations": 1792,
+        "totalRssMiB": 422.9
+      },
+      {
+        "compilations": 1856,
+        "totalRssMiB": 407
+      },
+      {
+        "compilations": 1920,
+        "totalRssMiB": 413.1
+      },
+      {
+        "compilations": 1984,
+        "totalRssMiB": 417.5
+      },
+      {
+        "compilations": 2048,
+        "totalRssMiB": 423.8
+      }
+    ]
+  }
+]
