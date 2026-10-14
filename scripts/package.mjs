@@ -1,30 +1,28 @@
-import { cp, mkdir, readdir, writeFile } from 'node:fs/promises';
+import { cp, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-// Run Vite directly so packaging does not depend on a platform-specific npm shell.
-await new Promise((done, fail) => {
-  const child = spawn(process.execPath, [resolve(root, 'node_modules/vite/bin/vite.js'), 'build'], {
-    cwd: root, stdio: 'inherit', windowsHide: true,
-  });
+const run = (command, args) => new Promise((done, fail) => {
+  const child = spawn(command, args, { cwd: root, stdio: 'inherit', windowsHide: true });
   child.once('error', fail);
-  child.once('exit', code => code === 0 ? done() : fail(new Error(`Build failed (${code})`)));
+  child.once('exit', code => code === 0 ? done() : fail(new Error(`${command} failed (${code})`)));
 });
+
+await run(process.execPath, [resolve(root, 'node_modules/vite/bin/vite.js'), 'build']);
+await run(process.env.CARGO || 'cargo', ['build', '--release']);
+
+const platform = `${process.platform}-${process.arch}`;
+const extension = process.platform === 'win32' ? '.exe' : '';
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-const output = resolve(root, 'release', `markdown-preview-${process.platform}-${process.arch}-${stamp}`);
+const output = resolve(root, 'release', `saved-notes-${platform}-${stamp}`);
 await mkdir(output, { recursive: true });
-// Preserve the runtime layout, including format-specific renderer modules.
-for (const entry of await readdir(root, { withFileTypes: true })) {
-  if (entry.isFile() && entry.name.endsWith('.mjs')) await cp(resolve(root, entry.name), resolve(output, entry.name));
-}
-for (const path of ['dist', 'package.json', 'package-lock.json', 'LICENSE']) {
-  await cp(resolve(root, path), resolve(output, path), { recursive: true });
-}
-for (const path of ['shared', 'server', 'fonts']) {
+await cp(resolve(root, 'target/release', `saved-notes-library${extension}`), resolve(output, `saved-notes-library${extension}`));
+await cp(resolve(root, 'dist'), resolve(output, 'dist'), { recursive: true });
+for (const path of ['fonts', 'LICENSE']) {
   await cp(resolve(root, path), resolve(output, path), { recursive: true });
 }
 await mkdir(resolve(output, 'data'));
-await writeFile(resolve(output, 'DEPLOY.md'), `# Deployment\n\nBuilt with Node ${process.version} on ${process.platform}/${process.arch}.\n\n1. Copy this entire directory to your deployment location.\n2. Install Node.js (the build machine uses ${process.version}).\n3. Run npm ci --omit=dev in this directory on the target machine.\n4. Start with: node server-node.mjs E:/notes\n5. Open http://127.0.0.1:49191/ in your browser.\n\nUse an absolute notes path. Repo registrations are saved in data/repos.json.\nExisting data is intentionally excluded from this package. When updating, stop\nthe old service and keep the deployment directory's data folder. When migrating\nan existing installation, copy its data folder separately; registered paths must\nexist on the target machine. Do not run multiple processes against the same data.\n\nFor Neovim, prepend this deployment directory to runtimepath and connect to the\nrunning service. Example: vim.opt.rtp:prepend("E:/apps/markdown-preview")\n\nDependencies are not bundled. The fonts directory includes offline Typst fonts\nand their licenses. Typst package caches are machine-local and are not included.\n`, 'utf8');
+await writeFile(resolve(output, 'DEPLOY.md'), `# Deployment\n\nThis package contains the native Rust service for ${platform}. No Node.js runtime is required.\n\n1. Copy this directory to the target machine.\n2. Run saved-notes-library${extension} E:/notes to register and open a repository, or run it without an argument to restore saved repositories.\n3. Open http://127.0.0.1:49191/.\n\nRepository registrations and reading state are stored in data/. Keep that directory when updating. Registered repository paths must exist on the target machine. Do not run multiple service processes against the same data directory.\n\nThe package includes the frontend, Typst fonts, and their licenses. Typst package caches remain machine-local.\n`, 'utf8');
 console.log(`\nDeployment directory: ${output}`);

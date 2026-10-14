@@ -50,6 +50,14 @@ export function rawLanguage(name) {
   return language && hljs.getLanguage(language) ? language : null;
 }
 
+export function highlightElement(element) {
+  const className = [...element.classList].find(name => name.startsWith('language-'));
+  const language = className ? className.slice('language-'.length) : '';
+  if (!language || !hljs.getLanguage(languages[language] || language)) return false;
+  hljs.highlightElement(element);
+  return true;
+}
+
 export function highlightRaw(source, name) {
   const language = rawLanguage(name);
   return language ? hljs.highlight(source, { language, ignoreIllegals: true }).value

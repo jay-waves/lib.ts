@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { historyFileGroups } from '../web/history-groups.mjs';
-import { historyTimeGroup, formatRelativeModified } from '../web/time-labels.mjs';
+import { historyTimeGroup, formatModified, formatRelativeModified } from '../web/time-labels.mjs';
 
 const now = Date.parse('2026-10-02T12:00:00Z'), day = 86400000;
 const date = days => new Date(now - days * day).toISOString();
@@ -14,6 +14,8 @@ test('history time buckets have exclusive boundaries and handle unknown and futu
   assert.equal(formatRelativeModified(date(0), now), 'just now');
   assert.equal(formatRelativeModified(date(7), now), '1 week ago');
   assert.equal(formatRelativeModified(date(60), now), 'last month');
+  assert.equal(formatModified('not-a-date'), 'Unknown date');
+  assert.equal(formatRelativeModified('not-a-date'), 'Unknown date');
 });
 
 test('history folders keep each file once, omit empty groups and preserve recent order within groups', () => {

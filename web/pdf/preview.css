@@ -5,3 +5,8 @@
   .pdf-page-status { position: absolute; inset: 0; display: grid; place-items: center; color: var(--fgColor-muted); }
   .pdf-page-error { box-sizing: border-box; padding: 18px; overflow: auto; color: var(--fgColor-danger); text-align: center; overflow-wrap: anywhere; }
 }
+
+:root[data-color-mode="dark"] .pdf-page img { filter: brightness(0.88); }
+@media (prefers-color-scheme: dark) {
+  :root[data-color-mode="auto"] .pdf-page img { filter: brightness(0.88); }
+}

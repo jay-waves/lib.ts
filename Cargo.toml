@@ -1,0 +1,39 @@
+[package]
+name = "saved-notes-library"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+
+[dependencies]
+axum = { version = "0.8", features = ["http1", "json", "query", "tokio"] }
+bytes = "1"
+comemo = "0.5.1"
+git2 = { version = "0.21", default-features = false }
+getrandom = "0.4"
+futures-util = "0.3"
+grep-matcher = "0.1"
+mime_guess = "2"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+ignore = "0.4"
+hayro-svg = "0.8"
+lru = "0.18.4"
+comrak = { version = "0.56", default-features = false }
+regex = "1"
+typst = "0.15.1"
+typst-syntax = "0.15.1"
+typst-layout = "0.15.1"
+typst-svg = "0.15.1"
+typst-kit = { version = "0.15.1", default-features = false, features = ["scan-fonts", "system-packages", "system-downloader", "datetime"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tower-http = { version = "0.6", features = ["fs", "limit", "trace"] }
+time = { version = "0.3", features = ["formatting", "parsing"] }
+thiserror = "2.0.21"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

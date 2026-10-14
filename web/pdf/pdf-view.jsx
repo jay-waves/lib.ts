@@ -6,16 +6,16 @@ import { PDF_PAGE_WIDTH, pdfRenderWidth } from '../../shared/pdf-render.mjs';
 import { usePageWindow } from '../page-window.jsx';
 import './preview.css';
 
-const PdfPage = memo(function PdfPage({ page, index, scale, active, cache, modified }) {
+const PdfPage = memo(function PdfPage({ page, index, scale, active, cache, revision }) {
   const [image, setImage] = useState(null), [error, setError] = useState('');
   const width = pdfRenderWidth(scale, window.devicePixelRatio || 1);
   useEffect(() => () => { if (image) URL.revokeObjectURL(image); }, [image]);
-  useEffect(() => { setImage(null); }, [page.url, modified]);
+  useEffect(() => { setImage(null); }, [page.url, revision]);
   useEffect(() => {
     setError('');
     if (!active) { setImage(null); return; }
     const controller = new AbortController();
-    const url = `${page.url}&v=${encodeURIComponent(modified)}&width=${width}`;
+    const url = `${page.url}&v=${encodeURIComponent(revision)}&width=${width}`;
     (async () => {
       let blob = cache.get(url);
       if (!blob) {
@@ -28,7 +28,7 @@ const PdfPage = memo(function PdfPage({ page, index, scale, active, cache, modif
       if (!controller.signal.aborted) setImage(URL.createObjectURL(blob));
     })().catch(cause => { if (!controller.signal.aborted) setError(String(cause)); });
     return () => controller.abort();
-  }, [active, page.url, modified, cache, width]);
+  }, [active, page.url, revision, cache, width]);
   return <div className="pdf-page document-page" data-page={index + 1}
     style={{ aspectRatio: `${page.width} / ${page.height}`, width: `${PDF_PAGE_WIDTH * scale}px` }} aria-label={`Page ${index + 1}`}>
     {active && image && <img src={image} alt={`Page ${index + 1}`} draggable={false}
@@ -38,14 +38,14 @@ const PdfPage = memo(function PdfPage({ page, index, scale, active, cache, modif
   </div>;
 });
 
-export function PdfPages({ pages, scale, modified }) {
+export function PdfPages({ pages, scale, modified, revision = modified }) {
   const visible = useContext(SessionActivity);
   const { ref, window } = usePageWindow(pages);
   // Retain compressed blobs for short backtracking, never decoded offscreen images.
   const cache = useMemo(() => createByteCache({ maxEntries: 12, maxBytes: 16 * 1024 * 1024,
-    sizeOf: blob => blob.size }), [pages, modified]);
+    sizeOf: blob => blob.size }), [pages, revision]);
   useEffect(() => () => cache.clear(), [cache]);
   return <div ref={ref} className="pdf-pages">{pages.map((page, index) =>
-    <PdfPage key={page.url} page={page} index={index} scale={scale} modified={modified} cache={cache}
+    <PdfPage key={page.url} page={page} index={index} scale={scale} revision={revision} cache={cache}
       active={visible && index + 1 >= window.first && index + 1 <= window.last} />)}</div>;
 }

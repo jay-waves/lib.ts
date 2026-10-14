@@ -53,7 +53,8 @@ export function Preview() {
   if (document.type === 'markdown') return <MarkdownPreview />;
   if (document.type === 'typst') return <TypstPreview />;
   if (document.type === 'pdf') return <DocumentPreview layout={pagedDocumentLayout(document.pages)}>
-    <PdfPages key={`${document.path}:${document.modified}`} pages={document.pages} scale={viewport.scale} modified={document.modified} />
+    <PdfPages key={`${document.path}:${document.revision || document.modified}`} pages={document.pages}
+      scale={viewport.scale} modified={document.modified} revision={document.revision || document.modified} />
   </DocumentPreview>;
   if (document.type === 'image') return <ImagePreview />;
   if (document.type === 'html') return <iframe className="html-preview" title={document.name}

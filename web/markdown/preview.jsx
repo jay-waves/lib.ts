@@ -5,6 +5,7 @@ import { pageBase, treeBase } from '../urls.mjs';
 import { readingKey, readPosition, savePosition } from '../reading-state.mjs';
 import { observeMarkdownPosition } from './markdown-position.mjs';
 import { updateAssetVersions } from './markdown.mjs';
+import { enhanceMarkdown } from './enhance.mjs';
 import { navigateMarkdownFragment } from './fragment-navigation.mjs';
 import { toggleFootnote } from './footnotes.mjs';
 import './preview.css';
@@ -44,6 +45,7 @@ export function MarkdownPreview() {
         return true;
       } });
     updateHeadingAvailability(root);
+    void enhanceMarkdown(root);
   }, [prepared.body, path]);
   useLayoutEffect(() => {
     const root = contentRef.current;

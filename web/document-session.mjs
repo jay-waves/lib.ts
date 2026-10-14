@@ -1,6 +1,8 @@
+import { randomId } from './random-id.mjs';
+
 // Each browser page owns one lease, independently of its visibility/SSE streams.
 export function retainDocument(endpoint, path, {
-  window = globalThis.window, fetch = globalThis.fetch, client = globalThis.crypto.randomUUID(),
+  window = globalThis.window, fetch = globalThis.fetch, client = randomId(),
   setInterval = globalThis.setInterval, clearInterval = globalThis.clearInterval,
 } = {}) {
   let version = 0, suspended = false;

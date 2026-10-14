@@ -5,7 +5,9 @@
   "scripts": {
     "bench:memory": "node tests/benchmark/memory.mjs",
     "build": "vite build",
-    "serve": "node server-node.mjs",
+    "build:rust": "cargo build --release",
+    "serve:rust": "cargo run --release --",
+    "serve": "cargo run --release --",
     "package": "node scripts/package.mjs"
   },
   "dependencies": {

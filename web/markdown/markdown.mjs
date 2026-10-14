@@ -1,5 +1,6 @@
 import { apiBase } from '../urls.mjs';
 import DOMPurify from 'dompurify';
+import { resolveMarkdownUrl } from './url.mjs';
 
 const assetSelector = 'img[src], source[src], audio[src], video[src], video[poster]';
 const sanitizeOptions = {
@@ -7,12 +8,10 @@ const sanitizeOptions = {
   ALLOW_DATA_ATTR: true,
 };
 
-function resolvedLocalPath(value, current) {
-  if (!value || /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(value)) return null;
-  const directory = current.split('/').slice(0, -1).map(encodeURIComponent).join('/');
-  const base = new URL(`http://notes.local/${directory ? `${directory}/` : ''}`);
-  const resolved = new URL(value, base);
-  return resolved.origin === base.origin ? decodeURIComponent(resolved.pathname.slice(1)) : null;
+function assetUrl(path, search = '', hash = '') {
+  const params = new URLSearchParams(search);
+  params.set('path', path);
+  return `${apiBase}/asset?${params}${hash}`;
 }
 
 export function prepareMarkdown(document, linkFor) {
@@ -20,16 +19,23 @@ export function prepareMarkdown(document, linkFor) {
   const assets = new Set();
   for (const element of body.querySelectorAll(assetSelector)) {
     const attribute = element.hasAttribute('poster') ? 'poster' : 'src';
-    const path = resolvedLocalPath(element.getAttribute(attribute), document.path);
-    if (!path) continue;
+    const resolved = resolveMarkdownUrl(element.getAttribute(attribute), document.path);
+    if (!resolved) continue;
+    const { path, search, hash } = resolved;
     assets.add(path);
-    element.setAttribute(attribute, `${apiBase}/asset?path=${encodeURIComponent(path)}`);
+    element.setAttribute(attribute, assetUrl(path, search, hash));
     element.setAttribute('data-library-asset-path', path);
     element.setAttribute('data-library-asset-attribute', attribute);
+    element.setAttribute('data-library-asset-search', search);
+    element.setAttribute('data-library-asset-hash', hash);
   }
   for (const link of body.querySelectorAll('a[href]')) {
-    const path = resolvedLocalPath(link.getAttribute('href'), document.path);
-    if (path) link.href = linkFor(path);
+    const resolved = resolveMarkdownUrl(link.getAttribute('href'), document.path);
+    if (resolved) link.href = `${linkFor(resolved.path)}${resolved.search}${resolved.hash}`;
+    else if (/^https?:\/\//i.test(link.href)) {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    }
   }
   // Keep the final security check after URL rewriting, without serializing and
   // reparsing HTML. The preview clones these already-sanitized nodes directly.
@@ -43,6 +49,10 @@ export function updateAssetVersions(root, versions) {
     const version = versions[path];
     if (!version) return;
     const attribute = element.getAttribute('data-library-asset-attribute');
-    element.setAttribute(attribute, `${apiBase}/asset?path=${encodeURIComponent(path)}&v=${version}`);
+    const params = new URLSearchParams(element.getAttribute('data-library-asset-search') || '');
+    params.set('path', path);
+    params.set('v', version);
+    const hash = element.getAttribute('data-library-asset-hash') || '';
+    element.setAttribute(attribute, `${apiBase}/asset?${params}${hash}`);
   });
 }

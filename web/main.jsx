@@ -23,6 +23,7 @@ import { Reader } from './reader.jsx';
 import { hasDocumentViewport } from './preview-kind.mjs';
 import { syncReadingPositions, loadPosition, readingKey } from './reading-state.mjs';
 import { readerRouteRequest } from './reader-session.mjs';
+import { randomId } from './random-id.mjs';
 import { FileTree } from './file-tree-view.jsx';
 import { documentSymbols, SymbolsPanel } from './symbols-panel.jsx';
 import { DocumentToolbar } from './document-toolbar.jsx';
@@ -197,7 +198,7 @@ function App() {
     return () => observer.disconnect();
   }, [document?.path, activeView, searchMode, Boolean(error)]);
   useEffect(() => {
-    const client = crypto.randomUUID();
+    const client = randomId();
     const repo = repoId || '';
     const activity = () => {
       if (!window.document.hidden) fetch('/api/library/activity', { method: 'POST',

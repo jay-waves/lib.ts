@@ -1,5 +1,6 @@
 # Local dependencies and generated browser assets
 /node_modules/
+/target/
 /dist/
 /.vite/
 /coverage/

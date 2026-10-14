@@ -1,0 +1,81 @@
+name: Windows native build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 1
+
+  build-windows:
+    needs: build-frontend
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache Cargo dependencies and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Build Windows release
+        run: cargo build --release --locked
+
+      - name: Assemble artifact
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'saved-notes-library-windows'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item 'target/release/saved-notes-library.exe' $stage
+          Copy-Item 'dist' $stage -Recurse
+          Copy-Item 'fonts' $stage -Recurse
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: saved-notes-library-windows-x86_64
+          path: ${{ runner.temp }}/saved-notes-library-windows
+          if-no-files-found: error

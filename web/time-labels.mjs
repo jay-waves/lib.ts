@@ -6,6 +6,7 @@ function timeSince(value, now) {
 }
 
 export function formatRelativeModified(value, now = Date.now()) {
+  if (!Number.isFinite(new Date(value).getTime())) return 'Unknown date';
   const { minutes, hours, days } = timeSince(value, now);
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
@@ -36,6 +37,8 @@ const modifiedFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
 });
 export function formatModified(value) {
-  const parts = Object.fromEntries(modifiedFormatter.formatToParts(new Date(value)).map(part => [part.type, part.value]));
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Unknown date';
+  const parts = Object.fromEntries(modifiedFormatter.formatToParts(date).map(part => [part.type, part.value]));
   return `${parts.day} ${parts.month} ${parts.year}, ${parts.hour}:${parts.minute}${parts.dayPeriod}`;
 }
