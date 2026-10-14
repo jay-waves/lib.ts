@@ -50,7 +50,9 @@ Typst 编译和分页渲染运行在一个按需启动的独立 Node 子进程�
 
 PDF 预览使用 MuPDF.js `1.28.1`，运行在独立 Worker 中，首次打开时启动，没有活动 PDF 和待处理任务后空闲 60 秒退出。页面按显示缩放及屏幕 DPR 渲染，目标 DPR 至少为 2，像素宽度按 450 分档，最高 3600；单页位图上限 800 万像素。WebP 质量为 92，主线程图片缓存上限 8 MiB，Worker 不重复缓存编码图片。多份 PDF 共用一个 MuPDF runtime，每个文件版本分别回收，目录由内置接口读取。页面、绘图设备和位图在编码完成后释放。MuPDF.js 采用 AGPL-3.0-or-later / 商业双授权。
 
-PDF 已统一使用 MuPDF，无需引擎环境变量。之前三本书的比较结果保存在 `reports/pdf-comparison/`，属于迁移前的历史记录，双引擎比较脚本和旧依赖已移除。
+PDF 已统一使用 MuPDF，无需引擎环境变量。
+
+HTML（`.html` / `.htm`）支持 Preview 和 Raw。预览默认允许脚本，使用隔离 iframe，支持相对路径的仓库内 JS、CSS、图片及字体；禁止网络连接、外部资源、弹窗、表单提交、下载和嵌套页面，不开放应用存储及 DOM。保存 HTML 后自动刷新。依赖联网、`eval` 或浏览器存储的页面可能无法运行；暂不保存预览内部的滚动位置，iframe 也不保证独立进程或阻止脚本占满 CPU。
 
 
 
@@ -77,6 +79,8 @@ node server-node.mjs E:/notes
 
 部署包包含 `fonts/` 的字体和许可证；Typst 包缓存和现有用户数据不随部署包复制。
 
-功能回归：`node --test tests/*.test.mjs tests/*.test.cjs`。构建检查：`npm run build`。
+功能回归：`node --test tests/*.test.mjs`。构建检查：`npm run build`。
+
+Typst 内存与冷启动基准：`npm run bench:memory`。基线采集、回归比较及完整模式见 [benchmark 说明](tests/benchmark/README.md)。
 
 使用与接口见 [web/README.md](web/README.md)；缓存约束和调优提示见 [CODE_REVIEW.md](CODE_REVIEW.md)。

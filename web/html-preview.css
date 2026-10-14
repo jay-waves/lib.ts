@@ -1,0 +1,1 @@
+.html-preview { display: block; inline-size: 100%; block-size: calc(100dvh - 100px); min-block-size: 320px; border: 0; background: white; }

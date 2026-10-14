@@ -33,8 +33,8 @@ const PdfPage = memo(function PdfPage({ page, index, scale, active, cache, modif
     style={{ aspectRatio: `${page.width} / ${page.height}`, width: `${PDF_PAGE_WIDTH * scale}px` }} aria-label={`Page ${index + 1}`}>
     {active && image && <img src={image} alt={`Page ${index + 1}`} draggable={false}
       onError={() => setError('Could not display page image')} />}
-    {active && error ? <div className="typst-page-status typst-page-error" role="alert">{error}</div>
-      : active && !image ? <div className="typst-page-status"><Spinner size="small" /></div> : null}
+    {active && error ? <div className="pdf-page-status pdf-page-error" role="alert">{error}</div>
+      : active && !image ? <div className="pdf-page-status"><Spinner size="small" /></div> : null}
   </div>;
 });
 

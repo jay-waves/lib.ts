@@ -3,6 +3,7 @@
 /dist/
 /.vite/
 /coverage/
+/reports/benchmark-memory/
 /release/
 
 # Retired local work and tool state

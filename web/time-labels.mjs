@@ -31,3 +31,11 @@ export function historyTimeGroup(value, now = Date.now()) {
   const { days } = timeSince(value, now);
   return days < 7 ? 'past-week' : days < 30 ? 'past-month' : days < 183 ? 'past-six-months' : 'older';
 }
+
+const modifiedFormatter = new Intl.DateTimeFormat('en-US', {
+  day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+});
+export function formatModified(value) {
+  const parts = Object.fromEntries(modifiedFormatter.formatToParts(new Date(value)).map(part => [part.type, part.value]));
+  return `${parts.day} ${parts.month} ${parts.year}, ${parts.hour}:${parts.minute}${parts.dayPeriod}`;
+}

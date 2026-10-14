@@ -1,0 +1,15 @@
+.sentinel { block-size: 1px; margin-block-end: -1px; flex: none; pointer-events: none; }
+.toolbar { position: sticky; inset-block-start: 0; z-index: 5; flex: none; display: flex; align-items: stretch; gap: 14px; min-block-size: 38px; box-sizing: border-box; padding-inline: 14px; border-block-end: 1px solid var(--borderColor-default); background: var(--bgColor-muted); font-size: 12px; }
+.toolbar[data-paged="true"] { position: relative; }
+.tabs { display: flex; align-items: stretch; gap: 7px; margin-block-end: -1px; }
+.position { align-self: center; min-inline-size: 0; overflow: hidden; color: var(--fgColor-muted); font: 10px/16px var(--md-font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; letter-spacing: -.15px; white-space: nowrap; text-overflow: ellipsis; }
+.tab {
+  display: flex; align-items: center; padding-inline: 9px; border: 0; border-block-end: 2px solid transparent; background: transparent; color: var(--fgColor-muted); font: inherit; font-size: 13px; cursor: pointer;
+  &:hover { color: var(--fgColor-default); }
+  &[aria-selected="true"] { border-block-end-color: var(--bgColor-accent-emphasis); color: var(--fgColor-default); font-weight: 600; }
+}
+.actions { display: flex; align-items: center; gap: 2px; margin-inline-start: auto; }
+.menu svg { inline-size: 16px; block-size: 16px; }
+@container reader (inline-size <= 600px) {
+  .toolbar { gap: 8px; padding-inline: 12px 8px; }
+}

@@ -1,9 +1,9 @@
 import { apiBase, fileUrl as documentUrl } from './urls.mjs';
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { Suspense, use, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ActionList, Button, CounterLabel, Link, Spinner } from '@primer/react';
 import { BookmarkIcon, CodeIcon, FileCodeIcon, FileDirectoryIcon, ListUnorderedIcon, UnfoldIcon, FoldIcon } from '@primer/octicons-react';
 import { SearchInput } from './search-input.jsx';
-import { highlightRaw } from './raw-highlight.mjs';
+import { loadRawHighlighter } from './raw-highlight-loader.mjs';
 import { parseSearchQuery, updateQueryQualifier, normalizeLanguage, cardMatchLines } from '../shared/search-query.mjs';
 import './code-search.css';
 import { filterSearchPaths } from './path-search.mjs';
@@ -49,9 +49,10 @@ function fileUrl(path, line) {
 }
 
 // Insert marks into text nodes, retaining syntax spans and never treating source as HTML.
-function highlightedLine(line, path) {
+function highlightedLine(line, path, highlightRaw) {
   const container = window.document.createElement('div');
-  container.innerHTML = highlightRaw(line.text, path);
+  if (highlightRaw) container.innerHTML = highlightRaw(line.text, path);
+  else container.textContent = line.text;
   const walker = window.document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
@@ -76,8 +77,8 @@ function highlightedLine(line, path) {
   return container.innerHTML;
 }
 
-function Snippet({ lines: sourceLines, path, navigate }) {
-  const lines = useMemo(() => sourceLines.map(line => ({ ...line, html: highlightedLine(line, path) })), [sourceLines, path]);
+function SnippetLines({ lines: sourceLines, path, navigate, highlightRaw }) {
+  const lines = useMemo(() => sourceLines.map(line => ({ ...line, html: highlightedLine(line, path, highlightRaw) })), [sourceLines, path, highlightRaw]);
   return <div className="search-snippet" aria-label={`Lines ${lines[0].number}–${lines.at(-1).number}`}>
     {lines.map((line, index) => <div key={line.number} className={`search-code-line ${index > 0 && line.number > lines[index - 1].number + 1 ? 'after-gap' : ''}`}>
       <a className="search-line-number" href={fileUrl(path, line.number)} aria-label={`Open ${path} at line ${line.number}`}
@@ -87,6 +88,15 @@ function Snippet({ lines: sourceLines, path, navigate }) {
       {line.clipped && <span className="search-line-clipped" title="Long line excerpt">…</span>}
     </div>)}
   </div>;
+}
+
+function HighlightedSnippet(props) {
+  const { highlightRaw } = use(loadRawHighlighter());
+  return <SnippetLines {...props} highlightRaw={highlightRaw} />;
+}
+
+function Snippet(props) {
+  return <Suspense fallback={<SnippetLines {...props} />}><HighlightedSnippet {...props} /></Suspense>;
 }
 
 function ResultCard({ file, navigate, selected = false, onFocus }) {
@@ -260,7 +270,7 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
   }, [result, query, currentFile, scope, pathSearch, symbolSearch]);
 
   useEffect(() => {
-    if (pathSearch || symbolSearch || !active || !sentinelRef.current || !result || result.nextOffset === null || pageError || loadingMore || typeof IntersectionObserver === 'undefined') return;
+    if (pathSearch || symbolSearch || !active || !sentinelRef.current || !result || result.nextOffset === null || pageError || loadingMore) return;
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) void loadMore();
     }, { root: scrollRef.current, rootMargin: '350px' });

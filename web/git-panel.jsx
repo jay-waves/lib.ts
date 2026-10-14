@@ -1,6 +1,6 @@
 import React from 'react';
-import { ActionList, Banner, Button, CounterLabel, Details, Spinner, useDetails } from '@primer/react';
-import { ChevronDownIcon, ChevronRightIcon, GitBranchIcon, FileDiffIcon } from '@primer/octicons-react';
+import { ActionList, Banner, CounterLabel, Spinner } from '@primer/react';
+import { ChevronRightIcon, GitBranchIcon, FileDiffIcon } from '@primer/octicons-react';
 import { groupGitChanges } from '../shared/git-changes.mjs';
 import './git-panel.css';
 
@@ -15,20 +15,18 @@ function changeLabel(status) {
 }
 
 function ChangeGroup({ group, selected, scope, onSelect }) {
-  const { open, getDetailsProps } = useDetails({ defaultOpen: true, closeOnOutsideClick: false });
-  return <Details {...getDetailsProps()}>
-    <Button as="summary" block variant="invisible" size="small" alignContent="start" className="git-group-summary"
-      leadingVisual={open ? ChevronDownIcon : ChevronRightIcon}>
-      {group.label} <CounterLabel>{group.changes.length}</CounterLabel>
-    </Button>
-    {open && <ActionList aria-label={group.label}>{group.changes.map(change => <ActionList.Item key={change.path}
+  return <details className="git-change-group" open>
+    <summary className="git-group-summary">
+      <ChevronRightIcon /> {group.label} <CounterLabel>{group.changes.length}</CounterLabel>
+    </summary>
+    <ActionList aria-label={group.label}>{group.changes.map(change => <ActionList.Item key={change.path}
       active={selected === change.path && scope === group.id} onSelect={() => onSelect(change.path, group.id)}>
       <ActionList.LeadingVisual><FileDiffIcon /></ActionList.LeadingVisual>
       <span className="git-change-path" title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path}>{change.path}</span>
       <ActionList.TrailingVisual><span className="git-change-status" data-kind={changeLabel(change.code)}
         title={changeLabel(change.code)} aria-label={changeLabel(change.code)}>{change.code}</span></ActionList.TrailingVisual>
-    </ActionList.Item>)}</ActionList>}
-  </Details>;
+    </ActionList.Item>)}</ActionList>
+  </details>;
 }
 
 export default function GitPanel({ onSelect, selected, scope, state: { status, loading, error } }) {

@@ -9,6 +9,8 @@ export default defineConfig({
   base: '/',
   esbuild: { legalComments: 'eof' },
   build: {
+    target: 'esnext',
+    cssTarget: 'esnext',
     outDir: resolve(here, 'dist'),
     emptyOutDir: true,
     rollupOptions: {

@@ -55,7 +55,7 @@ function createRenderer(allowRawHtml) {
     // Pasted zero-width spaces are invisible but unsupported by KaTeX.
     // Normalize only formula input; preserve prose, code and source positions.
     renderToString: (source, options) => katex.renderToString(source.replace(/\u200b/g, ''), options),
-  }, delimiters: ['dollars', 'beg_end'] });
+  }, delimiters: ['dollars', 'beg_end', 'brackets'] });
   md.use(headingSections);
 
   function injectLineNumber(tokens, index, options, env, renderer) {

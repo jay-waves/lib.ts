@@ -62,7 +62,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
     const state = latest.current;
     if (!panel() || !state.ready || !state.active) return false;
     if (state.document.type === 'image') {
-      const image = panel().querySelector('.image-page img');
+      const image = panel().querySelector('.document-page[data-page="1"] img');
       if (!image || !image.complete) return false;
       if (!image.naturalWidth) return true;
     }

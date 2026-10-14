@@ -84,5 +84,5 @@ export function MarkdownPreview() {
     event.preventDefault();
     toggleSummary(summary);
   }
-  return <div id="content" ref={contentRef} className="rendered-markdown" onClick={click} onKeyDown={keyDown} />;
+  return <div id="content" ref={contentRef} className="rendered-markdown" data-dim-images onClick={click} onKeyDown={keyDown} />;
 }

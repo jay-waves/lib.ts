@@ -1,0 +1,6 @@
+/* Opt in at the preview boundary. PDF and Typst never opt in.
+ * Shared by the app and the sandboxed HTML document, including dynamic images.
+ * Removing the rule on hover restores the document's original filter. */
+@media (prefers-color-scheme: dark) {
+  [data-dim-images] img:not(:hover) { filter: brightness(0.75) !important; }
+}

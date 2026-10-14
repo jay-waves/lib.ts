@@ -8,6 +8,8 @@ const types = {
   '.mjs': 'text/javascript', '.png': 'image/png', '.svg': 'image/svg+xml',
   '.ttf': 'font/ttf', '.txt': 'text/plain', '.wasm': 'application/wasm',
   '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2',
+  '.otf': 'font/otf', '.bmp': 'image/bmp', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4',
+  '.webm': 'video/webm', '.ogg': 'audio/ogg', '.wav': 'audio/wav',
 };
 
 export async function fileResponse(path, headers = {}) {

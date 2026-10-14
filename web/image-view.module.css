@@ -1,0 +1,2 @@
+.pages { display: flex; flex-direction: column; align-items: center; }
+.page > img { display: block; inline-size: 100%; block-size: auto; object-fit: contain; }

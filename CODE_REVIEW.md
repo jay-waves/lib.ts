@@ -43,4 +43,4 @@ PDF / Typst 仅挂载可视页和缓冲页，保留轻量占位以支持跳转�
 - 大文件：资源识别与响应可能重复整文件读取；需要时拆分 MIME 检测和正文读取，并为大文本高亮降级。Worker 不能解决最终 DOM 过大的问题。
 - 前端：拆分会话与侧栏职责时，一次迁移一个生命周期，保留行号跳转、复制、折叠、阅读恢复和缩放锚点。
 
-功能验证使用 `node --test tests/*.test.mjs tests/*.test.cjs` 和 `npm run build`。生命周期变更重点覆盖并发关闭、旧修订回收、取消后不回填、仓库隔离、文件增删改名与稳定分页；性能结论需另做测量。
+功能验证使用 `node --test tests/*.test.mjs` 和 `npm run build`。生命周期变更重点覆盖并发关闭、旧修订回收、取消后不回填、仓库隔离、文件增删改名与稳定分页；内存与冷启动回归使用 `npm run bench:memory`，用法见 tests/benchmark/README.md。

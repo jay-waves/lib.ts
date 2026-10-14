@@ -1,0 +1,9 @@
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-block-size: 38px; padding-inline: 14px; border-block-end: 1px solid var(--borderColor-default); background: var(--bgColor-muted); color: var(--fgColor-muted); font-size: 12px; }
+.actions { display: flex; align-items: center; gap: 2px; }
+.modified { margin-inline-start: auto; color: var(--fgColor-muted); font-size: 12px; white-space: nowrap; }
+.list {
+  & > a { display: flex; align-items: center; gap: 11px; min-block-size: 38px; box-sizing: border-box; padding: 7px 14px; border-block-end: 1px solid var(--borderColor-muted); color: var(--fgColor-default); font-size: 13px; text-decoration: none; }
+  & > a:last-child { border-block-end: 0; }
+  & > a:hover { background: var(--bgColor-muted); }
+  & > a > svg { flex: none; color: var(--fgColor-muted); }
+}

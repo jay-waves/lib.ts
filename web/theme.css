@@ -1,0 +1,17 @@
+/* Primer tokens live on <html>, including portals. Only customize our light palette. */
+@media (prefers-color-scheme: light) {
+  :root[data-color-mode="auto"] {
+    --bgColor-default: #fdfdfc;
+    --bgColor-muted: #f4f5f4;
+    --bgColor-accent-muted: #e9ecea;
+    --bgColor-accent-emphasis: #777c78;
+    --fgColor-default: #363733;
+    --fgColor-muted: #73746e;
+    --fgColor-accent: #5d625f;
+    --borderColor-default: #dfe1df;
+    --control-transparent-bgColor-hover: #eef0ee;
+    --control-transparent-bgColor-selected: #e9ecea;
+    --treeViewItem-leadingVisual-iconColor-rest: #777c78;
+  }
+}
+:root[data-color-mode="auto"] { --borderColor-muted: light-dark(#e9ebe9, #30363d); }

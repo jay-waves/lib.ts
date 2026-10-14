@@ -1,12 +1,14 @@
 import { createSessionLeases } from './session-leases.mjs';
 import { readdir, stat } from 'node:fs/promises';
-import { resolve, relative, basename, sep } from 'node:path';
+import { resolve, relative, basename, sep, extname } from 'node:path';
 import { fileResponse } from '../file-response.mjs';
 import { createLibrarySearch } from './search.mjs';
 import { watchLibraryFiles } from './watch.mjs';
 import { watchLibraryTree } from './tree-watch.mjs';
 import { pdf as defaultPdf } from './pdf/engine.mjs';
 import { identifyFile } from './file-kind.mjs';
+import { htmlPreviewResponse } from './html-preview.mjs';
+import { randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 
@@ -15,6 +17,9 @@ const ignoredNames = new Set(['.git', '.work', '.archive', 'node_modules']);
 export function createLibraryRoutes({ root, dist, checkedPath, json, renderMarkdown, typst, pdf = defaultPdf,
   onViewerChange = () => {}, apiBase = '/api', dataDirectory, search = createLibrarySearch(root, dataDirectory) }) {
   const app = new Hono();
+  // Opaque-origin module/font requests need CORS; a capability keeps this
+  // resource endpoint from exposing repository files to arbitrary websites.
+  const htmlResourceToken = randomBytes(24).toString('hex');
   const streams = new Set();
   const sessionLeases = createSessionLeases(onViewerChange);
   const leaseSweep = setInterval(() => sessionLeases.sweep(), 15000);
@@ -81,6 +86,9 @@ export function createLibraryRoutes({ root, dist, checkedPath, json, renderMarkd
       if (!info.isFile()) return json({ error: 'Not a file' }, 400);
       const name = basename(file), kind = await identifyFile(file);
       const meta = { path: relativePath(file), absolutePath: file, name, size: info.size, modified: info.mtime.toISOString() };
+      if (kind.type === 'html') return json({ type: 'html', ...meta, source: kind.source,
+        lineCount: kind.source.split('\n').length,
+        url: `${apiBase}/html?path=${encodeURIComponent(meta.path)}` });
       if (kind.type === 'markdown') {
         const source = kind.source;
         return json({ type: 'markdown', ...meta, lineCount: source ? source.split('\n').length : 0,
@@ -159,9 +167,10 @@ export function createLibraryRoutes({ root, dist, checkedPath, json, renderMarkd
     return response;
   }
 
-  async function page() {
+  async function page(context) {
     try {
-      return await fileResponse(resolve(dist, 'index.html'), { 'cache-control': 'no-store' });
+      return await fileResponse(resolve(dist, 'index.html'), { 'cache-control': 'no-store',
+        'content-security-policy': `frame-src ${new URL(`${apiBase}/html`, context.req.url).href}; object-src 'none'` });
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
       return json({ error: 'Build the frontend first: npm run build' }, 503);
@@ -236,6 +245,27 @@ export function createLibraryRoutes({ root, dist, checkedPath, json, renderMarkd
   app.get('/api/document', context => {
     const url = new URL(context.req.url);
     return document(url.searchParams.get('path'), url.searchParams.get('view'), url.searchParams.get('theme'), context.req.raw.signal);
+  });
+  app.get('/api/html', async context => {
+    try {
+      const file = checkedPath(context.req.query('path'));
+      const kind = await identifyFile(file);
+      if (kind.type !== 'html') return json({ error: 'Not an HTML document' }, 400);
+      return htmlPreviewResponse(kind.source, relativePath(file), apiBase, context.req.url, htmlResourceToken);
+    } catch (error) { return json({ error: error.message }, error.code === 'ENOENT' ? 404 : 400); }
+  });
+  app.get('/api/html-resource/*', async context => {
+    try {
+      const prefix = `/api/html-resource/${htmlResourceToken}/`;
+      const pathname = new URL(context.req.url).pathname;
+      if (!pathname.startsWith(prefix)) return json({ error: 'Invalid HTML resource capability' }, 403);
+      const path = decodeURIComponent(pathname.slice(prefix.length));
+      const file = checkedPath(path);
+      if (!/\.(?:css|js|mjs|png|jpe?g|gif|webp|avif|bmp|ico|svg|woff2?|ttf|otf|mp3|mp4|webm|ogg|wav)$/i.test(extname(file)))
+        return json({ error: 'Unsupported HTML resource' }, 403);
+      return await fileResponse(file, { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+        'access-control-allow-origin': '*', 'content-security-policy': "sandbox; default-src 'none'", 'referrer-policy': 'no-referrer' });
+    } catch (error) { return json({ error: error.message }, error.code === 'ENOENT' ? 404 : 400); }
   });
   app.get('/api/library/events', context => {
     const url = new URL(context.req.url);

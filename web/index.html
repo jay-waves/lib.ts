@@ -1,8 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-color-mode="auto" data-light-theme="light" data-dark-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <style>
+      :root { color-scheme: light dark; --library-canvas: light-dark(#f8f9f8, #0d1117); background: var(--library-canvas); }
+    </style>
     <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png" />
     <title>Notes</title>
   </head>

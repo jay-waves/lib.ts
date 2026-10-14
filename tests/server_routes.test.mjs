@@ -12,6 +12,8 @@ test('library-only service renders saved files and exposes external opening with
   await mkdir(root);
   await writeFile(resolve(root, 'note.md'), '# Before\n\nText');
   await writeFile(resolve(root, 'note.txt'), 'Plain text');
+  await writeFile(resolve(root, 'report.html'), '<h1>Report</h1><script src="chart.js"></script>');
+  await writeFile(resolve(root, 'chart.js'), 'document.title="Chart"');
   await writeFile(resolve(root, 'theme.typ'), '#let theme = sys.inputs.at("theme")\n'
     + '#assert(theme in ("light", "dark"))\n'
     + '#set page(fill: if theme == "dark" { rgb("#212830") } else { white })\n'
@@ -76,6 +78,14 @@ test('library-only service renders saved files and exposes external opening with
   const text = await (await get('/notes/api/document?path=note.txt')).json();
   assert.equal(text.source, 'Plain text');
   assert.equal(text.text, undefined, 'document bodies are transmitted only once');
+  const html = await (await get('/notes/api/document?path=report.html')).json();
+  assert.equal(html.type, 'html');
+  const htmlResponse = await get(html.url);
+  assert.match(htmlResponse.headers.get('content-security-policy'), /sandbox allow-scripts/);
+  const resourceBase = (await htmlResponse.text()).match(/<base href="([^"]+)">/)[1];
+  const resource = await fetch(new URL('chart.js', resourceBase));
+  assert.equal(resource.status, 200);
+  assert.equal(resource.headers.get('content-type'), 'text/javascript');
   const typst = await (await get('/notes/api/document?path=note.typ')).json();
   assert.equal(typst.compile.status, 'success', JSON.stringify(typst.compile));
   assert.deepEqual(typst.outline.map(heading => heading.position.page), [1, 2]);

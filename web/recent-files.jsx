@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { historyFileGroups } from './history-groups.mjs';
 import { apiBase } from './urls.mjs';
 import { createRecentFilesClient } from './recent-files.mjs';
-import './recent-files.css';
 
 const client = createRecentFilesClient(`${apiBase}/recent-files`);
 export function useRecentFiles(active, path) {

@@ -53,6 +53,55 @@ test('zero-width spaces are removed only from formulas without KaTeX warnings', 
   assert.equal(prose.split('\u200b').length - 1, 3);
 });
 
+test('bracket math renders alongside dollar and environment delimiters', () => {
+  const source = String.raw`Inline \(x^2\) and $y^2$.
+
+\[
+\frac{a}{b}
+\]
+
+$$z^2$$
+
+\begin{aligned}a &= b\end{aligned}`;
+  for (const allowRawHtml of [true, false]) {
+    const html = renderMarkdown(source, { allowRawHtml });
+    assert.equal((html.match(/class="katex"/g) || []).length, 5);
+    assert.equal((html.match(/class="katex-display"/g) || []).length, 3);
+    assert.doesNotMatch(html, /katex-error/);
+  }
+});
+
+test('bracket math preserves code, escaped delimiters and unclosed prose', () => {
+  const source = [
+    '`\\(x\\)`',
+    '```text',
+    String.raw`\[x\]`,
+    '```',
+    '',
+    String.raw`\\(literal\\) and \\[literal\\]`,
+    '',
+    String.raw`Unclosed \(x and \[y`,
+  ].join('\n');
+  const html = renderMarkdown(source);
+  assert.doesNotMatch(html, /class="katex"/);
+  assert.ok(html.includes(String.raw`<code>\(x\)</code>`));
+  assert.ok(html.includes(String.raw`\[x\]`));
+  assert.ok(html.includes(String.raw`\(literal\) and \[literal\]`));
+  assert.match(html, /Unclosed \(x and \[y/);
+});
+
+test('bracket math works in lists and multiline blockquotes', () => {
+  const html = renderMarkdown(String.raw`- Inline \(x\)
+
+> \[
+> x + y
+> \]`);
+  assert.equal((html.match(/class="katex"/g) || []).length, 2);
+  assert.equal((html.match(/class="katex-display"/g) || []).length, 1);
+  assert.match(html, /<li[^>]*>[\s\S]*class="katex"[\s\S]*<\/li>/);
+  assert.match(html, /<blockquote[^>]*>[\s\S]*class="katex-display"[\s\S]*<\/blockquote>/);
+});
+
 test('Node-side Markdown renderer emits rich HTML and source positions', () => {
   const markdown = `---
 title: Demo

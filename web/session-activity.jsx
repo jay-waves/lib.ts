@@ -1,17 +1,16 @@
-import React, { createContext, useEffect, useState } from 'react';
+import React, { createContext, useSyncExternalStore } from 'react';
 export const SessionActivity = createContext(true);
 // Active means visible, including visible windows without keyboard focus.
 
+const isVisible = () => !document.hidden;
+const subscribe = notify => {
+  const controller = new AbortController();
+  document.addEventListener('visibilitychange', notify, { signal: controller.signal });
+  window.addEventListener('pageshow', notify, { signal: controller.signal });
+  return () => controller.abort();
+};
+
 export function BrowserSession({ children }) {
-  const [active, setActive] = useState(() => !document.hidden);
-  useEffect(() => {
-    const update = () => setActive(!document.hidden);
-    document.addEventListener('visibilitychange', update);
-    window.addEventListener('pageshow', update);
-    return () => {
-      document.removeEventListener('visibilitychange', update);
-      window.removeEventListener('pageshow', update);
-    };
-  }, []);
-  return <SessionActivity.Provider value={active}>{children}</SessionActivity.Provider>;
+  const active = useSyncExternalStore(subscribe, isVisible);
+  return <SessionActivity value={active}>{children}</SessionActivity>;
 }

@@ -1,43 +1,23 @@
-/*!
- * GitHub-style highlight.js theme shared by VS Code and markdown-preview.nvim.
- * The platform selectors only choose variables; all token rules are shared.
- */
-
-:root,
-html[data-theme="light"] {
-  --hljs-fg: #24292e;
-  --hljs-keyword: #d73a49;
-  --hljs-entity: #6f42c1;
-  --hljs-constant: #005cc5;
-  --hljs-string: #032f62;
-  --hljs-variable: #e36209;
-  --hljs-comment: #6a737d;
-  --hljs-tag: #22863a;
-  --hljs-section: #005cc5;
-  --hljs-bullet: #735c0f;
-  --hljs-addition: #22863a;
-  --hljs-addition-bg: #f0fff4;
-  --hljs-deletion: #b31d28;
-  --hljs-deletion-bg: #ffeef0;
+/*! GitHub-style highlight.js palette and rules, scoped to reader/search content. */
+:root {
+  --hljs-fg: light-dark(#24292e, #adbac7);
+  --hljs-keyword: light-dark(#d73a49, #f47067);
+  --hljs-entity: light-dark(#6f42c1, #dcbdfb);
+  --hljs-constant: light-dark(#005cc5, #6cb6ff);
+  --hljs-string: light-dark(#032f62, #96d0ff);
+  --hljs-variable: light-dark(#e36209, #f69d50);
+  --hljs-comment: light-dark(#6a737d, #768390);
+  --hljs-tag: light-dark(#22863a, #8ddb8c);
+  --hljs-section: light-dark(#005cc5, #316dca);
+  --hljs-bullet: light-dark(#735c0f, #eac55f);
+  --hljs-addition: light-dark(#22863a, #b4f1b4);
+  --hljs-addition-bg: light-dark(#f0fff4, #1b4721);
+  --hljs-deletion: light-dark(#b31d28, #ffd8d3);
+  --hljs-deletion-bg: light-dark(#ffeef0, #78191b);
 }
 
-html[data-theme="dark"] {
-  --hljs-fg: #adbac7;
-  --hljs-keyword: #f47067;
-  --hljs-entity: #dcbdfb;
-  --hljs-constant: #6cb6ff;
-  --hljs-string: #96d0ff;
-  --hljs-variable: #f69d50;
-  --hljs-comment: #768390;
-  --hljs-tag: #8ddb8c;
-  --hljs-section: #316dca;
-  --hljs-bullet: #eac55f;
-  --hljs-addition: #b4f1b4;
-  --hljs-addition-bg: #1b4721;
-  --hljs-deletion: #ffd8d3;
-  --hljs-deletion-bg: #78191b;
-}
 
+@scope (.reader, .code-search-results) {
 code[class*="language-"],
 .hljs {
   color: var(--hljs-fg);
@@ -161,4 +141,6 @@ code[class*="language-"].code-active-line {
 :is(code[class*="language-"], pre.hljs) .hljs-deletion {
   color: var(--hljs-deletion);
   background-color: var(--hljs-deletion-bg);
+}
+
 }

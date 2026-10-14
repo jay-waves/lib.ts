@@ -4,6 +4,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { identifyFile } from '../server/file-kind.mjs';
+import { readerView } from '../web/reader-session.mjs';
 
 test('content detection separates binary formats from text regardless of extension', async t => {
   const root = await mkdtemp(join(tmpdir(), 'file-kind-'));
@@ -26,7 +27,10 @@ test('content detection separates binary formats from text regardless of extensi
   }
   const xml = await detect('data.xml', '<?xml version="1.0"?><data/>');
   assert.equal(xml.mime, 'application/xml');
-  assert.equal(xml.type, 'binary');
+  assert.equal(xml.type, 'text');
+  assert.equal(xml.source, '<?xml version="1.0"?><data/>');
+  assert.equal(readerView(xml), 'raw');
+  assert.equal(readerView(await detect('plain.xml', '<data/>')), 'raw');
   assert.equal((await detect('note.md', '# 标题')).type, 'markdown');
   assert.equal((await detect('plain', '普通文本')).type, 'text');
   assert.equal((await detect('empty', '')).type, 'text');

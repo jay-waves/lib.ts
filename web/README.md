@@ -33,13 +33,33 @@ Search 的 Current File 范围只搜索当前文件的正文，支持正则及�
 
 搜索页面为 `/:repoName/search?q=...`，Git diff 页面为 `/:repoName/git?path=...&scope=staged`。页面地址可直接打开，并支持浏览器前进、后退。
 
+## 主题
+
+前端面向现代浏览器，使用 React 19 的 ref 属性、`use` / `Suspense`、`useSyncExternalStore` 和 CSS `light-dark()`，不维护旧浏览器兼容分支。
+
+目录、文件工具栏、仓库选择器、符号面板和图片使用组件自己的 CSS Modules；Markdown、源码、搜索、Git 和分页预览用原生 `@scope` 限制规则范围。组件直接导入自己的样式。`style.css` 负责页面外壳、布局和少量通用状态样式，`sidebar.css` 只负责侧栏排版与文件树控件，不覆盖功能组件内部。
+
+阅读区域通过 `--content-width` 提供公共内容宽度，工具栏用容器查询适配实际可用宽度。新样式使用原生 CSS 嵌套和逻辑属性，构建目标为 `esnext`。`.file-toolbar`、`.document-page[data-page]` 和源码行号等少数标记是阅读定位接口；视觉样式类可以独立修改。PDF 自行定义加载提示，不依赖 Typst 样式；三种分页预览只共用视口和页面基础外观。
+
+`@primer/react/next` 的 `ThemeProvider colorMode="auto" contextOnly` 负责系统主题状态，文档请求从官方 `useTheme()` 读取 `colorScheme`。Primer 的主题属性放在 `<html>`，页面、菜单和弹层直接继承官方 CSS 变量。`theme.css` 只保留必要的配色定制；Markdown 和代码高亮在各自样式文件中用 `light-dark()` 定义颜色，不再维护应用变量到 Primer 的映射。
+
+HTML head 内联一条画布背景规则，在脚本及样式加载前提供正确底色，无构建插件或主题启动脚本。文件树使用公开属性、应用自己的类名和 `aria-current` 标记，新 Tooltip 和加载指示器采用官方实现。
+
+`shared/image-theme.css` 定义暗色图片亮度策略，通过预览容器的 `data-dim-images` 显式启用。图片、Markdown 和服务端生成的 HTML iframe 共用该文件，悬停恢复原始滤镜；PDF、Typst 不启用。HTML 预览保留文档自身的配色，只注入图片规则。
+
 ## 前端阅读架构
 
 `main.jsx` 负责仓库、文件路由、侧栏和页面外壳，只提交带文件路径的阅读请求（行号、视图或目录项），不控制位置恢复时序。`Reader` 是 Markdown、Typst、PDF、图片和源码的组合入口。外层通过 Reader 的 ref 调用 `capture`、`switchView`、`fit` 和 `toTop`，通过 `onActivity` 接收阅读状态及实际滚动位置以更新路径栏和行号。
 
+`document-toolbar.jsx` 独立管理文件操作菜单和复制反馈，`directory-view.jsx` 管理目录操作并用 React 表单 Action 处理打开目录的异步状态，`symbols-panel.jsx` 管理符号筛选及选中项定位。`file-tree-view.jsx` 封装递归渲染，展开状态仍由页面控制以协调导航和历史视图；递归过程中不再逐层传递相同参数，也不增加树专用 Context。这些功能组件直接使用本地状态，不共用通用业务控制器。
+
+Git 分组使用原生 `<details>` / `<summary>`，折叠由浏览器管理，不再额外同步 React 展开状态。侧栏设置统一保存到仓库对应的状态条目，不再同时写入旧的全局宽度缓存。
+
 `useReaderSession` 统一持有视图和缩放，加载并保存阅读位置，协调初始恢复、视图切换、目录跳转和 Typst 内部链接。导航只保留最新请求，内容未加载时等待重试，隐藏时暂停调度；恢复完成前不保存中间位置。`useReaderTracking` 负责滚动、尺寸变化、保存节流及隐藏/退出时同步；`useReaderWatch` 负责文档和附件更新。Reader 不再自行实现这些时序。
 
 渲染器通过局部 `ReaderContext` 读取阅读状态，不跨层转发 controller、prepared HTML 或附件版本。Markdown 保留普通滚动和文本选择；分页文档及图片由 `DocumentPreview` 提供布局和滚动容器，`useDocumentViewport` 处理适配、手势和缩放坐标补偿。所有页面使用 `.document-page[data-page]` 标记，通用视口不依赖具体格式的 class。图片初始大小不超过原始尺寸或视口宽度的 80%；PDF、Typst 保持自动适配。
+
+源码和搜索结果先显示完整文本及匹配标记，再通过共享的动态 import 加载代码高亮引擎。`Suspense` 只包围高亮内容，行号、阅读位置和结果卡片保持挂载；浏览目录或 Markdown 不下载前端高亮引擎。工作区搜索的路径集合和目录建议按目录树及筛选条件缓存，阅读状态更新不会重复遍历和排序整个仓库。
 
 ## 常用 API
 

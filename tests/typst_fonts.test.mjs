@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, basename } from 'node:path';
 import { discoverTypstFonts, bundledFontsDirectory } from '../server/typst/fonts.mjs';
 import { createTypstRuntime, packageRoot } from '../server/typst/runtime.mjs';
 import { compileTypstVector } from '../server/typst/compile.mjs';
@@ -10,7 +10,7 @@ test('only application fonts are loaded independently of package and Windows dir
   const expected = JSON.parse(readFileSync(resolve(bundledFontsDirectory, 'manifest.json')))
     .map(name => resolve(bundledFontsDirectory, name));
   assert.deepEqual(discoverTypstFonts({ WINDIR: 'missing', LOCALAPPDATA: 'missing' }), expected);
-  assert.equal(expected.filter(file => /Georgia[\\/].*\.ttf$/i.test(file)).length, 4);
+  assert.equal(expected.filter(file => ['georgia.ttf', 'georgiab.ttf', 'georgiai.ttf', 'georgiaz.ttf'].includes(basename(file))).length, 4);
   assert.deepEqual(discoverTypstFonts({ TYPST_WASM_FONTS: `${expected[0]};${expected[0]};missing.ttf` }), [expected[0]]);
 });
 

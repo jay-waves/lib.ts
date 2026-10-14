@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActionList } from '@primer/react';
 import { BookmarkIcon, CheckIcon, FileDirectoryIcon, NoteIcon, ListUnorderedIcon } from '@primer/octicons-react';
 import { useCodeSearch } from './code-search.jsx';
@@ -29,11 +29,11 @@ export function useWorkspaceSearch({ config, onConfig, navigate, active, current
         </ActionList>
       </section>
     </>;
-  const paths = scope === 'files' ? [...treeIndex.values()].filter(node => node.type === 'file').map(node => node.path)
-    : scope === 'bookmarks' ? bookmarks.map(item => item.path) : [];
-  const pathSuggestions = [...treeIndex.values()].filter(node => node.type === 'directory')
+  const paths = useMemo(() => scope === 'files' ? [...treeIndex.values()].filter(node => node.type === 'file').map(node => node.path)
+    : scope === 'bookmarks' ? bookmarks.map(item => item.path) : [], [scope, treeIndex, bookmarks]);
+  const pathSuggestions = useMemo(() => [...treeIndex.values()].filter(node => node.type === 'directory')
     .map(node => ({ value: `${node.path.replace(/\/+$/, '')}/` }))
-    .sort((a, b) => a.value.localeCompare(b.value));
+    .sort((a, b) => a.value.localeCompare(b.value)), [treeIndex]);
   return useCodeSearch({ config: { ...config, scope }, onConfig, navigate, active, currentFile, scrollRef, scopeFilter,
     paths, pathSuggestions, symbols, onSelectSymbol });
 }

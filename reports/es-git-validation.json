@@ -1,0 +1,51 @@
+{
+  "node": "v24.21.0",
+  "platform": "win32/x64",
+  "importMs": 5.756999999999998,
+  "findings": {
+    "missingTreeToIndex": true,
+    "nativeUntrackedPaths": [
+      "docs/new folder/new.md"
+    ],
+    "cliUntrackedPaths": [
+      "docs/new folder/new.md"
+    ],
+    "ignoredIncluded": true,
+    "optionsAttempt": [
+      "docs/both.md",
+      "docs/new folder/new.md",
+      "docs/new name.md",
+      "docs/old name.md",
+      "ignored/"
+    ],
+    "rename": [],
+    "nativePatch": "diff --git a/docs/both.md b/docs/both.md\nindex 19d9cc8..b8d041e 100644\n--- a/docs/both.md\n+++ b/docs/both.md\n@@ -1 +1 @@\nstaged\nunstaged\n",
+    "cliPatch": "diff --git a/docs/both.md b/docs/both.md\nindex 19d9cc8..b8d041e 100644\n--- a/docs/both.md\n+++ b/docs/both.md\n@@ -1 +1 @@\n-staged\n+unstaged\n",
+    "patchHasLineMarkers": false,
+    "indexUnchanged": true
+  },
+  "small": {
+    "cli": {
+      "firstMs": 25.05509999999998,
+      "medianMs": 25.480500000000006
+    },
+    "native": {
+      "firstMs": 0.6354999999999791,
+      "medianMs": 0.3548999999999296
+    }
+  },
+  "tracked3000": {
+    "cli": {
+      "firstMs": 47.09360000000015,
+      "medianMs": 42.815000000000055
+    },
+    "native": {
+      "firstMs": 5.665899999999965,
+      "medianMs": 3.009700000000066
+    }
+  },
+  "eventLoop": {
+    "tenNativeScansDelayMs": 31.832100000000082,
+    "oneCliScanDelayMs": 2.6660000000001673
+  }
+}

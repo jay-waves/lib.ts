@@ -9,7 +9,7 @@ import { useReaderSession } from './use-reader-session.jsx';
 import { apiBase, fileUrl } from './urls.mjs';
 
 function documentLink(path) {
-  return /\.(?:md|typ)$/i.test(path) ? fileUrl(path) : `${apiBase}/asset?path=${encodeURIComponent(path)}`;
+  return /\.(?:md|typ|html?)$/i.test(path) ? fileUrl(path) : `${apiBase}/asset?path=${encodeURIComponent(path)}`;
 }
 
 export function Reader({ ref, document, request, navigate, onReload, onActivity }) {

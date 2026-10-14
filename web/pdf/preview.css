@@ -1,3 +1,7 @@
-.pdf-pages { background: var(--library-subtle); display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 22px; }
-.pdf-page { position: relative; flex: none; background: white; box-shadow: 0 2px 12px #0003; scroll-margin-top: 60px; }
-.pdf-page img { display: block; width: 100%; height: 100%; object-fit: contain; }
+@scope (.pdf-pages) {
+  :scope { background: var(--bgColor-muted); display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  .pdf-page { scroll-margin-top: 60px; }
+  .pdf-page img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .pdf-page-status { position: absolute; inset: 0; display: grid; place-items: center; color: var(--fgColor-muted); }
+  .pdf-page-error { box-sizing: border-box; padding: 18px; overflow: auto; color: var(--fgColor-danger); text-align: center; overflow-wrap: anywhere; }
+}

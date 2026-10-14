@@ -1,4 +1,5 @@
 import React from 'react';
+import './html-preview.css';
 import { DocumentPreview } from './document-preview.jsx';
 import { MarkdownPreview } from './markdown/preview.jsx';
 import { TypstPages } from './typst/typst-view.jsx';
@@ -55,6 +56,9 @@ export function Preview() {
     <PdfPages key={`${document.path}:${document.modified}`} pages={document.pages} scale={viewport.scale} modified={document.modified} />
   </DocumentPreview>;
   if (document.type === 'image') return <ImagePreview />;
+  if (document.type === 'html') return <iframe className="html-preview" title={document.name}
+    sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer"
+    src={`${document.url}&v=${encodeURIComponent(document.modified)}`} />;
   if (document.type === 'binary') return <div className="status"><p>{document.format?.toUpperCase() || 'Binary file'} · {document.mime}</p><p>Preview is unavailable for this format.</p><a href={document.url} download={document.name}>Download file</a></div>;
   return <pre className="text-preview">{document.source}</pre>;
 }

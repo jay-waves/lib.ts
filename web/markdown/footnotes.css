@@ -1,13 +1,26 @@
 #content .inline-footnote { min-width: 0; }
-#content .inline-footnote[hidden] { display: none; }
 #content .footnote-label {
   color: inherit;
-  text-decoration-line: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
-  text-underline-offset: .12em;
+  text-decoration: none;
 }
 #content .footnote-label:hover {
-  color: var(--md-fg);
+  text-decoration: none;
+  color: var(--md-muted);
 }
-#content figure { min-width: 0; max-width: 100%; }
+
+/* Match exported HTML: enlarge note controls without changing text layout. */
+#content [data-footnote-ref],
+#content .footnote-label {
+  position: relative;
+  color: var(--md-muted);
+}
+#content [data-footnote-ref],
+#content [data-footnote-ref]:hover {
+  text-decoration: none;
+}
+#content [data-footnote-ref]::after,
+#content .footnote-label::after {
+  content: "";
+  position: absolute;
+  inset: -10px -9px;
+}
