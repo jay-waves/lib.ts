@@ -18,6 +18,7 @@ export function useBookmarks(active = true) {
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   useEffect(() => {
+    if (!apiBase) { setLoading(false); setError(''); setBookmarks([]); return; }
     if (!active) return;
     const controller = new AbortController();
     setLoading(true); setError('');

@@ -9,7 +9,7 @@ import { apiBase, pageBase, repoId, routeKind, fileUrl } from './urls.mjs';
 import { searchUrl, gitUrl, parseRepositoryLocation } from '../shared/paths.mjs';
 import React, { useContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BaseStyles, Breadcrumbs, IconButton, Spinner } from '@primer/react';
+import { BaseStyles, Breadcrumbs, Button, IconButton, Spinner } from '@primer/react';
 import { Dialog as SideSheet } from '@primer/react/experimental';
 import { SearchInput } from './search-input.jsx';
 import { FocusCenterIcon, SortDescIcon, FoldIcon, FileDirectoryIcon, SearchIcon, SidebarExpandIcon, ListUnorderedIcon, RepoIcon, GitBranchIcon, BookmarkIcon, HistoryIcon } from '@primer/octicons-react';
@@ -97,12 +97,12 @@ function App() {
   const [readerRequest, setReaderRequest] = useState(() => readerRouteRequest(currentPath(), location.search));
   const [selected, setSelected] = useState(() => currentPath());
   const { tree, index: treeIndex, loading: treeLoading, error: treeError } = useFileTree(apiBase, selected, active);
-  const bookmarkState = useBookmarks(active);
+  const bookmarkState = useBookmarks(active && Boolean(apiBase));
   const [document, setDocument] = useState(null);
   const [recentOnly, setRecentOnly] = useState(() => Boolean(initialSidebar.recentOnly));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const recentState = useRecentFiles(active, !error && document?.path === selected ? selected : null);
+  const recentState = useRecentFiles(active && Boolean(apiBase), !error && document?.path === selected ? selected : null);
   const [documentRevision, setDocumentRevision] = useState(0);
   const [search, setSearch] = useState('');
   const [bookmarkSearch, setBookmarkSearch] = useState('');
@@ -119,7 +119,7 @@ function App() {
   const bookmarksOnly = sidebarTab === 'bookmarks';
   const [gitPath, setGitPath] = useState(() => routeKind === 'git' ? new URLSearchParams(location.search).get('path') : null);
   const [gitScope, setGitScope] = useState(() => new URLSearchParams(location.search).get('scope') || 'unstaged');
-  const gitState = useGitStatus(active && ((sidebarTab === 'git' && filesVisible) || (gitPath !== null && sidebarTab !== 'search')));
+  const gitState = useGitStatus(Boolean(apiBase) && active && ((sidebarTab === 'git' && filesVisible) || (gitPath !== null && sidebarTab !== 'search')));
   const [sortMode, setSortMode] = useState(() => initialSidebar.sortMode || 'name');
   const nextSortMode = { name: 'modified', modified: 'name' }[sortMode];
   const sortLabels = { name: 'name', modified: 'modified time (newest first)' };
@@ -198,6 +198,7 @@ function App() {
     return () => observer.disconnect();
   }, [document?.path, activeView, searchMode, Boolean(error)]);
   useEffect(() => {
+    if (!repoId) return;
     const client = randomId();
     const repo = repoId || '';
     const activity = () => {
@@ -242,7 +243,7 @@ function App() {
     addEventListener('popstate', pop);
     return () => removeEventListener('popstate', pop);
   }, []);
-  useDocumentLease(apiBase, document?.path === selected ? selected : null);
+  useDocumentLease(apiBase, apiBase && document?.path === selected ? selected : null);
   const selectedNode = treeIndex.get(selected);
   const selectedNodePath = selectedNode?.path;
   const selectedNodeType = selectedNode?.type;
@@ -254,7 +255,7 @@ function App() {
   const documentView = document?.path === selected ? activeView
     : readerRequest?.path === selected ? readerRequest.view : null;
   useEffect(() => {
-    if (!active) { loadedDocumentRequest.current = null; return; }
+    if (!active || !repoId) { loadedDocumentRequest.current = null; setDocument(null); setLoading(false); setError(''); return; }
     if (!tree) return;
     if (selected && !selectedNode && treeLoading) {
       setLoading(true); setDocument(null); setError(''); return;
@@ -344,7 +345,7 @@ function App() {
   const codeSearch = useWorkspaceSearch({ config: searchConfig, onConfig: config => {
     setSearchConfig(config);
     if (currentRouteKind() === 'search') history.replaceState(null, '', searchUrl(repoId, config.query, config.scope, selected));
-  }, navigate, active: active && searchMode,
+  }, navigate, active: active && Boolean(apiBase) && searchMode,
     currentFile: selected, scrollRef: mainPanelRef, treeIndex, bookmarks: bookmarkState.bookmarks,
     symbols, onSelectSymbol: jumpToSymbol });
   function selectSidebarView(id, collapse = true) {
@@ -486,6 +487,11 @@ function App() {
               onClose={() => { history.pushState(null, '', fileUrl(selected)); setGitPath(null); }} />
           </Suspense>}
           <div className="content-panel" hidden={searchMode || gitPath !== null}>
+            {!repoId && <div className="status empty-repository" role="status">
+              <p>No repository is open.</p>
+              <Button size="small" onClick={() => { setSidebarTab('repos'); setFilesVisible(true); }}>Add a repository</Button>
+            </div>}
+            {Boolean(repoId) && <>
             {bookmarkState.error && !bookmarksOnly && <div className="action-error" role="alert">{bookmarkState.error}</div>}
             {loading && !document && <div className="status" role="status"><span className="rendering-label">Rendering</span></div>}
             {!loading && error && <LibraryError error={error} path={selected} navigate={navigate} />}
@@ -498,6 +504,7 @@ function App() {
                   aria-expanded={filesVisible} aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />} />
               <Reader ref={readerRef} key={document.path} document={document} request={readerRequest}
                 navigate={navigate} onReload={reloadDocument} onActivity={readerActivity} />
+            </>}
             </>}
           </div>
         </main>

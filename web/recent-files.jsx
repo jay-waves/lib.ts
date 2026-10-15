@@ -10,6 +10,7 @@ export function useRecentFiles(active, path) {
   const [visitedAt, setVisitedAt] = useState({});
   useEffect(() => client.subscribe((paths, times) => { setItems(paths); setVisitedAt(times); }), []);
   useEffect(() => {
+    if (!apiBase) { setLoading(false); setError(''); setItems([]); setVisitedAt({}); return; }
     if (!active) return;
     let disposed = false;
     setLoading(true); setError('');

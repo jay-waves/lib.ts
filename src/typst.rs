@@ -1137,11 +1137,15 @@ impl FileLoader for ProjectFiles {
                 (package.path().to_owned(), package.resolve(id.vpath())?)
             }
         };
+        // `canonicalize` may add the Windows `\\?\` prefix. Canonicalize the
+        // root too before comparing paths, otherwise valid files in installed
+        // packages are rejected as outside their root on Windows.
+        let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
         let result = path
             .canonicalize()
             .map_err(|error| FileError::from_io(error, &path))
             .and_then(|canonical| {
-                if !canonical.starts_with(&root) {
+                if !canonical.starts_with(&canonical_root) {
                     return Err(FileError::AccessDenied);
                 }
                 std::fs::read(&canonical)
@@ -1153,7 +1157,7 @@ impl FileLoader for ProjectFiles {
             .unwrap_or_else(|error| error.into_inner())
             .push(Dependency {
                 path,
-                root,
+                root: canonical_root,
                 fingerprint: result
                     .as_ref()
                     .ok()

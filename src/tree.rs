@@ -273,7 +273,7 @@ impl Scan<'_> {
                     .unwrap_or(file)
                     .to_string_lossy()
                     .replace('\\', "/"),
-                absolute_path: ty.is_dir().then(|| file.to_string_lossy().into_owned()),
+                absolute_path: ty.is_dir().then(|| crate::client_path(file)),
                 kind: if ty.is_dir() { "directory" } else { "file" },
                 modified,
                 children,
@@ -429,7 +429,7 @@ fn run(root: &Path, private: &Path, entry: &Entry, alive: impl Fn() -> bool) -> 
                     .unwrap_or_default()
                     .to_string_lossy()
                     .into_owned(),
-                absolute_path: root.to_string_lossy().into_owned(),
+                absolute_path: crate::client_path(root),
                 children,
             })
             .map_err(|error| error.to_string())?,

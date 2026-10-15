@@ -1,6 +1,6 @@
 [package]
 name = "saved-notes-library"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.92"
 
@@ -9,6 +9,7 @@ strip = "symbols"
 
 [dependencies]
 axum = { version = "0.8", features = ["http1", "json", "query", "tokio"] }
+dunce = "1"
 bytes = "1"
 comemo = "0.5.1"
 git2 = { version = "0.21", default-features = false }

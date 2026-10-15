@@ -60,6 +60,22 @@ static HTML_RESOURCE_EXTENSION_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r"(?i)^(css|js|mjs|png|jpe?g|gif|webp|avif|bmp|ico|svg|woff2?|ttf|otf|mp3|mp4|webm|ogg|wav)$")
         .expect("valid HTML resource extension pattern")
 });
+
+/// Format paths for APIs and external programs that may not accept Windows' verbatim prefix.
+/// Keep canonical paths in their original form for filesystem access and security checks.
+fn client_path(path: &Path) -> String {
+    dunce::simplified(path).to_string_lossy().into_owned()
+}
+
+#[cfg(windows)]
+#[test]
+fn client_paths_use_compatible_windows_syntax() {
+    assert_eq!(client_path(Path::new(r"\\?\C:\Users\jay")), r"C:\Users\jay");
+    assert_eq!(
+        client_path(Path::new(r"\\?\UNC\server\share\repo")),
+        r"\\server\share\repo"
+    );
+}
 static LEASE_CLIENT_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r"^[A-Za-z0-9-]{1,64}$").expect("valid lease client pattern")
 });
@@ -649,7 +665,7 @@ fn browse_directories(
             if candidate.starts_with(&private_directory) {
                 continue;
             }
-            directories.push(serde_json::json!({"name":name, "path":candidate}));
+            directories.push(serde_json::json!({"name":name, "path":client_path(&candidate)}));
         }
     }
     directories.sort_by(|left, right| {
@@ -665,14 +681,14 @@ fn browse_directories(
         .filter_map(|drive| {
             let path = PathBuf::from(format!("{}:/", drive as char));
             path.exists()
-                .then(|| serde_json::json!({"name":path.to_string_lossy(), "path":path}))
+                .then(|| serde_json::json!({"name":client_path(&path), "path":client_path(&path)}))
         })
         .collect::<Vec<_>>();
     #[cfg(not(windows))]
     let drives = vec![serde_json::json!({"name":"/", "path":"/"})];
     Ok(
-        serde_json::json!({"path":directory, "name":directory.file_name().map(|name| name.to_string_lossy()).unwrap_or_else(|| directory.as_os_str().to_string_lossy()),
-        "parent":parent, "directories":directories, "drives":drives}),
+        serde_json::json!({"path":client_path(&directory), "name":directory.file_name().map(|name| name.to_string_lossy()).unwrap_or_else(|| directory.as_os_str().to_string_lossy()),
+        "parent":parent.map(client_path), "directories":directories, "drives":drives}),
     )
 }
 
@@ -813,7 +829,7 @@ fn describe_repository(repo: &repositories::Repository) -> serde_json::Value {
         "id": repo.id,
         "slug": repo.slug,
         "name": repo.name,
-        "root": repo.root,
+        "root": client_path(&repo.root),
         "createdAt": repo.created_at,
         "url": format!("/{segment}/tree/"),
         "apiUrl": format!("/{segment}/api")
@@ -1636,7 +1652,7 @@ async fn open_directory(
     }
     #[cfg(target_os = "windows")]
     let result = tokio::process::Command::new("explorer.exe")
-        .arg(&directory)
+        .arg(dunce::simplified(&directory).as_ref())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -1992,13 +2008,13 @@ async fn document(
         if mime == "text/html" && !detected.binary {
             let source = String::from_utf8(read_document_source(&path)?).map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
             return Ok(serde_json::json!({"type":"html", "path":query.path,
-                "absolutePath":path.to_string_lossy(), "name":name, "size":file_size, "modified":modified,
+                "absolutePath":client_path(&path), "name":name, "size":file_size, "modified":modified,
                 "lineCount":source.split('\n').count(), "source":source,
                 "url":format!("{api_prefix}/api/html?path={}", encode_query_component(&query.path))}));
         }
         if mime.starts_with("image/") {
             return Ok(serde_json::json!({"type":"image", "path":query.path,
-                "absolutePath":path.to_string_lossy(), "name":name, "size":file_size, "modified":modified,
+                "absolutePath":client_path(&path), "name":name, "size":file_size, "modified":modified,
                 "mime":mime, "format":detected.format, "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
         }
         if mime == "application/pdf" {
@@ -2012,18 +2028,18 @@ async fn document(
                 "width":page.width, "height":page.height
             })).collect::<Vec<_>>();
             return Ok(serde_json::json!({"type":"pdf", "path":query.path,
-                "absolutePath":path.to_string_lossy(), "name":name, "size":path.metadata().map(|meta| meta.len()).unwrap_or_default(),
+                "absolutePath":client_path(&path), "name":name, "size":path.metadata().map(|meta| meta.len()).unwrap_or_default(),
                 "modified":modified, "revision":revision, "outline":info.outline, "pages":pages}));
         }
         if detected.binary {
             return Ok(serde_json::json!({"type":"binary", "path":query.path,
-                "absolutePath":path.to_string_lossy(), "name":name, "size":file_size, "modified":modified,
+                "absolutePath":client_path(&path), "name":name, "size":file_size, "modified":modified,
                 "mime":mime, "format":detected.format, "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
         }
         let bytes = read_document_source(&path)?;
         if !file_kind::is_text(&bytes) {
             return Ok(serde_json::json!({"type":"binary", "path":query.path,
-                "absolutePath":path.to_string_lossy(), "name":name, "size":file_size, "modified":modified,
+                "absolutePath":client_path(&path), "name":name, "size":file_size, "modified":modified,
                 "mime":"application/octet-stream", "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
         }
         let source = String::from_utf8(bytes).expect("validated UTF-8 document");
@@ -2031,21 +2047,21 @@ async fn document(
         if matches!(extension.as_str(), "md" | "markdown") {
             if query.view.as_deref() == Some("raw") {
                 return Ok(serde_json::json!({"type":"markdown", "path":query.path,
-                    "absolutePath":path.to_string_lossy(), "name":name, "size":source.len(),
+                    "absolutePath":client_path(&path), "name":name, "size":source.len(),
                     "modified":modified, "lineCount":line_count, "source":source}));
             }
             let html = markdown::render_markdown(&source, true)
                 .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?;
             return Ok(serde_json::json!({"type":"markdown", "path":query.path,
-                "absolutePath":path.to_string_lossy(), "name":name, "size":source.len(),
+                "absolutePath":client_path(&path), "name":name, "size":source.len(),
                 "modified":modified, "lineCount":line_count, "source":source, "html":html}));
         }
         if extension == "typ" {
             return Ok(serde_json::json!({"type":"typst", "path":query.path,
-                "absolutePath":path.to_string_lossy(), "name":name, "size":source.len(), "modified":modified,
+                "absolutePath":client_path(&path), "name":name, "size":source.len(), "modified":modified,
                 "lineCount":line_count, "source":source, "outline":[], "anchors":[], "pages":[], "compile":null}));
         }
-        Ok(serde_json::json!({"type":"text", "path":query.path, "absolutePath":path.to_string_lossy(),
+        Ok(serde_json::json!({"type":"text", "path":query.path, "absolutePath":client_path(&path),
             "name":name, "lineCount":line_count, "source":source}))
     }).await;
     match result {
@@ -2883,7 +2899,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| format!("{base_url}/"));
     println!(
         "{}",
-        serde_json::json!({"event":"ready","baseUrl":base_url,"root":state.service_root.to_string_lossy(),"repoId":default_repo.map(|repo|repo.id),"libraryUrl":library_url,"dataDirectory":state.data_directory.to_string_lossy(),"urls":{"library":library_url}})
+        serde_json::json!({"event":"ready","baseUrl":base_url,"root":client_path(&state.service_root),"repoId":default_repo.map(|repo|repo.id),"libraryUrl":library_url,"dataDirectory":client_path(&state.data_directory),"urls":{"library":library_url}})
     );
     let shutdown = state.shutdown.clone();
     let served = axum::serve(listener, app)

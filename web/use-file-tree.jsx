@@ -20,9 +20,15 @@ export function useFileTree(apiBase, selected, active = true) {
     });
   }, [resource]);
   const refresh = useCallback(() => update('', true), [update]);
-  useEffect(() => { if (active) void update(selected); }, [selected, update, active]);
   useEffect(() => {
-    if (!active) return;
+    if (!apiBase) {
+      setState({ tree: null, loading: false, error: '' });
+      return;
+    }
+    if (active) void update(selected);
+  }, [apiBase, selected, update, active]);
+  useEffect(() => {
+    if (!active || !apiBase) return;
     let disposed = false;
     // Compare the server snapshot after any pending load completes. This also
     // catches changes between the initial HTTP response and SSE connection.

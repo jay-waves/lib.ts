@@ -423,10 +423,14 @@ impl NativePdfRenderer {
             // The PDF's own drawing colors remain unchanged.
             bg_color: [255, 255, 255, 255],
         };
+        let interpreter_settings = InterpreterSettings {
+            render_annotations: false,
+            ..InterpreterSettings::default()
+        };
         let svg = Bytes::from(convert(
             page,
             &cache,
-            &InterpreterSettings::default(),
+            &interpreter_settings,
             &render_settings,
         ));
         if !cancellation.is_cancelled() && svg.len() <= SVG_CACHE_LIMIT {

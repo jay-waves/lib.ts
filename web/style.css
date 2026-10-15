@@ -48,6 +48,7 @@ body, .workspace { background: var(--library-canvas); }
 .page-header [aria-current="page"] { color: var(--fgColor-default); font-weight: 600; }
 .content-panel { box-sizing: border-box; margin: 0 auto 36px; width: var(--content-width); border: 1px solid var(--borderColor-default); border-radius: 4px; overflow: clip; background: var(--bgColor-default); }
 .status { min-height: 144px; display: flex; align-items: center; justify-content: center; gap: 11px; padding: 22px; }
+.empty-repository { flex-direction: column; color: var(--fgColor-muted); }
 .status.error { color: var(--fgColor-danger); }
 .rendering-label {
   display: inline-block;
