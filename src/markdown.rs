@@ -1,7 +1,7 @@
 //! Markdown parsing and HTML output. Formula spans remain source text in marked
 //! elements so the browser can add KaTeX rendering independently.
 
-#[path = "markdown/ast.rs"]
+#[path = "markdown_ast.rs"]
 mod ast;
 
 use comrak::{
@@ -14,7 +14,6 @@ use comrak::{
 };
 use regex::Regex;
 use std::{
-    borrow::Cow,
     collections::HashMap,
     fmt,
     sync::{LazyLock, Mutex},
@@ -23,10 +22,6 @@ use std::{
 static SOURCEPOS_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"<(p|li|table|blockquote|pre)\b([^>]*?)\sdata-sourcepos="(\d+):[^"]*"([^>]*)>"#)
         .expect("valid source position regex")
-});
-static ANCHOR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r##"<a href="#[^"]*" aria-label="Link to heading [^"]*" data-heading-content="[^"]*" class="anchor"></a>"##)
-        .expect("valid heading anchor regex")
 });
 static CODE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?s)<pre([^>]*)><code([^>]*)>(.*?)</code></pre>"#)
@@ -90,40 +85,6 @@ fn slugify(text: &str) -> String {
     }
 }
 
-fn front_matter_as_yaml(source: &str) -> Cow<'_, str> {
-    let mut lines = source.split_inclusive('\n');
-    if lines
-        .next()
-        .is_none_or(|line| line.trim_end_matches(['\r', '\n']) != "---")
-    {
-        return Cow::Borrowed(source);
-    }
-    let Some(end) = lines
-        .position(|line| line.trim_end_matches(['\r', '\n']) == "---")
-        .map(|index| index + 1)
-    else {
-        return Cow::Borrowed(source);
-    };
-    let mut output = String::with_capacity(source.len() + 6);
-    let mut lines = source.split_inclusive('\n');
-    for index in 0..=end {
-        let line = lines.next().unwrap_or_default();
-        if index == 0 {
-            output.push_str("```yaml");
-        } else if index == end {
-            output.push_str("```");
-        } else {
-            output.push_str(line);
-            continue;
-        }
-        if line.ends_with('\n') {
-            output.push('\n');
-        }
-    }
-    output.extend(lines);
-    Cow::Owned(output)
-}
-
 fn postprocess_html(html: String) -> String {
     let html = SOURCEPOS_RE
         .replace_all(&html, |captures: &regex::Captures<'_>| {
@@ -134,7 +95,6 @@ fn postprocess_html(html: String) -> String {
             )
         })
         .into_owned();
-    let html = ANCHOR_RE.replace_all(&html, "").into_owned();
     CODE_RE
         .replace_all(&html, |captures: &regex::Captures<'_>| {
             let attributes = &captures[1];
@@ -167,7 +127,6 @@ fn postprocess_html(html: String) -> String {
 }
 
 pub fn render_markdown(source: &str, allow_raw_html: bool) -> Result<String, String> {
-    let source = front_matter_as_yaml(source);
     let arena = Arena::new();
     let mut options = Options::default();
     options.extension.table = true;
@@ -175,11 +134,12 @@ pub fn render_markdown(source: &str, allow_raw_html: bool) -> Result<String, Str
     options.extension.autolink = true;
     options.extension.tasklist = true;
     options.extension.footnotes = true;
+    options.extension.front_matter_delimiter = Some("---".into());
     options.extension.math_dollars = true;
     options.extension.math_latex = true;
     options.render.r#unsafe = allow_raw_html;
     options.render.sourcepos = true;
-    let root = parse_document(&arena, &source, &options);
+    let root = parse_document(&arena, source, &options);
     ast::transform(&arena, root, &options)?;
     let heading = HeadingIds::default();
     let mut plugins = Plugins::default();

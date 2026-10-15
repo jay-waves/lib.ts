@@ -4,8 +4,7 @@ use grep_matcher::Matcher;
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{Searcher, sinks::UTF8};
 use ignore::WalkBuilder;
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs, io,
@@ -47,26 +46,73 @@ struct SearchResult {
     truncated: bool,
 }
 
-#[derive(Clone)]
-struct FileResult {
-    path: String,
-    language: String,
-    match_count: usize,
-    snippets: Vec<Snippet>,
-    snippets_truncated: bool,
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum SearchScope {
+    Files,
+    CurrentFile,
+    Bookmarks,
 }
 
-#[derive(Clone)]
-struct Snippet {
-    lines: Vec<SnippetLine>,
+impl SearchScope {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Files => "files",
+            Self::CurrentFile => "current-file",
+            Self::Bookmarks => "bookmarks",
+        }
+    }
 }
 
-#[derive(Clone)]
-struct SnippetLine {
-    number: usize,
-    text: String,
-    clipped: bool,
-    ranges: Vec<(usize, usize)>,
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FileResult {
+    pub(super) path: String,
+    pub(super) language: String,
+    pub(super) match_count: usize,
+    pub(super) snippets: Vec<Snippet>,
+    pub(super) snippets_truncated: bool,
+}
+
+#[derive(Clone, Serialize)]
+pub(super) struct Snippet {
+    pub(super) lines: Vec<SnippetLine>,
+}
+
+#[derive(Clone, Serialize)]
+pub(super) struct SnippetLine {
+    pub(super) number: usize,
+    pub(super) text: String,
+    pub(super) clipped: bool,
+    pub(super) ranges: Vec<(usize, usize)>,
+}
+
+#[derive(Clone, Serialize)]
+pub(super) struct SearchFacet {
+    pub(super) value: String,
+    pub(super) count: usize,
+}
+
+#[derive(Serialize)]
+pub(super) struct SearchFacets {
+    pub(super) languages: Vec<SearchFacet>,
+    pub(super) paths: Vec<SearchFacet>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SearchResponse {
+    pub(super) query: String,
+    pub(super) text_query: String,
+    pub(super) scope: String,
+    pub(super) search_id: String,
+    pub(super) engine: &'static str,
+    pub(super) truncated: bool,
+    pub(super) total: usize,
+    pub(super) match_count: usize,
+    pub(super) files: Vec<FileResult>,
+    pub(super) next_offset: Option<usize>,
+    pub(super) facets: SearchFacets,
 }
 
 #[derive(Default)]
@@ -94,7 +140,7 @@ struct PathFilter {
 pub struct SearchParams {
     #[serde(default)]
     pub q: String,
-    pub scope: Option<String>,
+    pub scope: Option<SearchScope>,
     #[serde(rename = "currentFile")]
     pub current_file: Option<String>,
     #[serde(rename = "searchId")]
@@ -112,24 +158,15 @@ impl SearchService {
         params: SearchParams,
         bookmarks: Option<&[String]>,
         private: Option<&Path>,
-    ) -> Result<Value, String> {
+    ) -> Result<SearchResponse, String> {
         let input = params.q.trim();
         if input.is_empty() || input.len() > 256 || input.contains(['\r', '\n', '\0']) {
             return Err("Enter a single-line search query of 1–256 characters.".into());
         }
-        // An empty scope means the default repository-wide full-text search.
-        // Older clients may still send `scope=`, so normalize both forms.
-        let scope = params
-            .scope
-            .as_deref()
-            .filter(|scope| !scope.is_empty())
-            .unwrap_or("files");
-        if !matches!(scope, "files" | "current-file" | "bookmarks") {
-            return Err("Choose one search scope: files, bookmarks or current-file.".into());
-        }
+        let scope = params.scope.unwrap_or(SearchScope::Files);
         let mut spec = parse_query(input)?;
-        let current_file = params.current_file.clone().unwrap_or_default();
-        if scope == "current-file"
+        let current_file = params.current_file.as_deref().unwrap_or_default();
+        if scope == SearchScope::CurrentFile
             && (current_file.is_empty()
                 || current_file.contains(['\\', '\0', ':'])
                 || current_file
@@ -140,11 +177,11 @@ impl SearchService {
         }
         if let Some(language) = params
             .lang
-            .clone()
-            .or(params.language.clone())
+            .as_deref()
             .filter(|value| !value.is_empty())
+            .or_else(|| params.language.as_deref().filter(|value| !value.is_empty()))
         {
-            spec.languages.push(language);
+            spec.languages.push(language.to_owned());
         }
         if spec.text.is_empty() {
             return Err("Enter a non-empty search query.".into());
@@ -157,8 +194,9 @@ impl SearchService {
             })
             .unwrap_or_default();
         let identity = format!(
-            "{}\0{input}\0{scope}\0{current_file}\0{bookmark_identity}",
-            root.display()
+            "{}\0{input}\0{}\0{current_file}\0{bookmark_identity}",
+            root.display(),
+            scope.as_str()
         );
         self.expire_snapshots();
 
@@ -179,10 +217,10 @@ impl SearchService {
             let mut result = scan(
                 &root,
                 &spec,
-                (scope == "current-file").then_some(current_file.as_str()),
+                (scope == SearchScope::CurrentFile).then_some(current_file),
                 private,
             )?;
-            if scope == "bookmarks" {
+            if scope == SearchScope::Bookmarks {
                 let bookmarks =
                     bookmarks.ok_or("Bookmark search is unavailable in the Rust backend.")?;
                 result
@@ -260,7 +298,7 @@ impl SearchService {
             .iter()
             .skip(offset)
             .take(PAGE_SIZE)
-            .map(|file| file_json(file))
+            .map(|file| (*file).clone())
             .collect::<Vec<_>>();
         let languages = facets(
             result
@@ -286,13 +324,20 @@ impl SearchService {
         );
         let total = matches.len();
         let match_count = matches.iter().map(|file| file.match_count).sum::<usize>();
-        Ok(json!({
-            "query":input, "textQuery":spec.text, "scope":scope, "searchId":search_id,
-            "engine":result.engine, "truncated":result.truncated, "total":total,
-            "matchCount":match_count, "files":page,
-            "nextOffset":(offset + page.len() < total).then_some(offset + page.len()),
-            "facets":{"languages":languages,"paths":paths}
-        }))
+        let next_offset = (offset + page.len() < total).then_some(offset + page.len());
+        Ok(SearchResponse {
+            query: input.to_owned(),
+            text_query: spec.text,
+            scope: scope.as_str().to_owned(),
+            search_id,
+            engine: result.engine,
+            truncated: result.truncated,
+            total,
+            match_count,
+            files: page,
+            next_offset,
+            facets: SearchFacets { languages, paths },
+        })
     }
 
     fn expire_snapshots(&self) {
@@ -756,23 +801,32 @@ fn normalize_language(language: &str) -> String {
     }
 }
 
-fn facets<'a>(values: impl Iterator<Item = &'a str>) -> Vec<Value> {
+pub(super) fn sort_facets(facets: &mut [SearchFacet]) {
+    facets.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.value.cmp(&right.value))
+    });
+}
+
+fn facets<'a>(values: impl Iterator<Item = &'a str>) -> Vec<SearchFacet> {
     let mut counts = HashMap::<&str, usize>::new();
     for value in values {
         *counts.entry(value).or_default() += 1;
     }
     let mut items = counts
         .into_iter()
-        .map(|(value, count)| (value.to_owned(), count))
+        .map(|(value, count)| SearchFacet {
+            value: value.to_owned(),
+            count,
+        })
         .collect::<Vec<_>>();
-    items.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    sort_facets(&mut items);
     items
-        .into_iter()
-        .map(|(value, count)| json!({"value":value,"count":count}))
-        .collect()
 }
 
-fn facet_paths<'a>(values: impl Iterator<Item = &'a str>) -> Vec<Value> {
+fn facet_paths<'a>(values: impl Iterator<Item = &'a str>) -> Vec<SearchFacet> {
     let mut counts = HashMap::<String, usize>::new();
     for path in values {
         let facet = path
@@ -781,29 +835,12 @@ fn facet_paths<'a>(values: impl Iterator<Item = &'a str>) -> Vec<Value> {
             .unwrap_or_else(|| path.to_owned());
         *counts.entry(facet).or_default() += 1;
     }
-    let mut items = counts.into_iter().collect::<Vec<_>>();
-    items.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    items
+    let mut items = counts
         .into_iter()
-        .map(|(value, count)| json!({"value":value,"count":count}))
-        .collect()
-}
-
-fn file_json(file: &FileResult) -> Value {
-    json!({
-        "path": file.path,
-        "language": file.language,
-        "matchCount": file.match_count,
-        "snippets": file.snippets.iter().map(|snippet| json!({
-            "lines": snippet.lines.iter().map(|line| json!({
-                "number": line.number,
-                "text": line.text,
-                "clipped": line.clipped,
-                "ranges": line.ranges,
-            })).collect::<Vec<_>>(),
-        })).collect::<Vec<_>>(),
-        "snippetsTruncated": file.snippets_truncated,
-    })
+        .map(|(value, count)| SearchFacet { value, count })
+        .collect::<Vec<_>>();
+    sort_facets(&mut items);
+    items
 }
 
 fn group_snippets(lines: Vec<SnippetLine>) -> Vec<Snippet> {

@@ -15,7 +15,6 @@ use std::{
     io,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::atomic::{AtomicU64, Ordering},
     sync::{Arc, LazyLock, Mutex},
     time::Instant,
 };
@@ -24,58 +23,12 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 
-static HTML_STRIP_ELEMENTS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::RegexBuilder::new(
-        r"(?is)<(?:iframe|frame|frameset|object|embed)\b[^>]*>.*?</(?:iframe|frame|frameset|object|embed)\s*>|<(?:iframe|frame|frameset|object|embed)\b[^>]*/?>|<base\b[^>]*>",
-    )
-    .build()
-    .expect("static HTML sanitizing pattern is valid")
-});
-static HTML_META_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?is)<meta\b[^>]*>").expect("valid HTML meta pattern"));
-static HTML_HTTP_EQUIV_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?i)\bhttp-equiv\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)"#)
-        .expect("valid HTML http-equiv pattern")
-});
-static HTML_OPEN_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?i)<html\b[^>]*>").expect("valid HTML pattern"));
-static HEAD_OPEN_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?i)<head\b[^>]*>").expect("valid HTML pattern"));
-static HTML_ANCHOR_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?is)<a\b[^>]*>").expect("valid anchor pattern"));
-static HTML_HREF_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?i)\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')"#).expect("valid href pattern")
-});
-static HTML_TARGET_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?i)\btarget\s*=\s*(?:"[^"]*"|'[^']*')"#).expect("valid target pattern")
-});
-static HTML_REL_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?i)\brel\s*=\s*(?:"([^"]*)"|'([^']*)')"#).expect("valid rel pattern")
-});
-static HTML_TAG_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?i)<html\b[^>]*>").expect("valid HTML pattern"));
-static HTML_HOST_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^[A-Za-z0-9.\-:\[\]]+$").expect("valid host pattern"));
-static HTML_RESOURCE_EXTENSION_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"(?i)^(css|js|mjs|png|jpe?g|gif|webp|avif|bmp|ico|svg|woff2?|ttf|otf|mp3|mp4|webm|ogg|wav)$")
-        .expect("valid HTML resource extension pattern")
-});
-
 /// Format paths for APIs and external programs that may not accept Windows' verbatim prefix.
 /// Keep canonical paths in their original form for filesystem access and security checks.
 fn client_path(path: &Path) -> String {
     dunce::simplified(path).to_string_lossy().into_owned()
 }
 
-#[cfg(windows)]
-#[test]
-fn client_paths_use_compatible_windows_syntax() {
-    assert_eq!(client_path(Path::new(r"\\?\C:\Users\jay")), r"C:\Users\jay");
-    assert_eq!(
-        client_path(Path::new(r"\\?\UNC\server\share\repo")),
-        r"\\server\share\repo"
-    );
-}
 static LEASE_CLIENT_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r"^[A-Za-z0-9-]{1,64}$").expect("valid lease client pattern")
 });
@@ -101,8 +54,10 @@ fn stream_file(
     )
 }
 
+mod cross_search;
 mod file_kind;
 mod git;
+mod html;
 mod markdown;
 mod pdf;
 mod reading;
@@ -122,18 +77,30 @@ struct AppState {
     document_workers: worker::WorkerPool,
     rendering: Arc<render::RenderService>,
     shutdown: tokio::sync::watch::Sender<bool>,
-    html_token: Arc<String>,
+    html: html::Service,
     search: Arc<search::SearchService>,
     data_directory: Arc<PathBuf>,
-    leases: Arc<Mutex<HashMap<String, DocumentLease>>>,
-    library_clients: Arc<Mutex<HashMap<String, LibraryClient>>>,
     trees: tree::Service,
-    file_watchers:
-        Arc<Mutex<HashMap<Vec<(PathBuf, String)>, tokio::sync::broadcast::Sender<FileWatchEvent>>>>,
     repositories: Arc<repositories::RepositoryStore>,
     reading: Arc<reading::ReadingStore>,
-    cross_search: Arc<Mutex<HashMap<String, CrossSearchSnapshot>>>,
+    runtime: Arc<RuntimeState>,
+    cross_search: Arc<cross_search::Service>,
     base_url: Arc<String>,
+}
+
+/// Mutable coordination state shared by concurrent HTTP requests.
+/// Long-lived services and configuration stay on `AppState`.
+#[derive(Default)]
+struct RuntimeState {
+    leases: Mutex<HashMap<String, DocumentLease>>,
+    library_events: Arc<LibraryEventHub>,
+    file_watchers: Mutex<HashMap<FileWatchKey, tokio::sync::broadcast::Sender<FileWatchEvent>>>,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct FileWatchKey {
+    document: PathBuf,
+    assets: Vec<(PathBuf, String)>,
 }
 
 #[derive(Clone)]
@@ -142,30 +109,252 @@ struct FileWatchEvent {
     assets: Vec<String>,
 }
 
-struct CrossSearchSnapshot {
-    key: String,
-    expires_at: Instant,
-    files: Arc<Vec<serde_json::Value>>,
-    facets: Arc<serde_json::Value>,
-    truncated: bool,
-    match_count: usize,
-    bytes: usize,
+#[derive(Clone, PartialEq, Eq)]
+struct AssetSignature {
+    requested: String,
+    signature: Option<(u128, u64)>,
 }
-static NEXT_CROSS_SEARCH_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, PartialEq, Eq)]
+struct FileWatchSnapshot {
+    document: Option<(u128, u64)>,
+    assets: Vec<AssetSignature>,
+}
+
+impl FileWatchSnapshot {
+    fn capture(document: &Path, assets: &[(PathBuf, String)]) -> Self {
+        Self {
+            document: file_signature(document),
+            assets: assets
+                .iter()
+                .map(|(path, requested)| AssetSignature {
+                    requested: requested.clone(),
+                    signature: file_signature(path),
+                })
+                .collect(),
+        }
+    }
+
+    fn changes_since(&self, previous: &Self) -> Option<FileWatchEvent> {
+        let document_changed = self.document != previous.document;
+        let changed_assets = self
+            .assets
+            .iter()
+            .zip(&previous.assets)
+            .filter_map(|(current, previous)| {
+                (current.signature != previous.signature).then(|| current.requested.clone())
+            })
+            .collect::<Vec<_>>();
+        (document_changed || !changed_assets.is_empty()).then_some(FileWatchEvent {
+            document_changed,
+            assets: changed_assets,
+        })
+    }
+}
+
+#[derive(Debug)]
+enum LeaseUpdateError {
+    Busy,
+    Poisoned,
+}
+
+#[derive(Debug)]
+enum ClientStateError {
+    Poisoned,
+}
+
+/// Owns active library sessions and routes document-open notifications.
+#[derive(Default)]
+struct LibraryEventHub {
+    clients: Mutex<HashMap<String, LibraryClient>>,
+}
+
+impl RuntimeState {
+    fn active_lease_paths(&self, now: Instant) -> HashSet<PathBuf> {
+        let Ok(mut leases) = self.leases.lock() else {
+            return HashSet::new();
+        };
+        leases.retain(|_, lease| lease.expires_at > now);
+        leases
+            .values()
+            .flat_map(|lease| lease.paths.iter().cloned())
+            .collect()
+    }
+
+    fn subscribe_file_events(
+        self: &Arc<Self>,
+        document: PathBuf,
+        assets: Vec<(PathBuf, String)>,
+    ) -> tokio::sync::broadcast::Receiver<FileWatchEvent> {
+        let key = FileWatchKey {
+            document: document.clone(),
+            assets: assets.clone(),
+        };
+        let mut watchers = self
+            .file_watchers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(sender) = watchers.get(&key) {
+            return sender.subscribe();
+        }
+        let (sender, _) = tokio::sync::broadcast::channel(16);
+        let receiver = sender.subscribe();
+        watchers.insert(key.clone(), sender.clone());
+        let runtime = self.clone();
+        tokio::spawn(async move {
+            let mut previous = FileWatchSnapshot::capture(&document, &assets);
+            let mut timer = tokio::time::interval(std::time::Duration::from_millis(500));
+            loop {
+                timer.tick().await;
+                if sender.receiver_count() == 0 {
+                    let mut watchers = runtime
+                        .file_watchers
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    if watchers
+                        .get(&key)
+                        .is_some_and(|current| current.same_channel(&sender))
+                    {
+                        watchers.remove(&key);
+                    }
+                    break;
+                }
+                let current = FileWatchSnapshot::capture(&document, &assets);
+                if let Some(event) = current.changes_since(&previous) {
+                    let _ = sender.send(event);
+                }
+                previous = current;
+            }
+        });
+        receiver
+    }
+
+    fn update_lease(
+        &self,
+        client: &str,
+        version: Option<u64>,
+        paths: Vec<PathBuf>,
+    ) -> Result<(), LeaseUpdateError> {
+        const MAX_CLIENTS: usize = 128;
+        const LEASE_DURATION: std::time::Duration = std::time::Duration::from_secs(90);
+
+        let now = Instant::now();
+        let mut leases = self.leases.lock().map_err(|_| LeaseUpdateError::Poisoned)?;
+        leases.retain(|_, lease| lease.expires_at > now);
+        if leases.len() >= MAX_CLIENTS && !leases.contains_key(client) {
+            return Err(LeaseUpdateError::Busy);
+        }
+        let stale = version
+            .zip(leases.get(client).and_then(|lease| lease.version))
+            .is_some_and(|(incoming, current)| incoming <= current);
+        if stale {
+            return Ok(());
+        }
+        if paths.is_empty() && version.is_none() {
+            leases.remove(client);
+        } else {
+            leases.insert(
+                client.to_owned(),
+                DocumentLease {
+                    version,
+                    expires_at: now + LEASE_DURATION,
+                    paths,
+                },
+            );
+        }
+        Ok(())
+    }
+}
+
+impl LibraryEventHub {
+    fn subscribe(
+        self: &Arc<Self>,
+        id: String,
+        repo: String,
+    ) -> Result<(mpsc::Receiver<LibraryOpenEvent>, LibraryClientGuard), ClientStateError> {
+        let (sender, receiver) = mpsc::channel(16);
+        self.clients
+            .lock()
+            .map_err(|_| ClientStateError::Poisoned)?
+            .insert(
+                id.clone(),
+                LibraryClient {
+                    repo,
+                    last_activity: Instant::now(),
+                    sender: sender.clone(),
+                },
+            );
+        let guard = LibraryClientGuard {
+            hub: self.clone(),
+            id,
+            sender,
+        };
+        Ok((receiver, guard))
+    }
+
+    fn dispatch_open(
+        &self,
+        event: &LibraryOpenEvent,
+        repo_id: &str,
+        repo_slug: &str,
+    ) -> Result<bool, ClientStateError> {
+        let mut clients = self
+            .clients
+            .lock()
+            .map_err(|_| ClientStateError::Poisoned)?;
+        let mut candidates = clients
+            .iter()
+            .map(|(id, client)| {
+                (
+                    id.clone(),
+                    client.sender.clone(),
+                    client.repo == repo_slug || client.repo == repo_id,
+                    client.last_activity,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(_, _, same_repo, last_activity)| {
+            (!same_repo, std::cmp::Reverse(*last_activity))
+        });
+
+        for (id, sender, _, _) in candidates {
+            match sender.try_send(event.clone()) {
+                Ok(()) => return Ok(true),
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    clients.remove(&id);
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {}
+            }
+        }
+        Ok(false)
+    }
+
+    fn unregister(&self, id: &str, sender: &mpsc::Sender<LibraryOpenEvent>) {
+        if let Ok(mut clients) = self.clients.lock()
+            && clients
+                .get(id)
+                .is_some_and(|client| client.sender.same_channel(sender))
+        {
+            clients.remove(id);
+        }
+    }
+
+    fn record_library_activity(&self, client_id: &str, now: Instant) -> bool {
+        let Ok(mut clients) = self.clients.lock() else {
+            return false;
+        };
+        let Some(client) = clients.get_mut(client_id) else {
+            return false;
+        };
+        client.last_activity = now;
+        true
+    }
+}
 
 impl AppState {
     fn refresh_document_leases(&self) {
-        let now = Instant::now();
-        let active = if let Ok(mut leases) = self.leases.lock() {
-            leases.retain(|_, lease| lease.expires_at > now);
-            leases
-                .values()
-                .flat_map(|lease| lease.paths.iter().cloned())
-                .collect::<HashSet<_>>()
-        } else {
-            HashSet::new()
-        };
-        self.rendering.set_active_paths(active);
+        self.rendering
+            .set_active_paths(self.runtime.active_lease_paths(Instant::now()));
     }
 
     fn default_repository(&self) -> Option<repositories::Repository> {
@@ -186,83 +375,9 @@ impl AppState {
     }
 
     fn root_for_uri(&self, path: &str) -> Arc<PathBuf> {
-        let parts = path.trim_start_matches('/').split('/').collect::<Vec<_>>();
-        if parts.len() >= 2 && parts[1] == "api" {
-            if let Some(repo) = decode_url_segment(parts[0])
-                .and_then(|value| self.repositories.find(&value).ok().flatten())
-            {
-                return Arc::new(repo.root);
-            }
-        }
-        self.default_repository()
+        self.repository_for_uri(path)
             .map(|repo| Arc::new(repo.root))
             .unwrap_or_else(|| self.root.clone())
-    }
-
-    fn search_for_root(&self, root: &Path) -> Arc<search::SearchService> {
-        let _ = root;
-        self.search.clone()
-    }
-
-    fn subscribe_file_events(
-        &self,
-        document: PathBuf,
-        assets: Vec<(PathBuf, String)>,
-        signatures: Vec<Option<(u128, u64)>>,
-    ) -> tokio::sync::broadcast::Receiver<FileWatchEvent> {
-        let mut key = Vec::with_capacity(assets.len() + 1);
-        key.push((document.clone(), String::new()));
-        key.extend(assets.iter().cloned());
-        let mut watchers = self
-            .file_watchers
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(sender) = watchers.get(&key) {
-            return sender.subscribe();
-        }
-        let (sender, _) = tokio::sync::broadcast::channel(16);
-        let receiver = sender.subscribe();
-        watchers.insert(key.clone(), sender.clone());
-        let watcher_map = self.file_watchers.clone();
-        tokio::spawn(async move {
-            let mut signatures = signatures;
-            let mut timer = tokio::time::interval(std::time::Duration::from_millis(500));
-            loop {
-                timer.tick().await;
-                if sender.receiver_count() == 0 {
-                    let mut watchers = watcher_map
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    if watchers
-                        .get(&key)
-                        .is_some_and(|current| current.same_channel(&sender))
-                    {
-                        watchers.remove(&key);
-                    }
-                    break;
-                }
-                let current = std::iter::once(file_signature(&document))
-                    .chain(assets.iter().map(|(path, _)| file_signature(path)))
-                    .collect::<Vec<_>>();
-                let document_changed = current.first() != signatures.first();
-                let changed_assets = assets
-                    .iter()
-                    .zip(current.iter().skip(1))
-                    .zip(signatures.iter().skip(1))
-                    .filter_map(|(((_, requested), now), before)| {
-                        (now != before).then(|| requested.clone())
-                    })
-                    .collect::<Vec<_>>();
-                signatures = current;
-                if document_changed || !changed_assets.is_empty() {
-                    let _ = sender.send(FileWatchEvent {
-                        document_changed,
-                        assets: changed_assets,
-                    });
-                }
-            }
-        });
-        receiver
     }
 }
 
@@ -270,25 +385,28 @@ impl AppState {
 struct LibraryClient {
     repo: String,
     last_activity: Instant,
-    sender: mpsc::Sender<serde_json::Value>,
+    sender: mpsc::Sender<LibraryOpenEvent>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryOpenEvent {
+    repo: String,
+    path: String,
+    line: Option<u64>,
+    view: String,
+    url: String,
 }
 
 struct LibraryClientGuard {
-    clients: Arc<Mutex<HashMap<String, LibraryClient>>>,
+    hub: Arc<LibraryEventHub>,
     id: String,
-    sender: mpsc::Sender<serde_json::Value>,
+    sender: mpsc::Sender<LibraryOpenEvent>,
 }
 
 impl Drop for LibraryClientGuard {
     fn drop(&mut self) {
-        if let Ok(mut clients) = self.clients.lock() {
-            if clients
-                .get(&self.id)
-                .is_some_and(|client| client.sender.same_channel(&self.sender))
-            {
-                clients.remove(&self.id);
-            }
-        }
+        self.hub.unregister(&self.id, &self.sender);
     }
 }
 
@@ -362,12 +480,6 @@ fn decode_url_segment(value: &str) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
-fn new_capability_token() -> Result<String, std::io::Error> {
-    let mut bytes = [0u8; 24];
-    getrandom::fill(&mut bytes).map_err(std::io::Error::other)?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
-}
-
 async fn media_type(path: &Path, file: &mut tokio::fs::File) -> io::Result<&'static str> {
     let mut prefix = Vec::with_capacity(file_kind::HEADER_BYTES);
     (&mut *file)
@@ -376,117 +488,6 @@ async fn media_type(path: &Path, file: &mut tokio::fs::File) -> io::Result<&'sta
         .await?;
     file.rewind().await?;
     Ok(file_kind::detect(path, &prefix).mime)
-}
-
-fn html_resources_base(api_prefix: &str, token: &str, path: &str) -> String {
-    let directory = path
-        .rsplit_once('/')
-        .map(|(parent, _)| parent)
-        .unwrap_or("");
-    let relative = if directory.is_empty() {
-        String::new()
-    } else {
-        format!("{}/", encode_path(directory))
-    };
-    format!("{api_prefix}/api/html-resource/{token}/{relative}")
-}
-
-fn html_preview(source: &str, base: &str, document_url: &str) -> String {
-    let source = HTML_STRIP_ELEMENTS_RE.replace_all(source, "");
-    let source = HTML_META_RE.replace_all(&source, |captures: &regex::Captures<'_>| {
-        if HTML_HTTP_EQUIV_RE.is_match(&captures[0]) {
-            String::new()
-        } else {
-            captures[0].to_owned()
-        }
-    });
-    let base_tag = format!(
-        "<base href=\"{}\">",
-        base.replace('&', "&amp;").replace('"', "&quot;")
-    );
-    let no_scroll = "<style>html,body{scrollbar-width:none!important}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none!important}</style>";
-    let image_style = include_str!("../shared/image-theme.css");
-    let injection = format!("{base_tag}{no_scroll}<style>{image_style}</style>");
-    let output = if let Some(found) = HEAD_OPEN_RE.find(&source) {
-        let mut value = source.to_string();
-        value.insert_str(found.end(), &injection);
-        value
-    } else if let Some(found) = HTML_OPEN_RE.find(&source) {
-        let mut value = source.to_string();
-        value.insert_str(found.end(), &format!("<head>{injection}</head>"));
-        value
-    } else {
-        format!("<head>{injection}</head>{source}")
-    };
-    let output = HTML_ANCHOR_RE.replace_all(&output, |captures: &regex::Captures<'_>| {
-        let mut tag = captures[0].to_owned();
-        let Some(found) = HTML_HREF_RE.captures(&tag) else {
-            return tag;
-        };
-        let value = found
-            .get(1)
-            .or_else(|| found.get(2))
-            .map(|value| value.as_str())
-            .unwrap_or_default();
-        if let Some(fragment) = value.strip_prefix('#') {
-            let replacement = format!(
-                "href=\"{}#{}\"",
-                document_url.replace('&', "&amp;"),
-                fragment
-            );
-            tag = HTML_HREF_RE.replace(&tag, replacement).into_owned();
-        } else if value
-            .get(..7)
-            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("http://"))
-            || value
-                .get(..8)
-                .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"))
-        {
-            if HTML_TARGET_RE.is_match(&tag) {
-                tag = HTML_TARGET_RE
-                    .replace(&tag, "target=\"_blank\"")
-                    .into_owned();
-            } else {
-                tag.insert_str(tag.len() - 1, " target=\"_blank\"");
-            }
-            if let Some(existing) = HTML_REL_RE.captures(&tag) {
-                let values = existing
-                    .get(1)
-                    .or_else(|| existing.get(2))
-                    .map(|value| value.as_str())
-                    .unwrap_or_default();
-                let mut values = values
-                    .split_ascii_whitespace()
-                    .map(str::to_owned)
-                    .collect::<std::collections::HashSet<_>>();
-                values.remove("opener");
-                values.insert("noopener".into());
-                values.insert("noreferrer".into());
-                tag = HTML_REL_RE
-                    .replace(
-                        &tag,
-                        format!(
-                            "rel=\"{}\"",
-                            values.into_iter().collect::<Vec<_>>().join(" ")
-                        ),
-                    )
-                    .into_owned();
-            } else {
-                tag.insert_str(tag.len() - 1, " rel=\"noopener noreferrer\"");
-            }
-        }
-        tag
-    });
-    HTML_TAG_RE
-        .replace(&output, |captures: &regex::Captures<'_>| {
-            let tag = &captures[0];
-            if tag.to_ascii_lowercase().contains("data-dim-images") {
-                tag.to_owned()
-            } else {
-                tag.replacen('>', " data-dim-images>", 1)
-            }
-        })
-        .into_owned()
 }
 
 #[derive(Deserialize)]
@@ -555,7 +556,7 @@ struct LibraryOpenRequest {
 
 #[derive(Deserialize)]
 struct OpenDirectoryRequest {
-    path: Option<serde_json::Value>,
+    path: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -580,23 +581,6 @@ struct RecentFileRequest {
     path: String,
 }
 
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct CrossSearchQuery {
-    q: String,
-    repo: Option<String>,
-    #[serde(rename = "currentRepo")]
-    current_repo: Option<String>,
-    #[serde(rename = "currentFile")]
-    current_file: Option<String>,
-    search_id: Option<String>,
-    offset: Option<usize>,
-    lang: Option<String>,
-    language: Option<String>,
-    path: Option<String>,
-    scope: Option<String>,
-}
-
 fn file_signature(path: &Path) -> Option<(u128, u64)> {
     let metadata = std::fs::metadata(path).ok()?;
     let modified = metadata
@@ -618,11 +602,27 @@ fn modified_rfc3339(path: &Path) -> String {
         .unwrap_or_default()
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirectoryListing {
+    path: String,
+    name: String,
+    parent: Option<String>,
+    directories: Vec<DirectoryEntry>,
+    drives: Vec<DirectoryEntry>,
+}
+
+#[derive(Serialize)]
+struct DirectoryEntry {
+    name: String,
+    path: String,
+}
+
 fn browse_directories(
     path: Option<&str>,
     initial_root: &Path,
     data_directory: &Path,
-) -> Result<serde_json::Value, (StatusCode, String)> {
+) -> Result<DirectoryListing, (StatusCode, String)> {
     let requested = path
         .filter(|path| !path.is_empty())
         .map(PathBuf::from)
@@ -665,31 +665,39 @@ fn browse_directories(
             if candidate.starts_with(&private_directory) {
                 continue;
             }
-            directories.push(serde_json::json!({"name":name, "path":client_path(&candidate)}));
+            directories.push(DirectoryEntry {
+                name,
+                path: client_path(&candidate),
+            });
         }
     }
-    directories.sort_by(|left, right| {
-        left["name"]
-            .as_str()
-            .unwrap_or_default()
-            .to_lowercase()
-            .cmp(&right["name"].as_str().unwrap_or_default().to_lowercase())
-    });
+    directories.sort_by_key(|directory| directory.name.to_lowercase());
     let parent = directory.parent().filter(|parent| *parent != directory);
     #[cfg(windows)]
     let drives = (b'A'..=b'Z')
         .filter_map(|drive| {
             let path = PathBuf::from(format!("{}:/", drive as char));
-            path.exists()
-                .then(|| serde_json::json!({"name":client_path(&path), "path":client_path(&path)}))
+            path.exists().then(|| DirectoryEntry {
+                name: client_path(&path),
+                path: client_path(&path),
+            })
         })
         .collect::<Vec<_>>();
     #[cfg(not(windows))]
-    let drives = vec![serde_json::json!({"name":"/", "path":"/"})];
-    Ok(
-        serde_json::json!({"path":client_path(&directory), "name":directory.file_name().map(|name| name.to_string_lossy()).unwrap_or_else(|| directory.as_os_str().to_string_lossy()),
-        "parent":parent.map(client_path), "directories":directories, "drives":drives}),
-    )
+    let drives = vec![DirectoryEntry {
+        name: "/".into(),
+        path: "/".into(),
+    }];
+    Ok(DirectoryListing {
+        path: client_path(&directory),
+        name: directory
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| directory.as_os_str().to_string_lossy().into_owned()),
+        parent: parent.map(client_path),
+        directories,
+        drives,
+    })
 }
 
 fn pdf_error_status(error: &pdf::PdfError) -> StatusCode {
@@ -726,6 +734,45 @@ fn json_error(status: StatusCode, message: impl Into<String>) -> impl IntoRespon
             error: message.into(),
         }),
     )
+}
+
+fn require_json_content_type(headers: &HeaderMap) -> Result<(), Response> {
+    let is_json = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/json"));
+    if is_json {
+        Ok(())
+    } else {
+        Err(json_error(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "Expected application/json",
+        )
+        .into_response())
+    }
+}
+
+fn require_same_origin(headers: &HeaderMap, message: &'static str) -> Result<(), Response> {
+    let Some(origin) = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return Ok(());
+    };
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| matches!(*value, "http" | "https"))
+        .unwrap_or("http");
+    if origin == format!("{scheme}://{host}") {
+        Ok(())
+    } else {
+        Err(json_error(StatusCode::FORBIDDEN, message).into_response())
+    }
 }
 
 fn checked_path(root: &Path, value: &str) -> Result<PathBuf, (StatusCode, String)> {
@@ -823,21 +870,32 @@ async fn directories(
     }
 }
 
-fn describe_repository(repo: &repositories::Repository) -> serde_json::Value {
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryMetadata {
+    id: String,
+    slug: String,
+    name: String,
+    root: String,
+    created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_used_at: Option<String>,
+    url: String,
+    api_url: String,
+}
+
+fn describe_repository(repo: &repositories::Repository) -> RepositoryMetadata {
     let segment = encode_query_component(&repo.slug);
-    let mut result = serde_json::json!({
-        "id": repo.id,
-        "slug": repo.slug,
-        "name": repo.name,
-        "root": client_path(&repo.root),
-        "createdAt": repo.created_at,
-        "url": format!("/{segment}/tree/"),
-        "apiUrl": format!("/{segment}/api")
-    });
-    if let Some(last_used_at) = &repo.last_used_at {
-        result["lastUsedAt"] = last_used_at.clone().into();
+    RepositoryMetadata {
+        id: repo.id.clone(),
+        slug: repo.slug.clone(),
+        name: repo.name.clone(),
+        root: client_path(&repo.root),
+        created_at: repo.created_at.clone(),
+        last_used_at: repo.last_used_at.clone(),
+        url: format!("/{segment}/tree/"),
+        api_url: format!("/{segment}/api"),
     }
-    result
 }
 
 async fn list_repositories(State(state): State<AppState>) -> Response {
@@ -847,7 +905,17 @@ async fn list_repositories(State(state): State<AppState>) -> Response {
     match state.repositories.list() {
         Ok(repos) => {
             let default_id = state.default_repository().map(|repo| repo.id);
-            Json(serde_json::json!({"repos":repos.iter().map(describe_repository).collect::<Vec<_>>(),"defaultRepoId":default_id})).into_response()
+            #[derive(Serialize)]
+            #[serde(rename_all = "camelCase")]
+            struct RepositoryListResponse {
+                repos: Vec<RepositoryMetadata>,
+                default_repo_id: Option<String>,
+            }
+            Json(RepositoryListResponse {
+                repos: repos.iter().map(describe_repository).collect(),
+                default_repo_id: default_id,
+            })
+            .into_response()
         }
         Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error).into_response(),
     }
@@ -868,37 +936,11 @@ async fn use_repository(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(
-                StatusCode::FORBIDDEN,
-                "Cross-origin registration is forbidden",
-            )
-            .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin registration is forbidden") {
+        return response;
     }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
@@ -923,34 +965,11 @@ async fn set_bookmark(
     headers: HeaderMap,
     Json(request): Json<SetBookmarkRequest>,
 ) -> Response {
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(StatusCode::FORBIDDEN, "Cross-origin request is forbidden")
-                .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin request is forbidden") {
+        return response;
     }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
@@ -990,34 +1009,11 @@ async fn put_reading(
     headers: HeaderMap,
     Json(request): Json<ReadingPositionsRequest>,
 ) -> Response {
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(StatusCode::FORBIDDEN, "Cross-origin request forbidden")
-                .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
+        return response;
     }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
@@ -1047,34 +1043,11 @@ async fn add_recent_file(
     headers: HeaderMap,
     Json(request): Json<RecentFileRequest>,
 ) -> Response {
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(StatusCode::FORBIDDEN, "Cross-origin request forbidden")
-                .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
+        return response;
     }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
@@ -1098,34 +1071,11 @@ async fn clear_recent_files(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(StatusCode::FORBIDDEN, "Cross-origin request forbidden")
-                .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
+        return response;
     }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
@@ -1141,37 +1091,11 @@ async fn add_repository(
     headers: HeaderMap,
     Json(request): Json<AddRepositoryRequest>,
 ) -> Response {
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(
-                StatusCode::FORBIDDEN,
-                "Cross-origin registration is forbidden",
-            )
-            .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin registration is forbidden") {
+        return response;
     }
     match state
         .repositories
@@ -1188,34 +1112,11 @@ async fn session_leases(
     headers: HeaderMap,
     Json(request): Json<LeaseRequest>,
 ) -> Response {
-    let host = headers
-        .get(axum::http::header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(StatusCode::FORBIDDEN, "Cross-origin retention is forbidden")
-                .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin retention is forbidden") {
+        return response;
     }
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
     if !LEASE_CLIENT_RE.is_match(&request.client) || request.paths.len() > 64 {
         return json_error(StatusCode::BAD_REQUEST, "Invalid session lease").into_response();
@@ -1232,43 +1133,20 @@ async fn session_leases(
             Err((_, error)) => return json_error(StatusCode::BAD_REQUEST, error).into_response(),
         }
     }
-    let mut leases = match state.leases.lock() {
-        Ok(leases) => leases,
-        Err(_) => {
+    match state
+        .runtime
+        .update_lease(&request.client, request.version, paths)
+    {
+        Ok(()) => {}
+        Err(LeaseUpdateError::Busy) => return worker_error(worker::WorkerError::Busy),
+        Err(LeaseUpdateError::Poisoned) => {
             return json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Lease store lock poisoned",
             )
             .into_response();
         }
-    };
-    leases.retain(|_, lease| lease.expires_at > Instant::now());
-    if leases.len() >= 128 && !leases.contains_key(&request.client) {
-        return worker_error(worker::WorkerError::Busy);
     }
-    if let Some(existing) = leases.get(&request.client) {
-        if request.version.is_some()
-            && existing.version.is_some()
-            && request.version <= existing.version
-        {
-            drop(leases);
-            state.refresh_document_leases();
-            return Json(serde_json::json!({"ok":true})).into_response();
-        }
-    }
-    if paths.is_empty() && request.version.is_none() {
-        leases.remove(&request.client);
-    } else {
-        leases.insert(
-            request.client,
-            DocumentLease {
-                version: request.version,
-                expires_at: Instant::now() + std::time::Duration::from_secs(90),
-                paths,
-            },
-        );
-    }
-    drop(leases);
     state.refresh_document_leases();
     Json(serde_json::json!({"ok":true})).into_response()
 }
@@ -1290,31 +1168,23 @@ async fn library_session(
     if !SESSION_CLIENT_RE.is_match(&query.client) || !repo_exists {
         return json_error(StatusCode::BAD_REQUEST, "Invalid library client").into_response();
     }
-    let (sender, receiver) = mpsc::channel(16);
-    if let Ok(mut clients) = state.library_clients.lock() {
-        clients.insert(
-            query.client.clone(),
-            LibraryClient {
-                repo: query.repo,
-                last_activity: Instant::now(),
-                sender: sender.clone(),
-            },
-        );
-    } else {
-        return json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Library session store unavailable",
-        )
-        .into_response();
-    }
+    let (receiver, guard) = match state
+        .runtime
+        .library_events
+        .subscribe(query.client, query.repo)
+    {
+        Ok(subscription) => subscription,
+        Err(ClientStateError::Poisoned) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Library session store unavailable",
+            )
+            .into_response();
+        }
+    };
     let connected = stream::once(async {
         Ok::<Event, Infallible>(Event::default().event("connected").data("{}"))
     });
-    let guard = LibraryClientGuard {
-        clients: state.library_clients.clone(),
-        id: query.client,
-        sender,
-    };
     let events = stream::unfold(
         (
             receiver,
@@ -1324,7 +1194,11 @@ async fn library_session(
         |(mut receiver, mut ticker, guard)| async move {
             tokio::select! {
                 value = receiver.recv() => match value {
-                    Some(value) => Some((Ok::<Event, Infallible>(Event::default().event("document-open").data(value.to_string())), (receiver, ticker, guard))),
+                    Some(value) => {
+                        let data = serde_json::to_string(&value)
+                            .expect("library event serialization is infallible");
+                        Some((Ok::<Event, Infallible>(Event::default().event("document-open").data(data)), (receiver, ticker, guard)))
+                    },
                     None => None,
                 },
                 _ = ticker.tick() => Some((Ok::<Event, Infallible>(Event::default().event("ping").data("{}")), (receiver, ticker, guard))),
@@ -1345,45 +1219,16 @@ async fn library_activity(
     headers: HeaderMap,
     Json(request): Json<ClientRequest>,
 ) -> Response {
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(StatusCode::FORBIDDEN, "Cross-origin request forbidden")
-                .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
+        return response;
     }
     let active = state
-        .library_clients
-        .lock()
-        .ok()
-        .and_then(|mut clients| {
-            let client = clients.get_mut(&request.client)?;
-            client.last_activity = Instant::now();
-            Some(())
-        })
-        .is_some();
+        .runtime
+        .library_events
+        .record_library_activity(&request.client, Instant::now());
     Json(serde_json::json!({"ok":active})).into_response()
 }
 
@@ -1393,34 +1238,11 @@ async fn library_open(
     headers: HeaderMap,
     Json(request): Json<LibraryOpenRequest>,
 ) -> Response {
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(StatusCode::FORBIDDEN, "Cross-origin request forbidden")
-                .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
+        return response;
     }
     if request.line.is_some_and(|line| line < 1)
         || request
@@ -1430,55 +1252,55 @@ async fn library_open(
     {
         return json_error(StatusCode::BAD_REQUEST, "Invalid source line or view").into_response();
     }
-    let repo = if let Some(file) = request.file.as_deref() {
-        if !Path::new(file).is_absolute() {
-            return json_error(StatusCode::BAD_REQUEST, "file must be an absolute path")
-                .into_response();
-        }
-        let Some(file) = Path::new(file).canonicalize().ok() else {
-            return json_error(StatusCode::NOT_FOUND, "File not found").into_response();
-        };
-        let mut repos = match state.repositories.list() {
-            Ok(repos) => repos,
-            Err(error) => {
-                return json_error(StatusCode::INTERNAL_SERVER_ERROR, error).into_response();
+    let (repo, canonical_file) = match request.file.as_deref() {
+        Some(file) => {
+            let requested_file = Path::new(file);
+            if !requested_file.is_absolute() {
+                return json_error(StatusCode::BAD_REQUEST, "file must be an absolute path")
+                    .into_response();
             }
-        };
-        repos.sort_by_key(|repo| std::cmp::Reverse(repo.root.as_os_str().len()));
-        match repos.into_iter().find(|repo| file.starts_with(&repo.root)) {
-            Some(repo) => repo,
-            None => {
+            let Ok(canonical_file) = requested_file.canonicalize() else {
+                return json_error(StatusCode::NOT_FOUND, "File not found").into_response();
+            };
+            let mut repos = match state.repositories.list() {
+                Ok(repos) => repos,
+                Err(error) => {
+                    return json_error(StatusCode::INTERNAL_SERVER_ERROR, error).into_response();
+                }
+            };
+            repos.sort_by_key(|repo| std::cmp::Reverse(repo.root.as_os_str().len()));
+            let Some(repo) = repos
+                .into_iter()
+                .find(|repo| canonical_file.starts_with(&repo.root))
+            else {
                 return json_error(
                     StatusCode::NOT_FOUND,
                     "File does not belong to a registered repository",
                 )
                 .into_response();
-            }
+            };
+            (repo, Some(canonical_file))
         }
-    } else {
-        match request
-            .repo
-            .as_deref()
-            .and_then(|value| state.repositories.find(value).ok().flatten())
-            .or_else(|| state.repository_for_uri(uri.path()))
-        {
-            Some(repo) => repo,
-            None => return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response(),
+        None => {
+            let repo = request
+                .repo
+                .as_deref()
+                .and_then(|value| state.repositories.find(value).ok().flatten())
+                .or_else(|| state.repository_for_uri(uri.path()));
+            let Some(repo) = repo else {
+                return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
+            };
+            (repo, None)
         }
     };
     let root = repo.root.clone();
-    let relative = if let Some(file) = request.file.as_deref() {
-        let canonical = match Path::new(file).canonicalize() {
-            Ok(file) => file,
-            Err(_) => return json_error(StatusCode::NOT_FOUND, "File not found").into_response(),
-        };
-        canonical
+    let relative = match canonical_file {
+        Some(file) => file
             .strip_prefix(&root)
-            .unwrap_or(&canonical)
+            .unwrap_or(&file)
             .to_string_lossy()
-            .replace('\\', "/")
-    } else {
-        request.path.unwrap_or_default()
+            .replace('\\', "/"),
+        None => request.path.unwrap_or_default(),
     };
     let file = match checked_library_path(&root, &relative, &state.data_directory) {
         Ok(file) => file,
@@ -1510,36 +1332,29 @@ async fn library_open(
             format!("?{}", query.join("&"))
         }
     );
-    let payload = serde_json::json!({"repo":repo_slug,"path":relative,"line":request.line,"view":request.view.or_else(|| request.line.map(|_| "raw".into())).unwrap_or_else(|| "preview".into()),"url":url});
-    let mut clients = match state.library_clients.lock() {
-        Ok(clients) => clients,
-        Err(_) => {
+    let payload = LibraryOpenEvent {
+        repo: repo_slug,
+        path: relative,
+        line: request.line,
+        view: request
+            .view
+            .or_else(|| request.line.map(|_| "raw".into()))
+            .unwrap_or_else(|| "preview".into()),
+        url: url.clone(),
+    };
+    match state
+        .runtime
+        .library_events
+        .dispatch_open(&payload, &repo.id, &repo.slug)
+    {
+        Ok(true) => return Json(serde_json::json!({"reused":true,"url":url})).into_response(),
+        Ok(false) => {}
+        Err(ClientStateError::Poisoned) => {
             return json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Library session store unavailable",
             )
             .into_response();
-        }
-    };
-    let mut candidates = clients
-        .iter()
-        .map(|(id, client)| {
-            (
-                id.clone(),
-                client.sender.clone(),
-                client.repo == repo.slug || client.repo == repo.id,
-                client.last_activity,
-            )
-        })
-        .collect::<Vec<_>>();
-    candidates.sort_by(|left, right| (right.2, right.3).cmp(&(left.2, left.3)));
-    for (id, sender, _, _) in candidates {
-        match sender.try_send(payload.clone()) {
-            Ok(()) => return Json(serde_json::json!({"reused":true,"url":url})).into_response(),
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                clients.remove(&id);
-            }
-            Err(mpsc::error::TrySendError::Full(_)) => {}
         }
     }
     let browser_url = format!("{}{url}", state.base_url);
@@ -1587,42 +1402,13 @@ async fn open_directory(
     Json(request): Json<OpenDirectoryRequest>,
 ) -> Response {
     let root = state.root_for_uri(uri.path());
-    if !headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/json"))
-    {
-        return json_error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response();
+    if let Err(response) = require_json_content_type(&headers) {
+        return response;
     }
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| matches!(*value, "http" | "https"))
-            .unwrap_or("http");
-        if origin != format!("{scheme}://{host}") {
-            return json_error(StatusCode::FORBIDDEN, "Cross-origin request forbidden")
-                .into_response();
-        }
+    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
+        return response;
     }
-    let requested = match request.path {
-        None => String::new(),
-        Some(serde_json::Value::String(path)) => path,
-        Some(_) => {
-            return json_error(StatusCode::BAD_REQUEST, "Invalid directory path").into_response();
-        }
-    };
+    let requested = request.path.unwrap_or_default();
     if requested.contains('\0') {
         return json_error(StatusCode::BAD_REQUEST, "Invalid directory path").into_response();
     }
@@ -1722,7 +1508,7 @@ async fn search(
     Query(params): Query<search::SearchParams>,
 ) -> Response {
     let root = state.root_for_uri(uri.path());
-    let service = state.search_for_root(&root);
+    let service = state.search.clone();
     let bookmarks = state
         .repository_for_uri(uri.path())
         .map(|repo| {
@@ -1744,208 +1530,6 @@ async fn search(
             json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
         }
     }
-}
-
-async fn search_repositories(
-    State(state): State<AppState>,
-    Query(query): Query<CrossSearchQuery>,
-) -> Response {
-    let selected = match query.repo.as_deref().unwrap_or("") {
-        "*" => match state.repositories.list() {
-            Ok(repos) => repos,
-            Err(error) => {
-                return json_error(StatusCode::INTERNAL_SERVER_ERROR, error).into_response();
-            }
-        },
-        "" => {
-            let value = state.default_repository();
-            value.into_iter().collect()
-        }
-        value => match state.repositories.find(value) {
-            Ok(Some(repo)) => vec![repo],
-            Ok(None) => return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response(),
-            Err(error) => {
-                return json_error(StatusCode::INTERNAL_SERVER_ERROR, error).into_response();
-            }
-        },
-    };
-    if selected.is_empty() {
-        return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
-    }
-    let key = serde_json::to_string(&(
-        query.q.as_str(),
-        query.repo.as_deref(),
-        query.current_repo.as_deref(),
-        query.current_file.as_deref(),
-        query.lang.as_deref(),
-        query.language.as_deref(),
-        query.path.as_deref(),
-        query.scope.as_deref(),
-    ))
-    .unwrap_or_default();
-    let snapshot_id = query.search_id.clone().unwrap_or_default();
-    let existing = if snapshot_id.is_empty() {
-        None
-    } else {
-        match state.cross_search.lock() {
-            Ok(mut cache) => {
-                cache.retain(|_, item| item.expires_at > Instant::now());
-                match cache.get(&snapshot_id) {
-                    Some(item) if item.key == key => Some((
-                        item.files.clone(),
-                        item.facets.clone(),
-                        item.truncated,
-                        item.match_count,
-                    )),
-                    _ => {
-                        return json_error(
-                            StatusCode::BAD_REQUEST,
-                            "Search expired. Run the search again.",
-                        )
-                        .into_response();
-                    }
-                }
-            }
-            Err(_) => {
-                return json_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Search cache lock poisoned",
-                )
-                .into_response();
-            }
-        }
-    };
-    let (files, facets, truncated, match_count, search_id) = if let Some((
-        files,
-        facets,
-        truncated,
-        matches,
-    )) = existing
-    {
-        (files, facets, truncated, matches, snapshot_id)
-    } else {
-        let services = selected
-            .into_iter()
-            .map(|repo| (repo.clone(), state.search_for_root(&repo.root)))
-            .collect::<Vec<_>>();
-        let mut request = query.clone();
-        let current_repo = query
-            .current_repo
-            .as_deref()
-            .and_then(|value| state.repositories.find(value).ok().flatten())
-            .or_else(|| {
-                state
-                    .repositories
-                    .list()
-                    .ok()
-                    .and_then(|repos| repos.into_iter().find(|repo| repo.root == *state.root))
-            });
-        request.current_repo = current_repo.map(|repo| repo.id);
-        let private = state.data_directory.clone();
-        let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
-            let mut files = Vec::new();
-            let mut language_counts = HashMap::<String, usize>::new();
-            let mut path_counts = HashMap::<String, usize>::new();
-            let mut truncated = false;
-            let mut cached_bytes = 0usize;
-            let mut match_count = 0usize;
-            for (repo, service) in services {
-                let mut search_id = None;
-                let mut offset = 0;
-                let mut first_page = true;
-                loop {
-                    let params = search::SearchParams { q: request.q.clone(), scope: request.scope.clone(), current_file: request.current_file.clone(), search_id: search_id.clone(), offset: Some(offset), lang: request.lang.clone(), language: request.language.clone(), path: request.path.clone() };
-                    let bookmarks = repo.bookmarks.iter().map(|item| item.path.clone()).collect::<Vec<_>>();
-                    let page = service.search_with_private(&repo.root, params, Some(&bookmarks), Some(&private))?;
-                    search_id = page.get("searchId").and_then(|v| v.as_str()).map(str::to_owned);
-                    truncated |= page.get("truncated").and_then(|v| v.as_bool()).unwrap_or(false);
-                    if first_page { match_count += page.get("matchCount").and_then(|v|v.as_u64()).unwrap_or(0) as usize; }
-                    if let Some(items) = page.get("files").and_then(|v| v.as_array()) {
-                        for item in items {
-                            let mut item = item.clone();
-                            if let Some(object) = item.as_object_mut() { object.insert("repoId".into(), repo.id.clone().into()); object.insert("repoName".into(), repo.name.clone().into()); }
-                            let size = item.to_string().len();
-                            cached_bytes = cached_bytes.saturating_add(size);
-                            if cached_bytes > 8 * 1024 * 1024 { return Err("Search result exceeds cache budget. Try a more specific query.".into()); }
-                            files.push(item);
-                        }
-                    }
-                    for (field, counts) in [("languages", &mut language_counts), ("paths", &mut path_counts)] {
-                        if !first_page { continue; }
-                        if let Some(items) = page.get("facets").and_then(|v| v.get(field)).and_then(|v| v.as_array()) {
-                            for item in items { if let (Some(value), Some(count)) = (item.get("value").and_then(|v|v.as_str()), item.get("count").and_then(|v|v.as_u64())) { *counts.entry(value.to_owned()).or_default() += count as usize; } }
-                        }
-                    }
-                    let Some(next) = page.get("nextOffset").and_then(|v| v.as_u64()) else { break; };
-                    offset = next as usize;
-                    first_page = false;
-                }
-            }
-            let current_repo = request.current_repo.as_deref().unwrap_or_default();
-            let current_file = request.current_file.as_deref().unwrap_or_default();
-            files.sort_by(|a,b| {
-                let preferred = |item: &serde_json::Value| item.get("repoId").and_then(|v|v.as_str()) == Some(current_repo) && item.get("path").and_then(|v|v.as_str()) == Some(current_file);
-                (!preferred(a)).cmp(&(!preferred(b))).then_with(|| a["repoName"].as_str().cmp(&b["repoName"].as_str())).then_with(|| a["path"].as_str().cmp(&b["path"].as_str()))
-            });
-            let to_facets = |counts: HashMap<String,usize>| { let mut values = counts.into_iter().collect::<Vec<_>>(); values.sort_by(|a,b| b.1.cmp(&a.1).then_with(||a.0.cmp(&b.0))); serde_json::Value::Array(values.into_iter().map(|(value,count)|serde_json::json!({"value":value,"count":count})).collect()) };
-            Ok((files, serde_json::json!({"languages":to_facets(language_counts),"paths":to_facets(path_counts)}), truncated, match_count))
-        }).await;
-        let (files, facets, truncated, match_count) = match result {
-            Ok(Ok(value)) => value,
-            Ok(Err(error)) => return json_error(StatusCode::BAD_REQUEST, error).into_response(),
-            Err(error) => {
-                return json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
-                    .into_response();
-            }
-        };
-        let files = Arc::new(files);
-        let facets = Arc::new(facets);
-        let id = format!(
-            "{}-{}",
-            std::process::id(),
-            NEXT_CROSS_SEARCH_ID.fetch_add(1, Ordering::Relaxed)
-        );
-        if let Ok(mut cache) = state.cross_search.lock() {
-            cache.retain(|_, item| item.expires_at > Instant::now());
-            let bytes = files
-                .iter()
-                .map(|value| value.to_string().len())
-                .sum::<usize>()
-                + facets.to_string().len();
-            while cache.values().map(|item| item.bytes).sum::<usize>() + bytes > 8 * 1024 * 1024 {
-                let Some(oldest) = cache
-                    .iter()
-                    .min_by_key(|(_, item)| item.expires_at)
-                    .map(|(key, _)| key.clone())
-                else {
-                    break;
-                };
-                cache.remove(&oldest);
-            }
-            cache.insert(
-                id.clone(),
-                CrossSearchSnapshot {
-                    key,
-                    expires_at: Instant::now() + std::time::Duration::from_secs(300),
-                    files: files.clone(),
-                    facets: facets.clone(),
-                    truncated,
-                    match_count,
-                    bytes,
-                },
-            );
-        }
-        (files, facets, truncated, match_count, id)
-    };
-    let offset = query.offset.unwrap_or(0);
-    let page = files
-        .iter()
-        .skip(offset)
-        .take(20)
-        .cloned()
-        .collect::<Vec<_>>();
-    let next = (offset + page.len() < files.len()).then_some(offset + page.len());
-    Json(serde_json::json!({"searchId":search_id,"total":files.len(),"files":page,"truncated":truncated,"matchCount":match_count,"nextOffset":next,"facets":facets.as_ref()})).into_response()
 }
 
 fn read_document_source(path: &Path) -> Result<Vec<u8>, (StatusCode, String)> {
@@ -1977,6 +1561,103 @@ fn read_document_source(path: &Path) -> Result<Vec<u8>, (StatusCode, String)> {
     Ok(bytes)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentResponse {
+    path: String,
+    absolute_path: String,
+    name: String,
+    #[serde(flatten)]
+    content: DocumentContent,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum DocumentContent {
+    Html {
+        size: u64,
+        modified: String,
+        line_count: usize,
+        source: String,
+        url: String,
+    },
+    Image {
+        size: u64,
+        modified: String,
+        mime: &'static str,
+        format: String,
+        url: String,
+    },
+    Pdf {
+        size: u64,
+        modified: String,
+        revision: String,
+        outline: Vec<pdf::OutlineItem>,
+        pages: Vec<PdfDocumentPage>,
+    },
+    Binary {
+        size: u64,
+        modified: String,
+        mime: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
+        url: String,
+    },
+    Markdown {
+        size: usize,
+        modified: String,
+        line_count: usize,
+        source: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        html: Option<String>,
+    },
+    Typst {
+        size: usize,
+        modified: String,
+        line_count: usize,
+        source: String,
+        outline: Vec<typst::OutlineItem>,
+        anchors: Vec<typst::SourceAnchor>,
+        pages: Vec<TypstDocumentPage>,
+        compile: Option<TypstCompilation>,
+    },
+    Text {
+        line_count: usize,
+        source: String,
+    },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfDocumentPage {
+    url: String,
+    width: f64,
+    height: f64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TypstDocumentPage {
+    url: String,
+    width: f64,
+    height: f64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TypstCompilation {
+    id: Option<String>,
+    status: CompileStatus,
+    diagnostics: Vec<typst::Diagnostic>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+enum CompileStatus {
+    Success,
+    Failed,
+}
+
 async fn document(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -1984,8 +1665,12 @@ async fn document(
 ) -> impl IntoResponse {
     let root = state.root_for_uri(uri.path());
     let compile_root = root.clone();
-    let preview = query.view.as_deref() != Some("raw");
-    let theme = query.theme.clone();
+    let PathQuery {
+        path: requested_path,
+        view,
+        theme,
+    } = query;
+    let compile = view.as_deref() != Some("raw");
     let pdf_renderer = state.rendering.pdf.clone();
     let private = state.data_directory.clone();
     let api_prefix = uri
@@ -1994,292 +1679,264 @@ async fn document(
         .unwrap_or("")
         .to_owned();
     let compile_prefix = api_prefix.clone();
-    let result = state.document_workers.run_cancellable(0, move |cancellation| -> Result<serde_json::Value, (StatusCode, String)> {
-        let path = checked_library_path(&root, &query.path, &private)?;
-        if !path.is_file() { return Err((StatusCode::BAD_REQUEST, "Not a file".into())); }
-        let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-        let modified = modified_rfc3339(&path);
-        let extension = path.extension().and_then(|extension| extension.to_str())
-            .unwrap_or_default().to_ascii_lowercase();
-        let file_size = path.metadata().map(|metadata| metadata.len()).unwrap_or_default();
-        let detected = file_kind::from_path(&path)
-            .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-        let mime = detected.mime;
-        if mime == "text/html" && !detected.binary {
-            let source = String::from_utf8(read_document_source(&path)?).map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-            return Ok(serde_json::json!({"type":"html", "path":query.path,
-                "absolutePath":client_path(&path), "name":name, "size":file_size, "modified":modified,
-                "lineCount":source.split('\n').count(), "source":source,
-                "url":format!("{api_prefix}/api/html?path={}", encode_query_component(&query.path))}));
-        }
-        if mime.starts_with("image/") {
-            return Ok(serde_json::json!({"type":"image", "path":query.path,
-                "absolutePath":client_path(&path), "name":name, "size":file_size, "modified":modified,
-                "mime":mime, "format":detected.format, "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
-        }
-        if mime == "application/pdf" {
-            let revision = pdf::revision(&path)
-                .map_err(|error| (pdf_error_status(&error), error.to_string()))?;
-            let info = pdf_renderer.document_cancellable(&path, &revision, &cancellation)
-                .map_err(|error| (pdf_error_status(&error), error.to_string()))?;
-            let pages = info.pages.iter().enumerate().map(|(index, page)| serde_json::json!({
-                "url":format!("{api_prefix}/api/pdf/page?path={}&page={}",
-                    encode_query_component(&query.path), index + 1),
-                "width":page.width, "height":page.height
-            })).collect::<Vec<_>>();
-            return Ok(serde_json::json!({"type":"pdf", "path":query.path,
-                "absolutePath":client_path(&path), "name":name, "size":path.metadata().map(|meta| meta.len()).unwrap_or_default(),
-                "modified":modified, "revision":revision, "outline":info.outline, "pages":pages}));
-        }
-        if detected.binary {
-            return Ok(serde_json::json!({"type":"binary", "path":query.path,
-                "absolutePath":client_path(&path), "name":name, "size":file_size, "modified":modified,
-                "mime":mime, "format":detected.format, "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
-        }
-        let bytes = read_document_source(&path)?;
-        if !file_kind::is_text(&bytes) {
-            return Ok(serde_json::json!({"type":"binary", "path":query.path,
-                "absolutePath":client_path(&path), "name":name, "size":file_size, "modified":modified,
-                "mime":"application/octet-stream", "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
-        }
-        let source = String::from_utf8(bytes).expect("validated UTF-8 document");
-        let line_count = if source.is_empty() { 0 } else { source.lines().count() };
-        if matches!(extension.as_str(), "md" | "markdown") {
-            if query.view.as_deref() == Some("raw") {
-                return Ok(serde_json::json!({"type":"markdown", "path":query.path,
-                    "absolutePath":client_path(&path), "name":name, "size":source.len(),
-                    "modified":modified, "lineCount":line_count, "source":source}));
-            }
-            let html = markdown::render_markdown(&source, true)
-                .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?;
-            return Ok(serde_json::json!({"type":"markdown", "path":query.path,
-                "absolutePath":client_path(&path), "name":name, "size":source.len(),
-                "modified":modified, "lineCount":line_count, "source":source, "html":html}));
-        }
-        if extension == "typ" {
-            return Ok(serde_json::json!({"type":"typst", "path":query.path,
-                "absolutePath":client_path(&path), "name":name, "size":source.len(), "modified":modified,
-                "lineCount":line_count, "source":source, "outline":[], "anchors":[], "pages":[], "compile":null}));
-        }
-        Ok(serde_json::json!({"type":"text", "path":query.path, "absolutePath":client_path(&path),
-            "name":name, "lineCount":line_count, "source":source}))
-    }).await;
+    let result = state
+        .document_workers
+        .run_cancellable(0, move |cancellation| {
+            load_document(
+                &root,
+                &requested_path,
+                view.as_deref(),
+                &private,
+                &api_prefix,
+                &pdf_renderer,
+                &cancellation,
+            )
+        })
+        .await;
+
     match result {
-        Ok(Ok(value)) if preview && value["type"] == "typst" => {
-            match compile_document(&state, &compile_root, value, compile_prefix, theme).await {
-                Ok(value) => Json(value).into_response(),
-                Err(error) => worker_error(error),
+        Ok(Ok(response)) => {
+            let should_compile =
+                compile && matches!(&response.content, DocumentContent::Typst { .. });
+            let response = if should_compile {
+                compile_document(&state, &compile_root, response, compile_prefix, theme)
+                    .await
+                    .map_err(worker_error)
+            } else {
+                Ok(response)
+            };
+            match response {
+                Ok(response) => Json(response).into_response(),
+                Err(error) => error,
             }
         }
-        Ok(Ok(value)) => Json(value).into_response(),
         Ok(Err((status, error))) => json_error(status, error).into_response(),
         Err(error) => worker_error(error),
     }
+}
+
+fn load_document(
+    root: &Path,
+    requested_path: &str,
+    view: Option<&str>,
+    private: &Path,
+    api_prefix: &str,
+    pdf_renderer: &pdf::NativePdfRenderer,
+    cancellation: &resources::Cancellation,
+) -> Result<DocumentResponse, (StatusCode, String)> {
+    let path = checked_library_path(&root, &requested_path, &private)?;
+    if !path.is_file() {
+        return Err((StatusCode::BAD_REQUEST, "Not a file".into()));
+    }
+    let metadata = path
+        .metadata()
+        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+    let size = metadata.len();
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let absolute_path = client_path(&path);
+    let modified = modified_rfc3339(&path);
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let detected = file_kind::from_path(&path)
+        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+    let mime = detected.mime;
+
+    let response = if mime == "text/html" && !detected.binary {
+        let source = String::from_utf8(read_document_source(&path)?)
+            .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+        DocumentContent::Html {
+            size,
+            modified,
+            line_count: source.split('\n').count(),
+            source,
+            url: format!(
+                "{api_prefix}/api/html?path={}",
+                encode_query_component(&requested_path)
+            ),
+        }
+    } else if mime.starts_with("image/") {
+        DocumentContent::Image {
+            size,
+            modified,
+            mime,
+            format: detected.format,
+            url: format!(
+                "{api_prefix}/api/asset?path={}",
+                encode_query_component(&requested_path)
+            ),
+        }
+    } else if mime == "application/pdf" {
+        let revision =
+            pdf::revision(&path).map_err(|error| (pdf_error_status(&error), error.to_string()))?;
+        let info = pdf_renderer
+            .document_cancellable(&path, &revision, &cancellation)
+            .map_err(|error| (pdf_error_status(&error), error.to_string()))?;
+        let pages = info
+            .pages
+            .iter()
+            .enumerate()
+            .map(|(index, page)| PdfDocumentPage {
+                url: format!(
+                    "{api_prefix}/api/pdf/page?path={}&page={}",
+                    encode_query_component(&requested_path),
+                    index + 1
+                ),
+                width: page.width,
+                height: page.height,
+            })
+            .collect();
+        DocumentContent::Pdf {
+            size,
+            modified,
+            revision,
+            outline: info.outline,
+            pages,
+        }
+    } else if detected.binary {
+        DocumentContent::Binary {
+            size,
+            modified,
+            mime,
+            format: Some(detected.format),
+            url: format!(
+                "{api_prefix}/api/asset?path={}",
+                encode_query_component(&requested_path)
+            ),
+        }
+    } else {
+        let bytes = read_document_source(&path)?;
+        if !file_kind::is_text(&bytes) {
+            DocumentContent::Binary {
+                size,
+                modified,
+                mime: "application/octet-stream",
+                format: None,
+                url: format!(
+                    "{api_prefix}/api/asset?path={}",
+                    encode_query_component(&requested_path)
+                ),
+            }
+        } else {
+            let source = String::from_utf8(bytes).expect("validated UTF-8 document");
+            let line_count = source.lines().count();
+            match extension.as_str() {
+                "md" | "markdown" => {
+                    let html = if view == Some("raw") {
+                        None
+                    } else {
+                        Some(
+                            markdown::render_markdown(&source, true)
+                                .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?,
+                        )
+                    };
+                    DocumentContent::Markdown {
+                        size: source.len(),
+                        modified,
+                        line_count,
+                        source,
+                        html,
+                    }
+                }
+                "typ" => DocumentContent::Typst {
+                    size: source.len(),
+                    modified,
+                    line_count,
+                    source,
+                    outline: Vec::new(),
+                    anchors: Vec::new(),
+                    pages: Vec::new(),
+                    compile: None,
+                },
+                _ => DocumentContent::Text { line_count, source },
+            }
+        }
+    };
+    Ok(DocumentResponse {
+        path: requested_path.to_owned(),
+        absolute_path,
+        name,
+        content: response,
+    })
 }
 
 async fn compile_document(
     state: &AppState,
     root: &Path,
-    mut value: serde_json::Value,
+    mut response: DocumentResponse,
     api_prefix: String,
     theme: Option<String>,
-) -> Result<serde_json::Value, worker::WorkerError> {
+) -> Result<DocumentResponse, worker::WorkerError> {
+    let DocumentContent::Typst {
+        source,
+        outline,
+        anchors,
+        pages,
+        compile,
+        ..
+    } = &mut response.content
+    else {
+        return Ok(response);
+    };
     let request = typst::CompileRequest {
-        path: value["absolutePath"]
-            .as_str()
-            .unwrap_or_default()
-            .to_owned(),
-        source: value["source"].as_str().unwrap_or_default().to_owned(),
+        path: response.absolute_path.clone(),
+        source: source.clone(),
         theme,
     };
     match state.rendering.compile(root, request).await? {
         Ok(compiled) => {
-            value["outline"] = serde_json::json!(compiled.outline);
-            value["anchors"] = serde_json::json!(compiled.anchors);
-            value["pages"] = serde_json::json!(compiled.pages.iter().enumerate().map(|(index, page)| serde_json::json!({
-                    "url":format!("{api_prefix}/api/typst/page?id={}&page={}", compiled.id, index + 1),
-                    "width":page.width, "height":page.height,
-                })).collect::<Vec<_>>());
-            value["compile"] = serde_json::json!({"id":compiled.id, "status":"success", "diagnostics":compiled.diagnostics});
+            *outline = compiled.outline;
+            *anchors = compiled.anchors;
+            *pages = compiled
+                .pages
+                .iter()
+                .enumerate()
+                .map(|(index, page)| TypstDocumentPage {
+                    url: format!(
+                        "{api_prefix}/api/typst/page?id={}&page={}",
+                        compiled.id,
+                        index + 1
+                    ),
+                    width: page.width,
+                    height: page.height,
+                })
+                .collect();
+            *compile = Some(TypstCompilation {
+                id: Some(compiled.id),
+                status: CompileStatus::Success,
+                diagnostics: compiled.diagnostics,
+            });
         }
         Err(typst::CompileError::Busy) => return Err(worker::WorkerError::Busy),
         Err(typst::CompileError::Cancelled) => return Err(worker::WorkerError::Stopped),
+        Err(typst::CompileError::Diagnostics(diagnostics)) => {
+            *compile = Some(TypstCompilation {
+                id: None,
+                status: CompileStatus::Failed,
+                diagnostics,
+            });
+        }
         Err(typst::CompileError::Failed(error)) => {
-            tracing::warn!(path = %value["path"], error = %error, "Typst compilation failed");
-            let diagnostics = serde_json::from_str::<Vec<typst::Diagnostic>>(&error)
-                .unwrap_or_else(|_| {
-                    vec![typst::Diagnostic {
-                        file: value["path"].as_str().unwrap_or_default().to_owned(),
-                        severity: "error".into(),
-                        message: error,
-                        range: None,
-                    }]
-                });
-            value["compile"] =
-                serde_json::json!({"id":null, "status":"failed", "diagnostics":diagnostics});
+            tracing::warn!(path = %response.path, error = %error, "Typst compilation failed");
+            *compile = Some(TypstCompilation {
+                id: None,
+                status: CompileStatus::Failed,
+                diagnostics: vec![typst::Diagnostic {
+                    file: response.path.clone(),
+                    severity: "error".into(),
+                    message: error,
+                    range: None,
+                }],
+            });
         }
     }
-    Ok(value)
-}
-
-async fn html_document(
-    State(state): State<AppState>,
-    OriginalUri(original_uri): OriginalUri,
-    Query(query): Query<PathQuery>,
-    headers: HeaderMap,
-) -> Response {
-    let uri = original_uri;
-    let root = state.root_for_uri(uri.path());
-    let private = state.data_directory.clone();
-    let token = state.html_token.clone();
-    let api_prefix = uri
-        .path()
-        .strip_suffix("/api/html")
-        .unwrap_or("")
-        .to_owned();
-    let host = headers
-        .get(axum::http::header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("localhost");
-    let scheme = headers
-        .get("x-forwarded-proto")
-        .and_then(|value| value.to_str().ok())
-        .filter(|value| matches!(*value, "http" | "https"))
-        .unwrap_or("http");
-    let origin = format!("{scheme}://{host}");
-    if !HTML_HOST_RE.is_match(host) {
-        return json_error(StatusCode::BAD_REQUEST, "Invalid host header").into_response();
-    }
-    let resource_origin = origin.clone();
-    let resource_api_prefix = api_prefix.clone();
-    let resource_token = token.clone();
-    let document_url = format!(
-        "{origin}{api_prefix}/api/html?path={}",
-        encode_query_component(&query.path)
-    );
-    let result = state
-        .document_workers
-        .run(move || -> Result<String, (StatusCode, String)> {
-            let path = checked_library_path(&root, &query.path, &private)?;
-            if !matches!(
-                path.extension()
-                    .and_then(|extension| extension.to_str())
-                    .unwrap_or_default()
-                    .to_ascii_lowercase()
-                    .as_str(),
-                "html" | "htm"
-            ) {
-                return Err((StatusCode::BAD_REQUEST, "Not an HTML document".into()));
-            }
-            let detected = file_kind::from_path(&path)
-                .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-            if detected.mime != "text/html" || detected.binary {
-                return Err((StatusCode::BAD_REQUEST, "Not an HTML document".into()));
-            }
-            let source = String::from_utf8(read_document_source(&path)?)
-                .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-            let relative_base = html_resources_base(&api_prefix, &token, &query.path);
-            let base = format!("{origin}{relative_base}");
-            Ok(html_preview(&source, &base, &document_url))
-        })
-        .await;
-    match result {
-        Ok(Ok(body)) => {
-            let resource_root = format!(
-                "{resource_origin}{resource_api_prefix}/api/html-resource/{resource_token}/"
-            );
-            let csp = format!(
-                "default-src 'none'; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; script-src 'unsafe-inline' {resource_root}; style-src 'unsafe-inline' {resource_root}; img-src data: blob: {resource_root}; font-src data: {resource_root}; media-src {resource_root}; base-uri {resource_root}; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'"
-            );
-            let mut response = body.into_response();
-            response.headers_mut().insert(
-                axum::http::header::CONTENT_TYPE,
-                "text/html; charset=utf-8".parse().unwrap(),
-            );
-            response.headers_mut().insert(
-                axum::http::header::CACHE_CONTROL,
-                "no-store".parse().unwrap(),
-            );
-            response
-                .headers_mut()
-                .insert("content-security-policy", csp.parse().unwrap());
-            response
-                .headers_mut()
-                .insert("x-content-type-options", "nosniff".parse().unwrap());
-            response
-                .headers_mut()
-                .insert("referrer-policy", "no-referrer".parse().unwrap());
-            response
-                .headers_mut()
-                .insert("x-dns-prefetch-control", "off".parse().unwrap());
-            response.headers_mut().insert(
-                "permissions-policy",
-                "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=()"
-                    .parse()
-                    .unwrap(),
-            );
-            response
-        }
-        Ok(Err((status, error))) => json_error(status, error).into_response(),
-        Err(error) => worker_error(error),
-    }
-}
-
-async fn html_resource(
-    State(state): State<AppState>,
-    OriginalUri(uri): OriginalUri,
-    AxumPath(params): AxumPath<HashMap<String, String>>,
-) -> Response {
-    let token = params.get("token").map(String::as_str).unwrap_or_default();
-    let path = params.get("path").map(String::as_str).unwrap_or_default();
-    if token != *state.html_token {
-        return json_error(StatusCode::FORBIDDEN, "Invalid HTML resource capability")
-            .into_response();
-    }
-    let root = state.root_for_uri(uri.path());
-    let private = state.data_directory.clone();
-    let file_path = match checked_library_path(&root, &path, &private) {
-        Ok(path) => path,
-        Err((status, message)) => return json_error(status, message).into_response(),
-    };
-    let extension = file_path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default();
-    if !HTML_RESOURCE_EXTENSION_RE.is_match(extension) {
-        return json_error(StatusCode::FORBIDDEN, "Unsupported HTML resource").into_response();
-    }
-    let mut file = match tokio::fs::File::open(&file_path).await {
-        Ok(file) => file,
-        Err(error) => return json_error(StatusCode::NOT_FOUND, error.to_string()).into_response(),
-    };
-    let metadata = match file.metadata().await {
-        Ok(metadata) if metadata.is_file() => metadata,
-        Ok(_) => return json_error(StatusCode::NOT_FOUND, "Resource not found").into_response(),
-        Err(error) => return json_error(StatusCode::NOT_FOUND, error.to_string()).into_response(),
-    };
-    let mime = match media_type(&file_path, &mut file).await {
-        Ok(mime) => mime,
-        Err(error) => {
-            return json_error(StatusCode::BAD_REQUEST, error.to_string()).into_response();
-        }
-    };
-    let mut response = Response::new(Body::from_stream(stream_file(file)));
-    let headers = response.headers_mut();
-    headers.insert(axum::http::header::CONTENT_TYPE, mime.parse().unwrap());
-    headers.insert(axum::http::header::CONTENT_LENGTH, metadata.len().into());
-    headers.insert(
-        axum::http::header::CACHE_CONTROL,
-        "no-store".parse().unwrap(),
-    );
-    headers.insert("x-content-type-options", "nosniff".parse().unwrap());
-    headers.insert("access-control-allow-origin", "*".parse().unwrap());
-    headers.insert(
-        "content-security-policy",
-        "sandbox; default-src 'none'".parse().unwrap(),
-    );
-    headers.insert("referrer-policy", "no-referrer".parse().unwrap());
-    response
+    Ok(response)
 }
 
 async fn asset(
@@ -2339,11 +1996,10 @@ async fn library_events(State(state): State<AppState>, OriginalUri(uri): Origina
             }
         }
     }
-    let mut signatures = Vec::with_capacity(assets.len() + 1);
-    signatures.push(file_signature(&document));
-    signatures.extend(assets.iter().map(|(path, _)| file_signature(path)));
     let modified = modified_rfc3339(&document);
-    let receiver = state.subscribe_file_events(document.clone(), assets, signatures);
+    let receiver = state
+        .runtime
+        .subscribe_file_events(document.clone(), assets);
     let events: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
         Box::pin(stream::unfold(
             (
@@ -2492,14 +2148,14 @@ async fn pdf_page(
     OriginalUri(uri): OriginalUri,
     Query(query): Query<PdfPageQuery>,
 ) -> Response {
-    let requested_width = query.width.unwrap_or(1800.0);
-    if !requested_width.is_finite() || requested_width <= 0.0 {
+    if query
+        .width
+        .is_some_and(|width| !width.is_finite() || width <= 0.0)
+    {
         return json_error(StatusCode::BAD_REQUEST, "Invalid page width").into_response();
     }
     // PDF pages are served as resolution-independent SVG in the native backend.
-    // Keep the frontend's width contract (450px steps, bounded to 3600px) so
-    // invalid and extreme requests behave like the former raster endpoint.
-    let _target_width = (requested_width / 450.0).ceil().clamp(1.0, 8.0) * 450.0;
+    // Keep rejecting invalid width hints while allowing the browser to size the SVG.
     let root = state.root_for_uri(uri.path());
     let private = state.data_directory.clone();
     let page_number = query.page;
@@ -2742,12 +2398,12 @@ fn build_router(state: AppState) -> Router {
         .route("/git/status", get(git_status))
         .route("/git/diff", get(git_diff))
         .route("/search", get(search))
-        .route("/search-repos", get(search_repositories))
+        .route("/search-repos", get(cross_search::search_repositories))
         .route("/document", get(document))
         .route("/library/events", get(library_events))
         .route("/library/tree-events", get(tree_events))
-        .route("/html", get(html_document))
-        .route("/html-resource/{token}/{*path}", get(html_resource))
+        .route("/html", get(html::html_document))
+        .route("/html-resource/{token}/{*path}", get(html::html_resource))
         .route("/asset", get(asset))
         .route("/pdf/page", get(pdf_page))
         .route("/typst/page", get(typst_page))
@@ -2860,16 +2516,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         root: Arc::new(root),
         service_root: Arc::new(service_root),
         dist: Arc::new(web_dist),
-        html_token: Arc::new(new_capability_token()?),
+        html: html::Service::new()?,
         search: Arc::new(search::SearchService::default()),
         data_directory: Arc::new(data_directory.clone()),
-        leases: Arc::new(Mutex::new(HashMap::new())),
-        library_clients: Arc::new(Mutex::new(HashMap::new())),
         trees: tree::Service::default(),
-        file_watchers: Arc::new(Mutex::new(HashMap::new())),
         repositories,
         reading: Arc::new(reading::ReadingStore::new(data_directory.clone())),
-        cross_search: Arc::new(Mutex::new(HashMap::new())),
+        runtime: Arc::new(RuntimeState::default()),
+        cross_search: Arc::new(cross_search::Service::default()),
         base_url,
     };
     let lease_state = state.clone();
@@ -2917,770 +2571,5 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn shutdown_ends_all_sse_streams_and_releases_session_registration() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (state, slug) = test_state(&temporary);
-        let app = build_router(state.clone());
-        let paths = [
-            format!("/{slug}/api/library/events?path=note.md"),
-            format!("/{slug}/api/library/tree-events"),
-            format!("/api/library/session?client=shutdown-client-1234&repo={slug}"),
-        ];
-        let mut streams = Vec::new();
-        for path in paths {
-            let response = request(&app, "GET", &path, None).await;
-            assert_eq!(response.status(), StatusCode::OK);
-            let mut stream = response.into_body().into_data_stream();
-            tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
-                .await
-                .unwrap()
-                .unwrap()
-                .unwrap();
-            streams.push(stream);
-        }
-        state.shutdown.send_replace(true);
-        for mut stream in streams {
-            assert!(
-                tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
-                    .await
-                    .unwrap()
-                    .is_none()
-            );
-        }
-        assert!(state.library_clients.lock().unwrap().is_empty());
-        state.document_workers.shutdown().await;
-        state.rendering.close().await;
-    }
-    use axum::{
-        body::{Body, to_bytes},
-        http::Request as HttpRequest,
-    };
-    use futures_util::TryStreamExt;
-    use tower::ServiceExt;
-
-    async fn request(
-        app: &Router,
-        method: &str,
-        uri: &str,
-        body: Option<serde_json::Value>,
-    ) -> Response {
-        let mut builder = HttpRequest::builder().method(method).uri(uri);
-        let body = match body {
-            Some(value) => {
-                builder = builder.header("content-type", "application/json");
-                Body::from(value.to_string())
-            }
-            None => Body::empty(),
-        };
-        app.clone()
-            .oneshot(builder.body(body).unwrap())
-            .await
-            .unwrap()
-    }
-
-    async fn json(response: Response) -> serde_json::Value {
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        serde_json::from_slice(&bytes).unwrap()
-    }
-
-    fn test_state(temporary: &tempfile::TempDir) -> (AppState, String) {
-        let root = temporary.path().join("notes");
-        let data = temporary.path().join("data");
-        let web = temporary.path().join("dist/web");
-        let assets = temporary.path().join("dist/assets");
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::create_dir_all(&web).unwrap();
-        std::fs::create_dir_all(&assets).unwrap();
-        std::fs::write(root.join("note.md"), "# Hello Rust\n\nneedle in markdown\n").unwrap();
-        std::fs::write(
-            root.join("sample.html"),
-            "<html><head><base href=\"https://invalid.example/\"></head><body><script>window.ready=true</script><iframe src=\"https://invalid.example\"></iframe><link rel=\"stylesheet\" href=\"theme.css\"><a href=\"#section\">Jump</a></body></html>",
-        )
-        .unwrap();
-        std::fs::write(root.join("theme.css"), "body { color: rebeccapurple; }").unwrap();
-        std::fs::write(
-            web.join("index.html"),
-            "<!doctype html><main>library app</main>",
-        )
-        .unwrap();
-        std::fs::write(assets.join("app.js"), "console.log('loaded')").unwrap();
-        let repositories =
-            Arc::new(repositories::RepositoryStore::open(&data, Some(&root)).unwrap());
-        let repo = repositories.list().unwrap().remove(0);
-        (
-            AppState {
-                root: Arc::new(root.clone()),
-                service_root: Arc::new(root.clone()),
-                dist: Arc::new(web),
-                document_workers: worker::WorkerPool::new("document", 1, 16),
-                rendering: Arc::new(render::RenderService::default()),
-                shutdown: tokio::sync::watch::channel(false).0,
-                html_token: Arc::new(new_capability_token().unwrap()),
-                search: Arc::new(search::SearchService::default()),
-                data_directory: Arc::new(data.clone()),
-                leases: Arc::new(Mutex::new(HashMap::new())),
-                library_clients: Arc::new(Mutex::new(HashMap::new())),
-                trees: tree::Service::default(),
-                file_watchers: Arc::new(Mutex::new(HashMap::new())),
-                repositories,
-                reading: Arc::new(reading::ReadingStore::new(data)),
-                cross_search: Arc::new(Mutex::new(HashMap::new())),
-                base_url: Arc::new("http://127.0.0.1:49191".into()),
-            },
-            repo.slug,
-        )
-    }
-
-    fn minimal_pdf(width: usize, height: usize) -> Vec<u8> {
-        let content = "BT /F1 14 Tf 24 48 Td (PDF preview) Tj ET";
-        let objects = [
-            "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
-            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_owned(),
-            format!(
-                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
-            ),
-            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
-            format!(
-                "<< /Length {} >>\nstream\n{content}\nendstream",
-                content.len()
-            ),
-        ];
-        let mut output = b"%PDF-1.4\n".to_vec();
-        let mut offsets = vec![0usize];
-        for (index, object) in objects.iter().enumerate() {
-            offsets.push(output.len());
-            output
-                .extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
-        }
-        let xref = output.len();
-        output.extend_from_slice(
-            format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len()).as_bytes(),
-        );
-        for offset in offsets.iter().skip(1) {
-            output.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
-        }
-        output.extend_from_slice(
-            format!(
-                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
-                offsets.len()
-            )
-            .as_bytes(),
-        );
-        output
-    }
-
-    #[tokio::test]
-    async fn html_raw_source_and_multiple_asset_watches_match_frontend_contract() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (state, slug) = test_state(&temporary);
-        let expected = std::fs::read_to_string(state.root.join("sample.html")).unwrap();
-        let app = build_router(state.clone());
-        let document = json(
-            request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/document?path=sample.html&view=raw"),
-                None,
-            )
-            .await,
-        )
-        .await;
-        assert_eq!(document["source"], expected);
-        assert_eq!(document["lineCount"], expected.split('\n').count());
-        let response = request(
-            &app,
-            "GET",
-            &format!("/{slug}/api/library/events?path=sample.html&asset=theme.css&asset=note.md"),
-            None,
-        )
-        .await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let watchers = state.file_watchers.lock().unwrap();
-        let key = watchers.keys().next().unwrap();
-        assert_eq!(key.len(), 3);
-        assert_eq!(key[1].1, "theme.css");
-        assert_eq!(key[2].1, "note.md");
-    }
-
-    #[tokio::test]
-    async fn saturated_render_queue_returns_retryable_errors() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (mut state, slug) = test_state(&temporary);
-        state.document_workers = worker::WorkerPool::new("saturated", 1, 1);
-        let pool = state.document_workers.clone();
-        let (release, wait) = std::sync::mpsc::channel();
-        let (started, ready) = tokio::sync::oneshot::channel();
-        let running = tokio::spawn(async move {
-            pool.run(move || {
-                let _ = started.send(());
-                wait.recv().unwrap();
-            })
-            .await
-        });
-        ready.await.unwrap();
-        let pool = state.document_workers.clone();
-        let mut queued = Box::pin(pool.run(|| ()));
-        assert!(futures_util::poll!(&mut queued).is_pending());
-        let app = build_router(state);
-        for endpoint in ["document?path=note.md", "html?path=sample.html"] {
-            let response = request(&app, "GET", &format!("/{slug}/api/{endpoint}"), None).await;
-            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-            assert_eq!(response.headers().get("retry-after").unwrap(), "1");
-        }
-        drop(queued);
-        release.send(()).unwrap();
-        running.await.unwrap().unwrap();
-    }
-
-    #[tokio::test]
-    async fn file_stream_preserves_large_payloads_across_chunk_boundaries() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("payload.bin");
-        let expected = (0..150_000)
-            .map(|index| (index % 251) as u8)
-            .collect::<Vec<_>>();
-        std::fs::write(&path, &expected).unwrap();
-        let file = tokio::fs::File::open(path).await.unwrap();
-        let chunks = stream_file(file).try_collect::<Vec<_>>().await.unwrap();
-        let actual = chunks.into_iter().flatten().collect::<Vec<_>>();
-        assert_eq!(actual, expected);
-    }
-
-    #[tokio::test]
-    async fn content_detection_preserves_renamed_previews_assets_and_text_semantics() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (state, slug) = test_state(&temporary);
-        let root = state.default_repository().unwrap().root;
-        let pdf = minimal_pdf(595, 842);
-        let png = b"\x89PNG\r\n\x1a\n";
-        std::fs::write(root.join("renamed.txt"), &pdf).unwrap();
-        std::fs::write(root.join("picture.pdf"), png).unwrap();
-        std::fs::write(root.join("archive.txt"), b"PK\x03\x04\0\0\0\0").unwrap();
-        std::fs::write(root.join("inline.md"), "<div>needle</div>\n").unwrap();
-        let app = build_router(state);
-
-        let metadata = json(
-            request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/document?path=renamed.txt"),
-                None,
-            )
-            .await,
-        )
-        .await;
-        assert_eq!(metadata["type"], "pdf");
-        assert_eq!(metadata["pages"].as_array().unwrap().len(), 1);
-        let page_url = metadata["pages"][0]["url"].as_str().unwrap();
-        assert_eq!(
-            request(&app, "GET", page_url, None).await.status(),
-            StatusCode::OK
-        );
-
-        let image = json(
-            request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/document?path=picture.pdf"),
-                None,
-            )
-            .await,
-        )
-        .await;
-        assert_eq!(image["type"], "image");
-        assert_eq!(image["mime"], "image/png");
-        assert_eq!(image["format"], "png");
-        let asset = request(&app, "GET", image["url"].as_str().unwrap(), None).await;
-        assert_eq!(asset.headers()["content-type"], "image/png");
-        assert_eq!(
-            &to_bytes(asset.into_body(), usize::MAX).await.unwrap()[..],
-            png
-        );
-
-        let archive = json(
-            request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/document?path=archive.txt"),
-                None,
-            )
-            .await,
-        )
-        .await;
-        assert_eq!(archive["type"], "binary");
-        assert_eq!(archive["mime"], "application/zip");
-        let markdown = json(
-            request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/document?path=inline.md&view=raw"),
-                None,
-            )
-            .await,
-        )
-        .await;
-        assert_eq!(markdown["type"], "markdown");
-
-        let search =
-            json(request(&app, "GET", &format!("/{slug}/api/search?q=PDF-1"), None).await).await;
-        assert_eq!(search["total"], 0);
-    }
-
-    #[tokio::test]
-    async fn migrated_http_routes_match_frontend_repository_flows() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (state, slug) = test_state(&temporary);
-        let html_token = state.html_token.clone();
-        let app = build_router(state.clone());
-
-        let home = request(&app, "GET", "/", None).await;
-        assert_eq!(home.status(), StatusCode::PERMANENT_REDIRECT);
-        assert_eq!(
-            home.headers().get("location").unwrap().to_str().unwrap(),
-            format!("/{slug}/tree/")
-        );
-
-        let page = request(&app, "GET", &format!("/{slug}/tree/"), None).await;
-        assert_eq!(page.status(), StatusCode::OK);
-        assert!(
-            String::from_utf8(
-                to_bytes(page.into_body(), usize::MAX)
-                    .await
-                    .unwrap()
-                    .to_vec()
-            )
-            .unwrap()
-            .contains("library app")
-        );
-        let asset = request(&app, "GET", "/assets/app.js", None).await;
-        assert_eq!(asset.status(), StatusCode::OK);
-
-        let tree = json(request(&app, "GET", &format!("/{slug}/api/tree"), None).await).await;
-        assert_eq!(tree["name"], "notes");
-        assert_eq!(tree["children"][0]["path"], "note.md");
-        let document = json(
-            request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/document?path=note.md"),
-                None,
-            )
-            .await,
-        )
-        .await;
-        assert_eq!(document["type"], "markdown");
-        assert!(
-            document["html"]
-                .as_str()
-                .unwrap()
-                .contains("needle in markdown")
-        );
-        let html = request(
-            &app,
-            "GET",
-            &format!("/{slug}/api/html?path=sample.html"),
-            None,
-        )
-        .await;
-        assert_eq!(html.status(), StatusCode::OK);
-        assert!(html.headers().contains_key("content-security-policy"));
-        let html = String::from_utf8(
-            to_bytes(html.into_body(), usize::MAX)
-                .await
-                .unwrap()
-                .to_vec(),
-        )
-        .unwrap();
-        assert!(html.contains("window.ready=true"));
-        assert!(!html.contains("<iframe"));
-        assert!(!html.contains("https://invalid.example/"));
-        assert!(html.contains("#section"));
-        let css = request(
-            &app,
-            "GET",
-            &format!(
-                "/{slug}/api/html-resource/{}/theme.css",
-                html_token.as_str()
-            ),
-            None,
-        )
-        .await;
-        assert_eq!(
-            css.status(),
-            StatusCode::OK,
-            "{}",
-            String::from_utf8_lossy(&to_bytes(css.into_body(), usize::MAX).await.unwrap())
-        );
-        assert_eq!(css.headers().get("content-type").unwrap(), "text/css");
-        let denied = request(
-            &app,
-            "GET",
-            &format!("/{slug}/api/html-resource/not-a-token/theme.css"),
-            None,
-        )
-        .await;
-        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
-        let search =
-            json(request(&app, "GET", &format!("/{slug}/api/search?q=needle"), None).await).await;
-        assert_eq!(search["files"][0]["path"], "note.md");
-
-        let lease_uri = format!("/{slug}/api/library/session-leases");
-        let lease = request(
-            &app,
-            "POST",
-            &lease_uri,
-            Some(serde_json::json!({
-                "client":"reader-1", "paths":["note.md"], "version":1
-            })),
-        )
-        .await;
-        assert_eq!(lease.status(), StatusCode::OK);
-        let stale_release = request(
-            &app,
-            "POST",
-            &lease_uri,
-            Some(serde_json::json!({
-                "client":"reader-1", "paths":[], "version":1
-            })),
-        )
-        .await;
-        assert_eq!(stale_release.status(), StatusCode::OK);
-        assert_eq!(state.leases.lock().unwrap()["reader-1"].paths.len(), 1);
-        let invalid_lease = request(
-            &app,
-            "POST",
-            &lease_uri,
-            Some(serde_json::json!({
-                "client":"reader-1", "paths":["../outside"], "version":2
-            })),
-        )
-        .await;
-        assert_eq!(invalid_lease.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(state.leases.lock().unwrap()["reader-1"].paths.len(), 1);
-        let release = request(
-            &app,
-            "POST",
-            &lease_uri,
-            Some(serde_json::json!({
-                "client":"reader-1", "paths":[], "version":2
-            })),
-        )
-        .await;
-        assert_eq!(release.status(), StatusCode::OK);
-        assert!(state.leases.lock().unwrap()["reader-1"].paths.is_empty());
-
-        let invalid = request(
-            &app,
-            "GET",
-            &format!("/{slug}/api/document?path=../outside"),
-            None,
-        )
-        .await;
-        assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(
-            request(&app, "GET", "/missing/api/tree", None)
-                .await
-                .status(),
-            StatusCode::NOT_FOUND
-        );
-
-        let bookmark = request(
-            &app,
-            "PUT",
-            &format!("/{slug}/api/bookmarks"),
-            Some(serde_json::json!({"path":"note.md","bookmarked":true})),
-        )
-        .await;
-        assert_eq!(bookmark.status(), StatusCode::OK);
-        assert_eq!(json(request(&app, "GET", &format!("/{slug}/api/bookmarks"), None).await).await["bookmarks"].as_array().unwrap().len(), 1);
-        let positions = serde_json::json!({"positions":{"note.md":{"line":12,"view":"raw"}}});
-        assert_eq!(
-            request(
-                &app,
-                "PUT",
-                &format!("/{slug}/api/reading"),
-                Some(positions)
-            )
-            .await
-            .status(),
-            StatusCode::OK
-        );
-        assert_eq!(
-            json(request(&app, "GET", &format!("/{slug}/api/reading"), None).await).await["note.md"]
-                ["line"],
-            12
-        );
-        let recent = request(
-            &app,
-            "POST",
-            &format!("/{slug}/api/recent-files"),
-            Some(serde_json::json!({"path":"note.md"})),
-        )
-        .await;
-        assert_eq!(recent.status(), StatusCode::OK);
-        assert_eq!(json(recent).await["recent"][0], "note.md");
-
-        let cross_origin = HttpRequest::builder()
-            .method("PUT")
-            .uri(format!("/{slug}/api/bookmarks"))
-            .header("content-type", "application/json")
-            .header("origin", "https://attacker.example")
-            .body(Body::from(r#"{"path":"note.md","bookmarked":false}"#))
-            .unwrap();
-        let rejected = app.clone().oneshot(cross_origin).await.unwrap();
-        assert_eq!(rejected.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn pdf_document_reports_a_valid_modified_timestamp() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (state, slug) = test_state(&temporary);
-        std::fs::write(state.root.join("sample.pdf"), minimal_pdf(595, 842)).unwrap();
-        let app = build_router(state);
-
-        let response = request(
-            &app,
-            "GET",
-            &format!("/{slug}/api/document?path=sample.pdf"),
-            None,
-        )
-        .await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let document = json(response).await;
-        let modified = document["modified"].as_str().unwrap();
-        assert!(
-            time::OffsetDateTime::parse(modified, &time::format_description::well_known::Rfc3339)
-                .is_ok()
-        );
-        let revision = document["revision"].as_str().unwrap();
-        assert_ne!(revision, modified);
-        assert_eq!(
-            request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/pdf/page?path=sample.pdf&page=1&v={revision}&width=450"),
-                None,
-            )
-            .await
-            .status(),
-            StatusCode::OK
-        );
-        assert_eq!(
-            request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/pdf/page?path=sample.pdf&page=1&v=stale&width=450"),
-                None,
-            )
-            .await
-            .status(),
-            StatusCode::GONE
-        );
-    }
-
-    #[tokio::test]
-    async fn document_and_asset_changes_are_both_emitted_by_library_events() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (state, slug) = test_state(&temporary);
-        let root = state.default_repository().unwrap().root;
-        let app = build_router(state.clone());
-        let mut streams = Vec::new();
-        for _ in 0..2 {
-            let response = request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/library/events?path=sample.html&asset=theme.css"),
-                None,
-            )
-            .await;
-            assert_eq!(response.status(), StatusCode::OK);
-            streams.push(Box::pin(response.into_body().into_data_stream()));
-        }
-        assert_eq!(state.file_watchers.lock().unwrap().len(), 1);
-        for stream in &mut streams {
-            let mut body = String::new();
-            while !body.contains("event: connected") {
-                let chunk = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
-                    .await
-                    .unwrap()
-                    .unwrap()
-                    .unwrap();
-                body.push_str(&String::from_utf8_lossy(&chunk));
-            }
-        }
-        std::fs::write(root.join("sample.html"), "<html>changed</html>").unwrap();
-        std::fs::write(root.join("theme.css"), "body{color:blue}").unwrap();
-        for stream in &mut streams {
-            let mut body = String::new();
-            while !body.contains("event: document") || !body.contains("event: assets") {
-                let chunk = tokio::time::timeout(std::time::Duration::from_secs(3), stream.next())
-                    .await
-                    .unwrap()
-                    .unwrap()
-                    .unwrap();
-                body.push_str(&String::from_utf8_lossy(&chunk));
-            }
-            assert!(body.contains("data: {\"paths\":[\"theme.css\"]}"));
-        }
-    }
-
-    #[tokio::test]
-    async fn cross_repository_search_keeps_facets_and_pagination_consistent() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (state, _slug) = test_state(&temporary);
-        let second_root = temporary.path().join("archive");
-        std::fs::create_dir_all(&second_root).unwrap();
-        for index in 0..24 {
-            std::fs::write(
-                second_root.join(format!("note-{index:02}.md")),
-                "needle in archive\n",
-            )
-            .unwrap();
-        }
-        let app = build_router(state);
-        let added = request(
-            &app,
-            "POST",
-            "/api/repos",
-            Some(serde_json::json!({"root":second_root})),
-        )
-        .await;
-        assert_eq!(added.status(), StatusCode::CREATED);
-
-        let first =
-            json(request(&app, "GET", "/api/search-repos?q=needle&repo=*", None).await).await;
-        assert_eq!(first["total"], 25);
-        assert_eq!(first["files"].as_array().unwrap().len(), 20);
-        assert_eq!(first["nextOffset"], 20);
-        assert!(first["facets"]["languages"].is_array());
-        assert!(
-            first["files"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|file| file["repoId"].is_string() && file["repoName"].is_string())
-        );
-        let search_id = first["searchId"].as_str().unwrap();
-        let second = json(
-            request(
-                &app,
-                "GET",
-                &format!("/api/search-repos?q=needle&repo=*&searchId={search_id}&offset=20"),
-                None,
-            )
-            .await,
-        )
-        .await;
-        assert_eq!(second["total"], 25);
-        assert_eq!(second["files"].as_array().unwrap().len(), 5);
-        assert!(second["nextOffset"].is_null());
-        let expired = request(
-            &app,
-            "GET",
-            &format!("/api/search-repos?q=other&repo=*&searchId={search_id}"),
-            None,
-        )
-        .await;
-        assert_eq!(expired.status(), StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn pdf_metadata_and_page_route_match_frontend_contract() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (state, slug) = test_state(&temporary);
-        let root = state.default_repository().unwrap().root;
-        std::fs::write(root.join("sample.pdf"), minimal_pdf(595, 842)).unwrap();
-        let app = build_router(state);
-        let metadata = json(
-            request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/document?path=sample.pdf"),
-                None,
-            )
-            .await,
-        )
-        .await;
-        assert_eq!(metadata["type"], "pdf");
-        assert_eq!(metadata["pages"].as_array().unwrap().len(), 1);
-        let page_url = metadata["pages"][0]["url"].as_str().unwrap();
-        let page = request(
-            &app,
-            "GET",
-            &format!(
-                "{page_url}&v={}&width=2250",
-                metadata["revision"].as_str().unwrap()
-            ),
-            None,
-        )
-        .await;
-        assert_eq!(page.status(), StatusCode::OK);
-        assert_eq!(
-            page.headers().get("content-type").unwrap(),
-            "image/svg+xml; charset=utf-8"
-        );
-        let svg = String::from_utf8(
-            to_bytes(page.into_body(), usize::MAX)
-                .await
-                .unwrap()
-                .to_vec(),
-        )
-        .unwrap();
-        assert!(svg.contains("<svg"));
-        let invalid_width = request(&app, "GET", &format!("{page_url}&width=0"), None).await;
-        assert_eq!(invalid_width.status(), StatusCode::BAD_REQUEST);
-        let stale = request(&app, "GET", &format!("{page_url}&v=stale"), None).await;
-        assert_eq!(stale.status(), StatusCode::GONE);
-    }
-
-    #[tokio::test]
-    async fn tree_event_scanning_is_shared_and_emits_after_changes() {
-        let temporary = tempfile::tempdir().unwrap();
-        let (state, slug) = test_state(&temporary);
-        let root = state.default_repository().unwrap().root;
-        let app = build_router(state.clone());
-        let mut streams = Vec::new();
-        for _ in 0..2 {
-            let response = request(
-                &app,
-                "GET",
-                &format!("/{slug}/api/library/tree-events"),
-                None,
-            )
-            .await;
-            assert_eq!(response.status(), StatusCode::OK);
-            streams.push(Box::pin(response.into_body().into_data_stream()));
-        }
-        assert_eq!(state.trees.cached_roots(), 1);
-        for stream in &mut streams {
-            let mut handshake = String::new();
-            while !handshake.contains("event: connected") {
-                let chunk = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
-                    .await
-                    .unwrap()
-                    .unwrap()
-                    .unwrap();
-                handshake.push_str(&String::from_utf8_lossy(&chunk));
-            }
-        }
-        std::fs::write(root.join("new-note.md"), "new").unwrap();
-        for stream in &mut streams {
-            let mut event = String::new();
-            while !event.contains("event: tree") {
-                let chunk = tokio::time::timeout(std::time::Duration::from_secs(3), stream.next())
-                    .await
-                    .unwrap()
-                    .unwrap()
-                    .unwrap();
-                event.push_str(&String::from_utf8_lossy(&chunk));
-            }
-        }
-        drop(streams);
-        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
-        assert_eq!(state.trees.cached_roots(), 1); // Reuse the idle cache on reconnect.
-    }
-}
+#[path = "main_tests.rs"]
+mod tests;

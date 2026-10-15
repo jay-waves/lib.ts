@@ -147,6 +147,8 @@ pub struct CompileRequest {
 pub enum CompileError {
     #[error("{0}")]
     Failed(String),
+    #[error("Typst compilation failed")]
+    Diagnostics(Vec<Diagnostic>),
     #[error("Typst resources are busy; close an unused reader and retry")]
     Busy,
     #[error("Typst request cancelled")]
@@ -622,9 +624,7 @@ impl NativeTypstCompiler {
             Ok(document) => document,
             Err(errors) => {
                 diagnostics.extend(map_diagnostics(&world, errors, "error"));
-                return Err(serde_json::to_string(&diagnostics)
-                    .unwrap_or_else(|_| "Typst compilation failed".into())
-                    .into());
+                return Err(CompileError::Diagnostics(diagnostics));
             }
         };
         let pages = document
