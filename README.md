@@ -57,9 +57,23 @@ Typst 编译和分页 SVG 渲染使用官方 Typst Rust crates，在服务进程
 
 PDF 预览使用 Hayro Rust crates，单份输入上限 64 MiB，缓存最多保留 3 份且输入字节总量不超过 128 MiB，页面 SVG 缓存总量最多 8 MiB。5 分钟未访问的 PDF 会被清理。分页渲染使用固定版本快照，文件更新不会让一次渲染混用不同版本。输入与缓存预算不等于进程 RSS 上限，排版、图片解码和 SVG 生成仍有临时内存开销。
 
+PDF 目录复用 Hayro 的文档对象，支持直接目标、命名目标、Name Tree 和本地 GoTo 动作；标题支持 UTF-16、带 BOM 的 UTF-8 与 PDFDocEncoding。没有本地目标的标题作为分组保留；常见 XYZ、FitH/FitBH、FitR 目标按页内相对高度跳转，随预览缩放适配，不改变当前缩放比例。
+
+Rust 后端用 `infer` 检测最多 8 KiB 文件头中的二进制格式签名，再用 `mime_guess` 补充后缀信息；PDF、图片和压缩包等改名后仍可识别，资源接口使用检测到的 MIME。Markdown、Typst、HTML 等文本保留后缀语义。搜索复用已读取的内容检查格式签名、UTF-8 和控制字符，排除伪装成文本的二进制文件。格式签名用于分类，不保证文件完整有效，预览仍由对应解析器校验。
+
 HTML（`.html` / `.htm`）支持 Preview 和 Raw。预览默认允许脚本，使用隔离 iframe，支持相对路径的仓库内 JS、CSS、图片及字体；禁止网络连接、外部资源、弹窗、表单提交、下载和嵌套页面，不开放应用存储及 DOM。保存 HTML 后自动刷新。依赖联网、`eval` 或浏览器存储的页面可能无法运行；暂不保存预览内部的滚动位置，iframe 也不保证独立进程或阻止脚本占满 CPU。
 
 
+
+### 文件树扫描与监听
+
+文件树用 `ignore` 默认遵守 `.gitignore`、`.ignore`、Git exclude 和全局忽略规则，同时排除隐藏项、`node_modules`、符号链接和应用数据目录。`notify` 只注册可见目录的非递归监听，并监听忽略配置的变化；不再每秒递归扫描全仓库。
+
+每个仓库共享一次初始化、监听任务和序列化快照。相关变更合并 250 ms 后重新扫描可见树，快照有变化时才通知浏览器；多个标签页复用缓存，连接和重连通过版本号避免重复刷新。没有订阅且闲置 60 秒后释放缓存与监听。首次加载及变更后的快照重建仍遍历完整可见树，以保留文件名搜索、书签和路径索引功能。
+
+### 搜索标签
+
+全文搜索默认遵守 `.gitignore`，没有初始化 Git 的目录也适用。在输入框中添加 `gitignore:no`（或 `--no-gitignore`）可搜索被 Git 忽略的文件，例如 `TODO case:yes gitignore:no`；移除该标签或使用 `gitignore:yes` 恢复默认行为。正则表达式同样支持，例如 `/TODO|FIXME/i gitignore:no`。隐藏文件、依赖目录、私有数据目录和二进制文件仍按原有规则排除。
 
 ### Typst 主题约定
 
@@ -83,7 +97,7 @@ saved-notes-library E:/notes
 
 部署包包含 `fonts/` 的字体和许可证；Typst 包缓存和现有用户数据不随部署包复制。
 
-功能回归：`node --test tests/*.test.mjs`。构建检查：`npm run build`。
+功能回归：`node --test tests/*.test.mjs`。Rust release 测试：`npm run test:rust`。前端构建检查：`npm run build`。
 
 后端为 Rust 原生服务；`npm run bench:memory` 是迁移期间保留的旧 Node 基准工具。
 

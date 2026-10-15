@@ -256,14 +256,12 @@ function App() {
   useEffect(() => {
     if (!active) { loadedDocumentRequest.current = null; return; }
     if (!tree) return;
-    if (selected && !selectedNode) {
-      if (treeLoading) { setLoading(true); setDocument(null); setError(''); return; }
-      setLoading(false);
-      setError('File not found in the notes library');
-      setDocument(null);
-      return;
+    if (selected && !selectedNode && treeLoading) {
+      setLoading(true); setDocument(null); setError(''); return;
     }
-    if (!selectedNode || selectedNode.type === 'directory') { setLoading(false); setDocument(null); setError(''); return; }
+    // Ignored files found through gitignore:no or a direct URL need not be in
+    // the visible tree. The document endpoint validates existence and access.
+    if (!selected || selectedNode?.type === 'directory') { setLoading(false); setDocument(null); setError(''); return; }
     const loadKey = JSON.stringify([selected, selectedNodePath, selectedNodeType, documentRevision, theme]);
     const hasRequestedContent = document?.path === selected && (documentView === 'raw'
       || (document.type === 'markdown' ? typeof document.html === 'string'

@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.92"
 
+[profile.release]
+strip = "symbols"
+
 [dependencies]
 axum = { version = "0.8", features = ["http1", "json", "query", "tokio"] }
 bytes = "1"
@@ -13,10 +16,12 @@ getrandom = "0.4"
 futures-util = "0.3"
 grep-matcher = "0.1"
 mime_guess = "2"
+notify = "8.2"
 grep-regex = "0.1"
 grep-searcher = "0.1"
 ignore = "0.4"
-hayro-svg = "0.8"
+infer = { version = "0.22", default-features = false }
+hayro-svg = "0.7"
 lru = "0.18.4"
 comrak = { version = "0.56", default-features = false }
 regex = "1"

@@ -42,7 +42,10 @@ export function navigateReaderSymbol(panel, document, view, symbol, inset, updat
     return false;
   }
   const offset = viewport === panel ? inset : 12;
-  const top = viewport.scrollTop + target.getBoundingClientRect().top
+  const rect = target.getBoundingClientRect();
+  const withinPage = document.type === 'pdf' && Number.isFinite(symbol.y)
+    ? Math.max(0, Math.min(1, symbol.y)) * rect.height : 0;
+  const top = viewport.scrollTop + rect.top + withinPage
     - viewport.getBoundingClientRect().top - viewport.clientTop - offset;
   viewport.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
   return true;

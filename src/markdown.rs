@@ -1,11 +1,14 @@
 //! Markdown parsing and HTML output. Formula spans remain source text in marked
 //! elements so the browser can add KaTeX rendering independently.
 
+#[path = "markdown/ast.rs"]
+mod ast;
+
 use comrak::{
     Arena, Options,
     adapters::{HeadingAdapter, HeadingMeta},
     format_html_with_plugins,
-    nodes::{Ast, AstNode, NodeValue, Sourcepos},
+    nodes::Sourcepos,
     options::Plugins,
     parse_document,
 };
@@ -84,101 +87,6 @@ fn slugify(text: &str) -> String {
         "heading".into()
     } else {
         slug
-    }
-}
-
-fn encode_component(value: &str) -> String {
-    let mut encoded = String::new();
-    for byte in value.bytes() {
-        if byte.is_ascii_alphanumeric()
-            || matches!(
-                byte,
-                b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
-            )
-        {
-            encoded.push(byte as char);
-        } else {
-            encoded.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    encoded
-}
-
-fn raw<'a>(arena: &'a Arena<'a>, html: String) -> &'a AstNode<'a> {
-    arena.alloc(Ast::new(NodeValue::Raw(html), Default::default()).into())
-}
-
-fn add_heading_sections<'a>(arena: &'a Arena<'a>, root: &'a AstNode<'a>) {
-    let mut top = Vec::new();
-    let mut node = root.first_child();
-    while let Some(current) = node {
-        top.push(current);
-        node = current.next_sibling();
-    }
-    let mut stack: Vec<(&'a AstNode<'a>, u8, &'a AstNode<'a>, bool)> = Vec::new();
-    let mut occurrences = HashMap::<String, usize>::new();
-
-    for current in top {
-        let heading_level = match current.data().value {
-            NodeValue::Heading(heading) => Some(heading.level),
-            _ => None,
-        };
-        if let Some(level) = heading_level {
-            if let Some((_, _, _, has_content)) = stack.last_mut() {
-                *has_content = true;
-            }
-            if stack.last().is_some() {
-                current.insert_before(raw(arena, "</div>\n".into()));
-            }
-            while stack
-                .last()
-                .is_some_and(|(_, parent_level, _, _)| *parent_level >= level)
-            {
-                let (_, _, open, has_content) = stack.pop().unwrap();
-                if let NodeValue::Raw(html) = &mut open.data.borrow_mut().value {
-                    if has_content && !html.contains("has-heading-content") {
-                        *html = html.replacen(
-                            "class=\"heading-section\"",
-                            "class=\"heading-section has-heading-content\"",
-                            1,
-                        );
-                    }
-                }
-                current.insert_before(raw(arena, "</section>\n".into()));
-            }
-            let heading_id = slugify(&current.collect_text());
-            let occurrence = occurrences
-                .entry(format!("H{level}:{heading_id}"))
-                .or_default();
-            let key = format!("H{level}:{heading_id}:{}", *occurrence);
-            *occurrence += 1;
-            let section_id = encode_component(&key);
-            let open = raw(
-                arena,
-                format!(
-                    "<section class=\"heading-section\" data-heading-level=\"{level}\" data-heading-key=\"{key}\" id=\"heading-section-{section_id}\">\n"
-                ),
-            );
-            current.insert_before(open);
-            current.insert_before(raw(arena, "<div class=\"heading-summary\" role=\"button\" tabindex=\"0\" aria-expanded=\"true\">\n".into()));
-            current.insert_after(raw(arena, "<span class=\"heading-collapsed-indicator\" aria-hidden=\"true\">…</span></div>\n<div class=\"heading-content\">\n".into()));
-            stack.push((current, level, open, false));
-        } else if let Some((_, _, _, has_content)) = stack.last_mut() {
-            *has_content = true;
-        }
-    }
-
-    while let Some((_, _, open, has_content)) = stack.pop() {
-        if let NodeValue::Raw(html) = &mut open.data.borrow_mut().value {
-            if has_content && !html.contains("has-heading-content") {
-                *html = html.replacen(
-                    "class=\"heading-section\"",
-                    "class=\"heading-section has-heading-content\"",
-                    1,
-                );
-            }
-        }
-        root.append(raw(arena, "</div>\n</section>\n".into()));
     }
 }
 
@@ -272,7 +180,7 @@ pub fn render_markdown(source: &str, allow_raw_html: bool) -> Result<String, Str
     options.render.r#unsafe = allow_raw_html;
     options.render.sourcepos = true;
     let root = parse_document(&arena, &source, &options);
-    add_heading_sections(&arena, root);
+    ast::transform(&arena, root, &options)?;
     let heading = HeadingIds::default();
     let mut plugins = Plugins::default();
     plugins.render.heading_adapter = Some(&heading);
@@ -285,6 +193,136 @@ pub fn render_markdown(source: &str, allow_raw_html: bool) -> Result<String, Str
 #[cfg(test)]
 mod tests {
     use super::render_markdown;
+
+    fn panels(html: &str) -> Vec<&str> {
+        html.split("<aside ")
+            .skip(1)
+            .map(|panel| panel.split("</aside>").next().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn footnotes_follow_reference_order_and_share_only_within_a_paragraph() {
+        let html = render_markdown("First[^b], second[^a], repeated[^b].\n\nAgain[^b].\n\n[^a]: Alpha **bold**\n[^b]: Beta", true).unwrap();
+        let notes = panels(&html);
+        assert_eq!(notes.len(), 3, "{html}");
+        assert!(notes[0].starts_with("id=\"fn1\""));
+        assert!(notes[0].contains("[1]</a> Beta"));
+        assert!(notes[1].starts_with("id=\"fn2\""));
+        assert!(notes[1].contains("[2]</a> Alpha <strong>bold</strong>"));
+        assert!(notes[2].starts_with("id=\"fn1-2\""));
+        assert!(notes[2].contains("href=\"#fnref1-2\""));
+        assert_eq!(html.matches("data-footnote-ref=\"fn1\"").count(), 2);
+        assert_eq!(html.matches("aria-expanded=\"false\"").count(), 4);
+        assert!(html.contains("id=\"fnref1-1\""));
+        assert!(html.contains("aria-controls=\"fn1-2\""));
+        assert!(!html.contains("footnote-backref"));
+        assert!(!html.contains("class=\"footnotes\""));
+        for note in notes {
+            assert!(note.contains("role=\"doc-footnote\" hidden>"));
+            assert_eq!(note.matches("class=\"footnote-label\"").count(), 1);
+            assert!(!note.contains("data-source"));
+        }
+    }
+
+    #[test]
+    fn footnote_panels_stay_in_lists_and_quotes_but_outside_tables() {
+        let html = render_markdown("- Item[^n]\n- Next\n\n> Quote[^n]\n\n| Column | Other |\n|---|---|\n| Cell[^n] | Again[^n] |\n\n[^n]: Note", true).unwrap();
+        assert_eq!(panels(&html).len(), 3, "{html}");
+        assert!(html.find("<aside id=\"fn1\"").unwrap() < html.find("</li>").unwrap());
+        let quote = html
+            .split("<blockquote")
+            .nth(1)
+            .unwrap()
+            .split("</blockquote>")
+            .next()
+            .unwrap();
+        assert!(quote.contains("<aside id=\"fn1-1\""));
+        assert!(html.contains("</table>\n<aside id=\"fn1-2\""));
+        assert_eq!(html.matches("data-footnote-ref=\"fn1-2\"").count(), 2);
+        assert!(
+            !html
+                .split("<table")
+                .nth(1)
+                .unwrap()
+                .split("</table>")
+                .next()
+                .unwrap()
+                .contains("<aside")
+        );
+    }
+
+    #[test]
+    fn footnote_bodies_preserve_rich_content_without_scroll_anchors() {
+        let html = render_markdown("Reference[^n]\n\n[^n]: **Rich** note $x^2$.\n\n    Final [link](https://example.com).\n\n    ```js\n    const x = 1;\n    ```", true).unwrap();
+        let notes = panels(&html);
+        assert_eq!(notes.len(), 1);
+        let note = notes[0];
+        assert!(note.contains("<strong>Rich</strong>"));
+        assert!(note.contains("data-math-style=\"inline\""));
+        assert!(note.contains("<p>Final <a href=\"https://example.com\">link</a>.</p>"));
+        assert!(note.contains("<div class=\"code-wrap\"><pre><code class=\"language-js\">"));
+        assert!(!note.contains("data-source"));
+        assert!(html.contains("<p data-source-line=\"0\">"));
+    }
+
+    #[test]
+    fn code_only_footnotes_have_a_return_label_and_respect_raw_html_policy() {
+        let source = "Reference[^code] and[^html]\n\n[^code]:\n    ```js\n    const x = 1;\n    ```\n\n[^html]: <em>Raw</em>";
+        for allow_raw_html in [true, false] {
+            let html = render_markdown(source, allow_raw_html).unwrap();
+            let notes = panels(&html);
+            assert_eq!(notes.len(), 2);
+            assert!(notes[0].contains("[1]</a></p>\n<div class=\"code-wrap\">"));
+            assert!(notes[0].contains("href=\"#fnref1\""));
+            assert_eq!(notes[1].contains("<em>Raw</em>"), allow_raw_html);
+            assert!(html.contains("data-footnote-ref=\"fn2\""));
+        }
+    }
+
+    #[test]
+    fn heading_sections_keep_footnotes_inside_their_content() {
+        let html = render_markdown(
+            "# Parent[^n]\n\nText\n\n## Child\n\nMore[^n]\n\n# Next\n\n[^n]: Note",
+            true,
+        )
+        .unwrap();
+        assert_eq!(html.matches("<section class=\"heading-section").count(), 3);
+        assert_eq!(html.matches("</section>").count(), 3);
+        assert!(
+            html.contains("<div class=\"heading-content\">\n<aside id=\"fn1\""),
+            "{html}"
+        );
+        let next = html.find("data-heading-key=\"H1:next:0\"").unwrap();
+        assert!(html.find("<aside id=\"fn1-1\"").unwrap() < next);
+    }
+
+    #[test]
+    fn undefined_and_unused_footnotes_do_not_create_panels() {
+        let html = render_markdown("Undefined[^missing].\n\n[^unused]: Unused body", true).unwrap();
+        assert!(html.contains("[^missing]"));
+        assert!(panels(&html).is_empty());
+        assert!(!html.contains("Unused body"));
+    }
+
+    #[test]
+    fn nested_and_cyclic_footnotes_finish_with_unique_targets() {
+        let html =
+            render_markdown("Reference[^a]\n\n[^a]: Alpha[^b]\n[^b]: Beta[^a]", true).unwrap();
+        assert!(html.contains("Alpha"));
+        assert!(html.contains("Beta"));
+        assert!(html.contains("data-footnote-ref=\"fn1-fn2\""), "{html}");
+        let ids = regex::Regex::new(r#"\bid="([^"]+)""#)
+            .unwrap()
+            .captures_iter(&html)
+            .map(|capture| capture[1].to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids.len(),
+            ids.iter().collect::<std::collections::HashSet<_>>().len()
+        );
+        assert!(html.len() < 4000);
+    }
 
     #[test]
     fn html_matches_frontend_math_and_highlight_contract() {

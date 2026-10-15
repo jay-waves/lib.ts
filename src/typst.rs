@@ -4,11 +4,11 @@
 //! calls it from a dedicated bounded worker; this type serializes compilation and keeps a
 //! small, bounded set of paged documents for subsequent page requests.
 
+use crate::resources::{ByteCache, Cancellation};
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    num::NonZeroUsize,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock, Weak,
@@ -33,9 +33,18 @@ use typst_kit::{
 };
 use typst_layout::PagedDocument;
 
-const DOCUMENT_LIMIT: usize = 4;
-const SVG_CACHE_LIMIT: usize = 8 * 1024 * 1024;
-const SVG_CACHE_ENTRIES: usize = 256;
+const DOCUMENT_LIMIT: usize = 3;
+const SOURCE_BYTES_LIMIT: usize = 16 * 1024 * 1024;
+const REVISION_GRACE: StdDuration = StdDuration::from_secs(15);
+pub type PageCache = Arc<Mutex<ByteCache<(String, usize), RenderedPage>>>;
+
+pub fn page_cache() -> PageCache {
+    Arc::new(Mutex::new(ByteCache::new(
+        64,
+        16 * 1024 * 1024,
+        StdDuration::from_secs(5 * 60),
+    )))
+}
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 // Share fonts across compilers without keeping a strong process-global owner.
 // Idle compilers release their references after their last layout is evicted.
@@ -134,6 +143,28 @@ pub struct CompileRequest {
     pub theme: Option<String>,
 }
 
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum CompileError {
+    #[error("{0}")]
+    Failed(String),
+    #[error("Typst resources are busy; close an unused reader and retry")]
+    Busy,
+    #[error("Typst request cancelled")]
+    Cancelled,
+}
+
+impl From<String> for CompileError {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
+impl From<&str> for CompileError {
+    fn from(message: &str) -> Self {
+        Self::Failed(message.into())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
@@ -204,12 +235,13 @@ pub struct PageLink {
     // preserve `_blank` if a future Typst API exposes it.
 }
 
+#[derive(Clone)]
 pub struct RenderedPage {
     pub svg: bytes::Bytes,
     pub links: Vec<PageLink>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompileResponse {
     pub id: String,
@@ -224,40 +256,56 @@ pub struct NativeTypstCompiler {
     compile_gate: Mutex<()>,
     state: Mutex<Documents>,
     fonts: Mutex<Option<Arc<FontStore>>>,
+    pages: PageCache,
 }
 
 struct Documents {
     entries: LruCache<String, Entry>,
-    svgs: LruCache<(String, usize), bytes::Bytes>,
-    svg_bytes: usize,
+    compiled: HashMap<CompileKey, String>,
     active_paths: HashSet<PathBuf>,
     last_activity: Instant,
+    generation: u64,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct CompileKey {
+    path: PathBuf,
+    theme: String,
+    source_hash: u128,
 }
 
 struct Entry {
     path: PathBuf,
     document: Arc<PagedDocument>,
-    pages: Vec<PageInfo>,
     theme: String,
     created: Instant,
+    last_used: Instant,
+    key: CompileKey,
+    source: Arc<str>,
+    response: CompileResponse,
+    dependencies: Vec<Dependency>,
+    dates: Vec<(Option<Duration>, Option<Datetime>)>,
+    superseded_at: Option<Instant>,
 }
 
-fn remove_document_svgs(state: &mut Documents, id: &str) {
-    let keys = state
-        .svgs
-        .iter()
-        .filter_map(|((entry_id, page), _)| (entry_id == id).then(|| (entry_id.clone(), *page)))
-        .collect::<Vec<_>>();
-    for key in keys {
-        if let Some(svg) = state.svgs.pop(&key) {
-            state.svg_bytes = state.svg_bytes.saturating_sub(svg.len());
+fn remove_document(state: &mut Documents, pages: &PageCache, id: &str) {
+    if let Some(entry) = state.entries.pop(id) {
+        if state
+            .compiled
+            .get(&entry.key)
+            .is_some_and(|cached| cached == id)
+        {
+            state.compiled.remove(&entry.key);
         }
+    }
+    if let Ok(mut pages) = pages.lock() {
+        pages.retain(|(entry_id, _)| entry_id != id);
     }
 }
 
 // Keep at most two revisions per path/theme. Only the latest revision of an
 // active document is pinned; old revisions cannot accumulate behind a lease.
-fn trim_documents(state: &mut Documents, protected: &str) {
+fn trim_documents(state: &mut Documents, pages: &PageCache, protected: &str) {
     let mut versions = HashMap::<(PathBuf, String), Vec<(String, Instant)>>::new();
     for (id, entry) in state.entries.iter() {
         versions
@@ -283,8 +331,13 @@ fn trim_documents(state: &mut Documents, protected: &str) {
     }
     for id in expired {
         if id != protected {
-            state.entries.pop(&id);
-            remove_document_svgs(state, &id);
+            if state
+                .entries
+                .peek(&id)
+                .is_some_and(|entry| Arc::strong_count(&entry.document) == 1)
+            {
+                remove_document(state, pages, &id);
+            }
         }
     }
     while state.entries.len() > DOCUMENT_LIMIT {
@@ -292,26 +345,54 @@ fn trim_documents(state: &mut Documents, protected: &str) {
             .entries
             .iter()
             .rev()
-            .find(|(id, _)| id.as_str() != protected && !pinned.contains(*id))
+            .find(|(id, entry)| {
+                id.as_str() != protected
+                    && !pinned.contains(*id)
+                    && Arc::strong_count(&entry.document) == 1
+                    && !entry
+                        .superseded_at
+                        .is_some_and(|at| at.elapsed() < REVISION_GRACE)
+            })
             .map(|(id, _)| id.clone());
         let Some(id) = victim else { break };
-        state.entries.pop(&id);
-        remove_document_svgs(state, &id);
+        remove_document(state, pages, &id);
     }
 }
 
 impl NativeTypstCompiler {
+    #[cfg(test)]
+    #[allow(dead_code)] // Standalone lifecycle benchmark diagnostics.
+    pub fn cache_usage(&self) -> (usize, usize, usize, usize) {
+        let state = self.state.lock().unwrap();
+        let (pages, bytes) = self.pages.lock().unwrap().usage();
+        (
+            state.entries.len(),
+            state
+                .entries
+                .iter()
+                .map(|(_, entry)| entry.source.len())
+                .sum(),
+            pages,
+            bytes,
+        )
+    }
+    #[cfg(test)]
     pub fn new(root: PathBuf) -> Self {
+        Self::with_page_cache(root, page_cache())
+    }
+
+    pub fn with_page_cache(root: PathBuf, pages: PageCache) -> Self {
         Self {
             root,
             compile_gate: Mutex::new(()),
             fonts: Mutex::new(None),
+            pages,
             state: Mutex::new(Documents {
                 entries: LruCache::unbounded(),
-                svgs: LruCache::new(NonZeroUsize::new(SVG_CACHE_ENTRIES).unwrap()),
-                svg_bytes: 0,
+                compiled: HashMap::new(),
                 active_paths: HashSet::new(),
                 last_activity: Instant::now(),
+                generation: 0,
             }),
         }
     }
@@ -341,28 +422,59 @@ impl NativeTypstCompiler {
     /// Release idle document layouts and rendered SVGs while preserving any
     /// document currently pinned by a browser lease.
     pub fn evict_idle(&self, idle_for: StdDuration) -> bool {
+        let Ok(_compile) = self.compile_gate.try_lock() else {
+            return false;
+        };
         let Ok(mut state) = self.state.lock() else {
             return false;
         };
-        if state.last_activity.elapsed() < idle_for {
-            return false;
-        }
+        let all_idle = state.last_activity.elapsed() >= idle_for;
+        trim_documents(&mut state, &self.pages, "");
         let inactive = state
             .entries
             .iter()
-            .filter(|(_, entry)| !state.active_paths.contains(&entry.path))
+            .filter(|(_, entry)| {
+                Arc::strong_count(&entry.document) == 1
+                    && match entry.superseded_at {
+                        Some(at) => at.elapsed() >= REVISION_GRACE,
+                        None => {
+                            !state.active_paths.contains(&entry.path)
+                                && entry.last_used.elapsed() >= idle_for
+                        }
+                    }
+            })
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
         for id in inactive {
-            state.entries.pop(&id);
-            remove_document_svgs(&mut state, &id);
+            remove_document(&mut state, &self.pages, &id);
         }
         if state.entries.is_empty() {
             if let Ok(mut fonts) = self.fonts.lock() {
                 fonts.take();
             }
         }
-        true
+        if let Ok(mut pages) = self.pages.lock() {
+            pages.prune();
+        }
+        all_idle
+    }
+
+    pub fn clear(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            state.generation = state.generation.wrapping_add(1);
+            let ids = state
+                .entries
+                .iter()
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>();
+            for id in ids {
+                remove_document(&mut state, &self.pages, &id);
+            }
+            state.active_paths.clear();
+        }
+        if let Ok(mut fonts) = self.fonts.lock() {
+            fonts.take();
+        }
     }
 
     fn font_store(&self) -> Result<Arc<FontStore>, String> {
@@ -378,7 +490,19 @@ impl NativeTypstCompiler {
         Ok(store)
     }
 
-    pub fn compile(&self, request: CompileRequest) -> Result<CompileResponse, String> {
+    #[cfg(test)]
+    pub fn compile(&self, request: CompileRequest) -> Result<CompileResponse, CompileError> {
+        self.compile_cancellable(request, &Cancellation::default())
+    }
+
+    pub fn compile_cancellable(
+        &self,
+        request: CompileRequest,
+        cancellation: &Cancellation,
+    ) -> Result<CompileResponse, CompileError> {
+        if cancellation.is_cancelled() {
+            return Err(CompileError::Cancelled);
+        }
         let _compile = self
             .compile_gate
             .lock()
@@ -392,12 +516,62 @@ impl NativeTypstCompiler {
         if let Ok(mut state) = self.state.lock() {
             state.last_activity = Instant::now();
         }
-        {
+        let key = CompileKey {
+            path: path.clone(),
+            theme: theme.into(),
+            source_hash: typst::utils::hash128(&request.source),
+        };
+        let candidate = {
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| "Typst cache lock poisoned".to_owned())?;
+            state.compiled.get(&key).and_then(|id| {
+                state.entries.peek(id).map(|entry| {
+                    (
+                        id.clone(),
+                        entry.source.clone(),
+                        entry.dependencies.clone(),
+                        entry.dates.clone(),
+                    )
+                })
+            })
+        };
+        if let Some((id, source, dependencies, dates)) = candidate {
+            let now = Time::system();
+            if source.as_ref() == request.source
+                && dependencies.iter().all(Dependency::unchanged)
+                && dates
+                    .iter()
+                    .all(|(offset, date)| now.today(*offset) == *date)
+            {
+                let mut state = self
+                    .state
+                    .lock()
+                    .map_err(|_| "Typst cache lock poisoned".to_owned())?;
+                for (other_id, entry) in state.entries.iter_mut() {
+                    if other_id != &id
+                        && entry.path == path
+                        && entry.theme == theme
+                        && entry.superseded_at.is_none()
+                    {
+                        entry.superseded_at = Some(Instant::now());
+                    }
+                }
+                if let Some(entry) = state.entries.get_mut(&id) {
+                    entry.last_used = Instant::now();
+                    entry.created = Instant::now();
+                    entry.superseded_at = None;
+                    return Ok(entry.response.clone());
+                }
+            }
+        }
+        let generation = {
             let mut state = self
                 .state
                 .lock()
                 .map_err(|_| "Typst cache lock poisoned".to_owned())?;
-            trim_documents(&mut state, "");
+            trim_documents(&mut state, &self.pages, "");
             // A fixed admission limit bounds lease-pinned layouts too. Existing
             // documents can still update by superseding their previous version.
             if state.entries.len() >= 32
@@ -406,9 +580,38 @@ impl NativeTypstCompiler {
                     .iter()
                     .any(|(_, entry)| entry.path == path && entry.theme == theme)
             {
-                return Err("Too many active Typst documents; close an unused reader".into());
+                return Err(CompileError::Busy);
             }
-        }
+            loop {
+                let source_bytes = state
+                    .entries
+                    .iter()
+                    .map(|(_, entry)| entry.source.len())
+                    .sum::<usize>();
+                if source_bytes.saturating_add(request.source.len()) <= SOURCE_BYTES_LIMIT {
+                    break;
+                }
+                let victim = state
+                    .entries
+                    .iter()
+                    .rev()
+                    .find(|(_, entry)| {
+                        Arc::strong_count(&entry.document) == 1
+                            && !(state.active_paths.contains(&entry.path)
+                                && entry.superseded_at.is_none())
+                            && !entry
+                                .superseded_at
+                                .is_some_and(|at| at.elapsed() < REVISION_GRACE)
+                    })
+                    .map(|(id, _)| id.clone());
+                let Some(id) = victim else {
+                    return Err(CompileError::Busy);
+                };
+                remove_document(&mut state, &self.pages, &id);
+            }
+            state.generation
+        };
+        let source: Arc<str> = Arc::from(request.source.as_str());
         let world = TypstWorld::new(&self.root, &path, request.source, theme, self.font_store()?)?;
         let Warned { output, warnings } = typst::compile::<PagedDocument>(&world);
         // Age unused comemo results during active use. The service also clears
@@ -420,7 +623,8 @@ impl NativeTypstCompiler {
             Err(errors) => {
                 diagnostics.extend(map_diagnostics(&world, errors, "error"));
                 return Err(serde_json::to_string(&diagnostics)
-                    .unwrap_or_else(|_| "Typst compilation failed".into()));
+                    .unwrap_or_else(|_| "Typst compilation failed".into())
+                    .into());
             }
         };
         let pages = document
@@ -433,31 +637,68 @@ impl NativeTypstCompiler {
             .collect::<Vec<_>>();
         let (outline, anchors) = extract_navigation(&world, &document, &pages);
         let id = next_id();
+        let response = CompileResponse {
+            id: id.clone(),
+            pages: pages.clone(),
+            diagnostics,
+            outline,
+            anchors,
+        };
+        let dependencies = world
+            .files
+            .loader()
+            .dependencies
+            .lock()
+            .map_err(|_| "Typst dependency lock poisoned")?
+            .clone();
+        let dates = world
+            .dates
+            .lock()
+            .map_err(|_| "Typst date lock poisoned")?
+            .clone();
         let mut state = self
             .state
             .lock()
             .map_err(|_| "Typst cache lock poisoned".to_owned())?;
+        if cancellation.is_cancelled() || state.generation != generation {
+            return Err(CompileError::Cancelled);
+        }
+        state.compiled.insert(key.clone(), id.clone());
+        for (_, entry) in state.entries.iter_mut() {
+            if entry.path == path && entry.theme == theme && entry.superseded_at.is_none() {
+                entry.superseded_at = Some(Instant::now());
+            }
+        }
         state.entries.put(
             id.clone(),
             Entry {
                 path,
                 document: Arc::new(document),
-                pages: pages.clone(),
                 theme: theme.to_owned(),
                 created: Instant::now(),
+                last_used: Instant::now(),
+                key,
+                source,
+                response: response.clone(),
+                dependencies,
+                dates,
+                superseded_at: None,
             },
         );
-        trim_documents(&mut state, &id);
-        Ok(CompileResponse {
-            id,
-            pages,
-            diagnostics,
-            outline,
-            anchors,
-        })
+        trim_documents(&mut state, &self.pages, &id);
+        Ok(response)
     }
 
     pub fn page(&self, id: &str, page: usize) -> Result<RenderedPage, String> {
+        self.page_cancellable(id, page, &Cancellation::default())
+    }
+
+    pub fn page_cancellable(
+        &self,
+        id: &str,
+        page: usize,
+        cancellation: &Cancellation,
+    ) -> Result<RenderedPage, String> {
         let (document, page_index) = {
             let mut state = self
                 .state
@@ -468,16 +709,18 @@ impl NativeTypstCompiler {
                 .entries
                 .get_mut(id)
                 .ok_or_else(|| "Typst document expired".to_owned())?;
-            if page == 0 || page > entry.pages.len() {
+            if page == 0 || page > entry.document.pages().len() {
                 return Err("Invalid Typst page".into());
             }
             let document = entry.document.clone();
-            if let Some(svg) = state.svgs.get(&(id.to_owned(), page)).cloned() {
-                let page_layout = &document.pages()[page - 1];
-                return Ok(RenderedPage {
-                    svg,
-                    links: extract_page_links(page_layout, page, document.introspector()),
-                });
+            entry.last_used = Instant::now();
+            if let Some(rendered) = self
+                .pages
+                .lock()
+                .map_err(|_| "Typst page cache lock poisoned")?
+                .get(&(id.to_owned(), page))
+            {
+                return Ok(rendered);
             }
             (document, page - 1)
         };
@@ -485,27 +728,26 @@ impl NativeTypstCompiler {
         let options = typst_svg::SvgOptions::default();
         let svg = bytes::Bytes::from(typst_svg::svg(page_layout, &options));
         let links = extract_page_links(page_layout, page, document.introspector());
-        let mut state = self
+        let state = self
             .state
             .lock()
             .map_err(|_| "Typst cache lock poisoned".to_owned())?;
-        if svg.len() <= SVG_CACHE_LIMIT && state.entries.contains(id) {
-            let key = (id.to_owned(), page);
-            if let Some(previous) = state.svgs.pop(&key) {
-                state.svg_bytes = state.svg_bytes.saturating_sub(previous.len());
-            }
-            while state.svgs.len() >= SVG_CACHE_ENTRIES
-                || state.svg_bytes.saturating_add(svg.len()) > SVG_CACHE_LIMIT
-            {
-                let Some((_, expired)) = state.svgs.pop_lru() else {
-                    break;
-                };
-                state.svg_bytes = state.svg_bytes.saturating_sub(expired.len());
-            }
-            state.svg_bytes = state.svg_bytes.saturating_add(svg.len());
-            state.svgs.put(key, svg.clone());
+        let rendered = RenderedPage { svg, links };
+        if !cancellation.is_cancelled() && state.entries.contains(id) {
+            let bytes = rendered.svg.len()
+                + rendered
+                    .links
+                    .iter()
+                    .map(|link| {
+                        std::mem::size_of::<PageLink>() + link.href.as_ref().map_or(0, String::len)
+                    })
+                    .sum::<usize>();
+            self.pages
+                .lock()
+                .map_err(|_| "Typst page cache lock poisoned")?
+                .insert((id.to_owned(), page), rendered.clone(), bytes);
         }
-        Ok(RenderedPage { svg, links })
+        Ok(rendered)
     }
 
     #[allow(dead_code)] // Also used by the standalone backend benchmark harness.
@@ -730,14 +972,14 @@ fn extract_navigation(
     pages: &[PageInfo],
 ) -> (Vec<OutlineItem>, Vec<SourceAnchor>) {
     use typst::{
-        foundations::Selector,
+        foundations::NativeElement,
         introspection::Introspector,
         model::{HeadingElem, ParElem},
     };
 
     let introspector = document.introspector();
     let headings = introspector
-        .query(&Selector::can::<HeadingElem>())
+        .query(&HeadingElem::ELEM.select())
         .into_iter()
         .filter_map(|content| {
             let heading = content.to_packed::<HeadingElem>()?;
@@ -810,7 +1052,7 @@ fn extract_navigation(
     // into the user's source.
     anchors.extend(
         introspector
-            .query(&Selector::can::<ParElem>())
+            .query(&ParElem::ELEM.select())
             .into_iter()
             .filter_map(|content| {
                 let paragraph = content.to_packed::<ParElem>()?;
@@ -860,6 +1102,27 @@ struct ProjectFiles {
     packages: SystemPackages,
     main: FileId,
     main_source: Bytes,
+    dependencies: Mutex<Vec<Dependency>>,
+}
+
+#[derive(Clone)]
+struct Dependency {
+    path: PathBuf,
+    root: PathBuf,
+    fingerprint: Option<u128>,
+}
+
+impl Dependency {
+    fn unchanged(&self) -> bool {
+        let current = self
+            .path
+            .canonicalize()
+            .ok()
+            .filter(|path| path.starts_with(&self.root))
+            .and_then(|path| std::fs::read(path).ok())
+            .map(|bytes| typst::utils::hash128(&bytes));
+        current == self.fingerprint
+    }
 }
 
 impl FileLoader for ProjectFiles {
@@ -867,21 +1130,36 @@ impl FileLoader for ProjectFiles {
         if id == self.main {
             return Ok(self.main_source.clone());
         }
-        match id.root() {
-            VirtualRoot::Project => {
-                let path = self.root.resolve(id.vpath())?;
-                let canonical = path
-                    .canonicalize()
-                    .map_err(|error| FileError::from_io(error, &path))?;
-                if !canonical.starts_with(self.root.path()) {
+        let (root, path) = match id.root() {
+            VirtualRoot::Project => (self.root.path().to_owned(), self.root.resolve(id.vpath())?),
+            VirtualRoot::Package(spec) => {
+                let package = self.packages.obtain(&spec)?;
+                (package.path().to_owned(), package.resolve(id.vpath())?)
+            }
+        };
+        let result = path
+            .canonicalize()
+            .map_err(|error| FileError::from_io(error, &path))
+            .and_then(|canonical| {
+                if !canonical.starts_with(&root) {
                     return Err(FileError::AccessDenied);
                 }
                 std::fs::read(&canonical)
                     .map(Bytes::new)
                     .map_err(|error| FileError::from_io(error, &canonical))
-            }
-            VirtualRoot::Package(spec) => self.packages.obtain(&spec)?.load(id.vpath()),
-        }
+            });
+        self.dependencies
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(Dependency {
+                path,
+                root,
+                fingerprint: result
+                    .as_ref()
+                    .ok()
+                    .map(|bytes| typst::utils::hash128(bytes.as_slice())),
+            });
+        result
     }
 }
 
@@ -890,6 +1168,7 @@ struct TypstWorld {
     fonts: Arc<FontStore>,
     files: FileStore<ProjectFiles>,
     now: Time,
+    dates: Mutex<Vec<(Option<Duration>, Option<Datetime>)>>,
 }
 
 impl TypstWorld {
@@ -909,7 +1188,7 @@ impl TypstWorld {
             .replace('\\', "/");
         let virtual_path = VirtualPath::new(relative).map_err(|error| error.to_string())?;
         let main = FileId::new(RootedPath::new(VirtualRoot::Project, virtual_path));
-        let main_source = Bytes::from_string(source.clone());
+        let main_source = Bytes::from_string(source);
         let inputs = Dict::from_iter([(Str::from("theme"), theme.into_value())]);
         let library = Library::builder().with_inputs(inputs).build();
         let packages = SystemPackages::new(SystemDownloader::new("saved-notes-library"));
@@ -921,8 +1200,10 @@ impl TypstWorld {
                 packages,
                 main,
                 main_source,
+                dependencies: Mutex::new(Vec::new()),
             }),
             now: Time::system(),
+            dates: Mutex::new(Vec::new()),
         })
     }
 }
@@ -947,6 +1228,125 @@ impl World for TypstWorld {
         self.fonts.font(index)
     }
     fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
-        self.now.today(offset)
+        let date = self.now.today(offset);
+        self.dates
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push((offset, date));
+        date
+    }
+}
+
+impl Drop for NativeTypstCompiler {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    fn request(root: &Path, name: &str, source: &str) -> CompileRequest {
+        let path = root.join(name);
+        std::fs::write(&path, source).unwrap();
+        CompileRequest {
+            path: path.to_string_lossy().into_owned(),
+            source: source.into(),
+            theme: None,
+        }
+    }
+
+    #[test]
+    fn idle_documents_expire_even_while_another_document_keeps_the_compiler_hot() {
+        let root = tempfile::tempdir().unwrap();
+        let compiler = NativeTypstCompiler::new(root.path().to_owned());
+        let old = compiler
+            .compile(request(root.path(), "old.typ", "Old"))
+            .unwrap();
+        let hot = compiler
+            .compile(request(root.path(), "hot.typ", "Hot"))
+            .unwrap();
+        compiler.page(&old.id, 1).unwrap();
+        compiler
+            .state
+            .lock()
+            .unwrap()
+            .entries
+            .get_mut(&old.id)
+            .unwrap()
+            .last_used -= StdDuration::from_secs(16 * 60);
+        assert!(!compiler.evict_idle(StdDuration::from_secs(15 * 60)));
+        assert!(compiler.page(&old.id, 1).is_err());
+        assert!(compiler.page(&hot.id, 1).is_ok());
+        assert_eq!(compiler.pages.lock().unwrap().usage().0, 1);
+    }
+
+    #[test]
+    fn superseded_typst_layouts_expire_after_grace_even_when_the_path_is_leased() {
+        let root = tempfile::tempdir().unwrap();
+        let compiler = NativeTypstCompiler::new(root.path().to_owned());
+        let old = compiler
+            .compile(request(root.path(), "note.typ", "Old"))
+            .unwrap();
+        compiler.set_active_paths([root.path().join("note.typ")]);
+        let new = compiler
+            .compile(request(root.path(), "note.typ", "New"))
+            .unwrap();
+        assert!(compiler.page(&old.id, 1).is_ok());
+        compiler
+            .state
+            .lock()
+            .unwrap()
+            .entries
+            .get_mut(&old.id)
+            .unwrap()
+            .superseded_at = Some(Instant::now() - REVISION_GRACE);
+        compiler.evict_idle(StdDuration::ZERO);
+        assert!(compiler.page(&old.id, 1).is_err());
+        assert!(compiler.page(&new.id, 1).is_ok());
+        compiler.set_active_paths([]);
+        compiler.evict_idle(StdDuration::ZERO);
+        assert!(compiler.fonts.lock().unwrap().is_none());
+        assert_eq!(compiler.pages.lock().unwrap().usage(), (0, 0));
+    }
+
+    #[test]
+    fn in_use_layout_survives_eviction_and_cannot_refill_after_clear() {
+        let root = tempfile::tempdir().unwrap();
+        let compiler = NativeTypstCompiler::new(root.path().to_owned());
+        let compiled = compiler
+            .compile(request(root.path(), "note.typ", "Snapshot"))
+            .unwrap();
+        let snapshot = compiler
+            .state
+            .lock()
+            .unwrap()
+            .entries
+            .peek(&compiled.id)
+            .unwrap()
+            .document
+            .clone();
+        compiler.evict_idle(StdDuration::ZERO);
+        assert!(compiler.page(&compiled.id, 1).is_ok());
+        compiler.clear();
+        assert!(!snapshot.pages().is_empty());
+        assert!(compiler.page(&compiled.id, 1).is_err());
+        assert_eq!(compiler.pages.lock().unwrap().usage(), (0, 0));
+    }
+
+    #[test]
+    fn source_budget_returns_busy_without_discarding_a_leased_layout() {
+        let root = tempfile::tempdir().unwrap();
+        let compiler = NativeTypstCompiler::new(root.path().to_owned());
+        let current = compiler
+            .compile(request(root.path(), "note.typ", "Current"))
+            .unwrap();
+        compiler.set_active_paths([root.path().join("note.typ")]);
+        let mut large = request(root.path(), "large.typ", "");
+        large.source = "x".repeat(SOURCE_BYTES_LIMIT);
+        assert!(matches!(compiler.compile(large), Err(CompileError::Busy)));
+        assert!(compiler.page(&current.id, 1).is_ok());
+        assert_eq!(compiler.cache_usage().0, 1);
     }
 }

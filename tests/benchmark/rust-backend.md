@@ -1,5 +1,13 @@
 # Rust / JavaScript 后端性能对比
 
+原生资源生命周期场景（128 次编辑、8 个活跃文档、主题切换、PDF 修订、逐页渲染与最终释放）可单独运行：
+
+```bash
+cargo test --release --locked --test rust_backend_perf report_native_resource_lifecycle -- --ignored --nocapture
+```
+
+该场景逐轮断言文档、源码与页面缓存预算，输出每 16 轮的 RSS 与持有资源计数，最后验证应用缓存全部清空。RSS 只作观察，不要求分配器立即归还内存。
+
 Rust 基准是一个默认忽略的集成测试，避免性能场景拖慢普通测试。固定 runner 上应使用 release profile：
 
 ```bash
@@ -31,7 +39,8 @@ node tests/benchmark/js-backend.mjs
 - `pdf_document_parse_and_cache`：生产 PDF 服务从磁盘加载并提取页数/目录。
 - `pdf_document_parse_and_render_page_svg`：生产服务冷缓存的加载、解析和第一页 SVG。
 - `markdown_parse`：Comrak 解析 AST；`markdown_parse_and_render_html` 是生产 Markdown 路径，含 AST 改写、HTML 序列化和后处理。
-- `typst_parse`：Typst 语法树解析；`typst_compile_cold` 包含进程内首次字体加载，`typst_compile_warm` 测量后续完整编译。
+- `typst_parse`：Typst 语法树解析；`typst_compile_cold` 包含进程内首次字体加载，`typst_compile_warm` 通过修改不影响布局的注释测量后续完整编译。
+- `typst_compile_cache_hit`：源码、主题和实际读取的依赖均未变化时的应用层缓存命中。与完整热编译分别报告，不将两者的耗时混用。
 - `typst_render_page_svg_uncached`：已编译文档的首次页面 SVG 导出，避免命中 Rust 服务的 SVG 缓存。
 
 报告的 RSS/HWM 是整个基准测试进程的快照，包含测试运行时和 Typst 字体初始化；不是单阶段分配量。Rust 的 `rss_after_kib` 在显式运行 Typst 空闲清理后采样，`peak_rss_after_kib` 记录清理前后的进程峰值。Linux 会填入 `/proc/self/status` 数据，其他平台为 `null`。Node 与 Rust 的清理时点不同，RSS 只能作为各自全新进程工作后的量级参考，不应当作单阶段分配量或峰值增量。

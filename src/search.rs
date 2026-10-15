@@ -26,12 +26,6 @@ const MAX_SNIPPET_LINES: usize = 10;
 const MAX_LINE_RANGES: usize = 24;
 const SNAPSHOT_TTL: Duration = Duration::from_secs(300);
 const IGNORED_DIRS: &[&str] = &["node_modules", ".work", ".archive", ".git"];
-const BINARY_EXTENSIONS: &[&str] = &[
-    "pdf", "zip", "gz", "7z", "rar", "tar", "xz", "bz2", "exe", "dll", "so", "dylib", "wasm",
-    "node", "png", "jpg", "jpeg", "gif", "webp", "avif", "ico", "bmp", "tiff", "mp3", "mp4", "mov",
-    "wav", "flac", "ogg", "woff", "woff2", "ttf", "otf", "doc", "docx", "xls", "xlsx", "ppt",
-    "pptx", "epub", "sqlite", "db",
-];
 
 static NEXT_SEARCH_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -86,6 +80,7 @@ struct SearchSpec {
     text: String,
     regex: bool,
     case_sensitive: bool,
+    respect_gitignore: bool,
     languages: Vec<String>,
     paths: Vec<PathFilter>,
 }
@@ -122,7 +117,13 @@ impl SearchService {
         if input.is_empty() || input.len() > 256 || input.contains(['\r', '\n', '\0']) {
             return Err("Enter a single-line search query of 1–256 characters.".into());
         }
-        let scope = params.scope.as_deref().unwrap_or("files");
+        // An empty scope means the default repository-wide full-text search.
+        // Older clients may still send `scope=`, so normalize both forms.
+        let scope = params
+            .scope
+            .as_deref()
+            .filter(|scope| !scope.is_empty())
+            .unwrap_or("files");
         if !matches!(scope, "files" | "current-file" | "bookmarks") {
             return Err("Choose one search scope: files, bookmarks or current-file.".into());
         }
@@ -322,8 +323,10 @@ fn scan(
     walker
         .hidden(true)
         .follow_links(false)
-        .git_ignore(true)
-        .git_exclude(true)
+        .git_ignore(spec.respect_gitignore)
+        .git_global(spec.respect_gitignore)
+        .git_exclude(spec.respect_gitignore)
+        .require_git(false)
         .parents(true);
     if let Some(relative) = only_path {
         let candidate = root.join(relative);
@@ -333,18 +336,17 @@ fn scan(
         if !canonical.starts_with(&root) || !canonical.is_file() {
             return Err("Current file is outside the repository or is not a file.".into());
         }
-        walker = WalkBuilder::new(candidate);
-        walker
-            .hidden(true)
-            .follow_links(false)
-            .git_ignore(true)
-            .git_exclude(true)
-            .parents(true);
     }
-    if let Some(private) = private {
-        let private = private.to_path_buf();
-        walker.filter_entry(move |entry| !entry.path().starts_with(&private));
-    }
+    let only_path = only_path.map(|relative| root.join(relative));
+    let private = private.map(Path::to_path_buf);
+    walker.filter_entry(move |entry| {
+        !private
+            .as_ref()
+            .is_some_and(|private| entry.path().starts_with(private))
+            && only_path.as_ref().is_none_or(|candidate| {
+                entry.path() == candidate || candidate.starts_with(entry.path())
+            })
+    });
     for result in walker.build() {
         let entry = match result {
             Ok(entry) => entry,
@@ -362,7 +364,7 @@ fn scan(
         if relative.starts_with("../")
             || relative == ".."
             || ignored_relative_path(&relative)
-            || is_binary_extension(path)
+            || crate::file_kind::has_binary_extension(path)
         {
             continue;
         }
@@ -508,7 +510,7 @@ fn parse_query(input: &str) -> Result<SearchSpec, String> {
             break;
         }
         let start = chars[index].0;
-        if chars[index].1 == '/' && tokens.is_empty() {
+        if chars[index].1 == '/' {
             let mut end = None;
             let mut in_class = false;
             let mut escaped = false;
@@ -595,12 +597,14 @@ fn parse_query(input: &str) -> Result<SearchSpec, String> {
     let mut paths = Vec::new();
     let mut regex = false;
     let mut case_sensitive = false;
+    let mut regex_case_sensitive = None;
+    let mut respect_gitignore = true;
     for (token, quoted) in tokens {
         if let Some(value) = token.strip_prefix("\0REGEX:") {
             let (flags, pattern) = value.split_once(':').unwrap_or(("", value));
             text_terms.push(pattern.to_owned());
             regex = true;
-            case_sensitive = flags != "i";
+            regex_case_sensitive = Some(flags != "i");
         } else if !quoted {
             let lower = token.to_ascii_lowercase();
             if let Some(value) = lower
@@ -613,6 +617,14 @@ fn parse_query(input: &str) -> Result<SearchSpec, String> {
                     value: value.to_owned(),
                     quoted: false,
                 });
+            } else if lower == "--no-gitignore" {
+                respect_gitignore = false;
+            } else if let Some(value) = lower.strip_prefix("gitignore:") {
+                match value {
+                    "yes" => respect_gitignore = true,
+                    "no" => respect_gitignore = false,
+                    _ => return Err("Use gitignore:yes or gitignore:no.".into()),
+                }
             } else if let Some(value) = lower.strip_prefix("case:") {
                 match value {
                     "yes" => case_sensitive = true,
@@ -629,10 +641,14 @@ fn parse_query(input: &str) -> Result<SearchSpec, String> {
     if regex && text_terms.len() != 1 {
         return Err("Use one regular expression with optional lang/path filters; quote text for a literal search.".into());
     }
+    if let Some(regex_case_sensitive) = regex_case_sensitive {
+        case_sensitive = regex_case_sensitive;
+    }
     Ok(SearchSpec {
         text: text_terms.join(" "),
         regex,
         case_sensitive,
+        respect_gitignore,
         languages,
         paths,
     })
@@ -681,25 +697,12 @@ fn params_path_filter(value: &str) -> Option<PathFilter> {
 }
 
 fn valid_text(bytes: &[u8]) -> bool {
-    !bytes.contains(&0)
-        && std::str::from_utf8(bytes).is_ok_and(|text| {
-            !text
-                .chars()
-                .any(|ch| matches!(ch as u32, 1..=8 | 11..=12 | 14..=31))
-        })
+    crate::file_kind::is_text(bytes)
 }
 
 fn ignored_relative_path(path: &str) -> bool {
     path.split('/')
         .any(|name| name.starts_with('.') || IGNORED_DIRS.contains(&name))
-}
-
-fn is_binary_extension(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            BINARY_EXTENSIONS.contains(&extension.to_ascii_lowercase().as_str())
-        })
 }
 
 fn search_language(path: &Path) -> String {

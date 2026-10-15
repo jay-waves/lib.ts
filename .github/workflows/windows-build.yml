@@ -2,10 +2,13 @@ name: Windows native build
 
 on:
   push:
-    branches: [main]
+    tags: ['*']
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -67,15 +70,43 @@ jobs:
       - name: Assemble artifact
         shell: pwsh
         run: |
-          $stage = Join-Path $env:RUNNER_TEMP 'saved-notes-library-windows'
+          $stage = Join-Path $env:RUNNER_TEMP 'lib.ts'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item 'target/release/saved-notes-library.exe' $stage
+          Copy-Item 'target/release/saved-notes-library.exe' (Join-Path $stage 'lib.ts.exe')
           Copy-Item 'dist' $stage -Recurse
           Copy-Item 'fonts' $stage -Recurse
+          Copy-Item 'LICENSE' $stage
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: saved-notes-library-windows-x86_64
-          path: ${{ runner.temp }}/saved-notes-library-windows
+          name: lib.ts
+          path: ${{ runner.temp }}/lib.ts
           if-no-files-found: error
+          compression-level: 9
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: lib.ts
+          path: ${{ runner.temp }}/lib.ts
+
+      - name: Package Windows release
+        run: zip -r "$RUNNER_TEMP/lib.ts-${GITHUB_REF_NAME}-windows-x86_64.zip" lib.ts
+        working-directory: ${{ runner.temp }}
+
+      - name: Publish tag release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: lib.ts ${{ github.ref_name }}
+          generate_release_notes: true
+          files: ${{ runner.temp }}/lib.ts-${{ github.ref_name }}-windows-x86_64.zip
+          fail_on_unmatched_files: true

@@ -1,3 +1,5 @@
+#[path = "../src/resources.rs"]
+mod resources;
 #[path = "../src/typst.rs"]
 mod typst;
 
@@ -9,6 +11,101 @@ fn compiler() -> (tempfile::TempDir, typst::NativeTypstCompiler, PathBuf) {
     fs::write(&path, "").unwrap();
     let compiler = typst::NativeTypstCompiler::new(root.path().to_path_buf());
     (root, compiler, path)
+}
+
+#[test]
+fn unchanged_compilations_reuse_ids_but_sources_themes_and_dependencies_invalidate() {
+    let (root, compiler, path) = compiler();
+    let dependency = root.path().join("dependency.typ");
+    fs::write(&dependency, "#let title = [Alpha]").unwrap();
+    let request = || typst::CompileRequest {
+        path: path.to_string_lossy().into_owned(),
+        source: "#import \"dependency.typ\": title\n= #title".into(),
+        theme: None,
+    };
+    let first = compiler.compile(request()).unwrap();
+    let first_svg = compiler.page(&first.id, 1).unwrap().svg;
+    assert_eq!(first.id, compiler.compile(request()).unwrap().id);
+    let modified = fs::metadata(&dependency).unwrap().modified().unwrap();
+    fs::write(&dependency, "#let title = [Bravo]").unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&dependency)
+        .unwrap()
+        .set_times(fs::FileTimes::new().set_modified(modified))
+        .unwrap();
+    let changed = compiler.compile(request()).unwrap();
+    assert_ne!(first.id, changed.id);
+    assert_ne!(first_svg, compiler.page(&changed.id, 1).unwrap().svg);
+    assert_eq!(changed.id, compiler.compile(request()).unwrap().id);
+    let mut dark = request();
+    dark.theme = Some("dark".into());
+    assert_ne!(changed.id, compiler.compile(dark).unwrap().id);
+    let mut edited = request();
+    edited.source.push_str("\nEdited");
+    assert_ne!(changed.id, compiler.compile(edited).unwrap().id);
+    fs::remove_file(&dependency).unwrap();
+    assert!(compiler.compile(request()).is_err());
+    // Published IDs remain immutable snapshots while the source changes.
+    assert!(compiler.page(&changed.id, 1).is_ok());
+}
+
+#[test]
+fn image_dependencies_invalidate_and_cancelled_compiles_are_not_cached() {
+    let (root, compiler, path) = compiler();
+    let image = root.path().join("image.svg");
+    fs::write(&image, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\"><rect width=\"20\" height=\"20\" fill=\"red\"/></svg>").unwrap();
+    let request = || typst::CompileRequest {
+        path: path.to_string_lossy().into_owned(),
+        source: "#image(\"image.svg\")".into(),
+        theme: None,
+    };
+    let first = compiler.compile(request()).unwrap();
+    fs::write(&image, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\"><rect width=\"20\" height=\"20\" fill=\"blue\"/></svg>").unwrap();
+    let changed = compiler.compile(request()).unwrap();
+    assert_ne!(first.id, changed.id);
+    compiler.clear();
+    assert!(compiler.page(&changed.id, 1).is_err());
+    let cancellation = resources::Cancellation::default();
+    cancellation.cancel();
+    assert!(
+        compiler
+            .compile_cancellable(request(), &cancellation)
+            .is_err()
+    );
+    let valid = compiler.compile(request()).unwrap();
+    assert_eq!(valid.id, compiler.compile(request()).unwrap().id);
+}
+
+#[test]
+fn concurrent_identical_compilations_reuse_one_layout() {
+    let (_root, compiler, path) = compiler();
+    let barrier = std::sync::Barrier::new(4);
+    let ids = std::thread::scope(|scope| {
+        let handles = (0..4)
+            .map(|_| {
+                let compiler = &compiler;
+                let path = &path;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    compiler
+                        .compile(typst::CompileRequest {
+                            path: path.to_string_lossy().into_owned(),
+                            source: "Shared layout".into(),
+                            theme: None,
+                        })
+                        .unwrap()
+                        .id
+                })
+            })
+            .collect::<Vec<_>>();
+        handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+    assert!(ids.iter().all(|id| id == &ids[0]));
 }
 
 #[test]
@@ -38,6 +135,24 @@ fn native_page_links_include_internal_targets_and_safe_external_urls() {
         && link.top >= 0.0
         && link.left + link.width <= 100.0 + 1e-6
         && link.top + link.height <= 100.0 + 1e-6));
+}
+
+#[test]
+fn native_outline_includes_source_headings() {
+    let (_root, compiler, path) = compiler();
+    let response = compiler
+        .compile(typst::CompileRequest {
+            path: path.to_string_lossy().into_owned(),
+            source: "= First\n\n== Second *heading*".into(),
+            theme: None,
+        })
+        .unwrap();
+
+    assert_eq!(response.outline.len(), 2, "{:?}", response.outline);
+    assert_eq!(response.outline[0].name, "First");
+    assert_eq!(response.outline[0].line, 1);
+    assert_eq!(response.outline[1].name, "Second heading");
+    assert_eq!(response.outline[1].level, 2);
 }
 
 #[test]

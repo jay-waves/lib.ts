@@ -8,7 +8,6 @@ use axum::{
     routing::get,
 };
 use futures_util::{Stream, StreamExt, stream};
-use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -20,12 +19,10 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
     time::Instant,
 };
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tower_http::{services::ServeDir, trace::TraceLayer};
-
-const ROOT_COMPILER_LIMIT: usize = 3;
 
 static HTML_STRIP_ELEMENTS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::RegexBuilder::new(
@@ -88,12 +85,16 @@ fn stream_file(
     )
 }
 
+mod file_kind;
 mod git;
 mod markdown;
 mod pdf;
 mod reading;
+mod render;
 mod repositories;
+mod resources;
 mod search;
+mod tree;
 mod typst;
 mod worker;
 
@@ -102,30 +103,21 @@ struct AppState {
     root: Arc<PathBuf>,
     service_root: Arc<PathBuf>,
     dist: Arc<PathBuf>,
-    compile_workers: worker::WorkerPool,
     document_workers: worker::WorkerPool,
-    page_workers: worker::WorkerPool,
-    pdf: Arc<pdf::NativePdfRenderer>,
-    typst: Arc<typst::NativeTypstCompiler>,
+    rendering: Arc<render::RenderService>,
+    shutdown: tokio::sync::watch::Sender<bool>,
     html_token: Arc<String>,
     search: Arc<search::SearchService>,
     data_directory: Arc<PathBuf>,
     leases: Arc<Mutex<HashMap<String, DocumentLease>>>,
     library_clients: Arc<Mutex<HashMap<String, LibraryClient>>>,
-    tree_watchers: Arc<Mutex<HashMap<PathBuf, tokio::sync::broadcast::Sender<TreeEvent>>>>,
+    trees: tree::Service,
     file_watchers:
         Arc<Mutex<HashMap<Vec<(PathBuf, String)>, tokio::sync::broadcast::Sender<FileWatchEvent>>>>,
     repositories: Arc<repositories::RepositoryStore>,
-    typst_by_root: Arc<Mutex<LruCache<PathBuf, Arc<typst::NativeTypstCompiler>>>>,
     reading: Arc<reading::ReadingStore>,
     cross_search: Arc<Mutex<HashMap<String, CrossSearchSnapshot>>>,
     base_url: Arc<String>,
-}
-
-#[derive(Clone, Copy)]
-enum TreeEvent {
-    Changed,
-    Removed,
 }
 
 #[derive(Clone)]
@@ -146,7 +138,7 @@ struct CrossSearchSnapshot {
 static NEXT_CROSS_SEARCH_ID: AtomicU64 = AtomicU64::new(1);
 
 impl AppState {
-    fn refresh_typst_lease_paths(&self) {
+    fn refresh_document_leases(&self) {
         let now = Instant::now();
         let active = if let Ok(mut leases) = self.leases.lock() {
             leases.retain(|_, lease| lease.expires_at > now);
@@ -157,20 +149,7 @@ impl AppState {
         } else {
             HashSet::new()
         };
-        self.typst.set_active_paths(active.iter().cloned());
-        let compilers = self
-            .typst_by_root
-            .lock()
-            .map(|compilers| {
-                compilers
-                    .iter()
-                    .map(|(_, compiler)| compiler.clone())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        for compiler in compilers {
-            compiler.set_active_paths(active.iter().cloned());
-        }
+        self.rendering.set_active_paths(active);
     }
 
     fn default_repository(&self) -> Option<repositories::Repository> {
@@ -204,144 +183,9 @@ impl AppState {
             .unwrap_or_else(|| self.root.clone())
     }
 
-    fn typst_for_root(
-        &self,
-        root: &Path,
-    ) -> Result<Arc<typst::NativeTypstCompiler>, worker::WorkerError> {
-        if root == &*self.root {
-            return Ok(self.typst.clone());
-        }
-        let mut compilers = self
-            .typst_by_root
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(compiler) = compilers.get(root) {
-            return Ok(compiler.clone());
-        }
-        let compiler = Arc::new(typst::NativeTypstCompiler::new(root.to_path_buf()));
-        let active = self
-            .leases
-            .lock()
-            .map(|leases| {
-                leases
-                    .values()
-                    .filter(|lease| lease.expires_at > Instant::now())
-                    .flat_map(|lease| lease.paths.iter().cloned())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        compiler.set_active_paths(active);
-        while compilers.len() >= ROOT_COMPILER_LIMIT {
-            let victim = compilers
-                .iter()
-                .rev()
-                .find(|(_, compiler)| {
-                    Arc::strong_count(compiler) == 1 && !compiler.has_active_documents()
-                })
-                .map(|(root, _)| root.clone());
-            let Some(victim) = victim else { break };
-            compilers.pop(&victim);
-        }
-        if compilers.len() >= 8 {
-            return Err(worker::WorkerError::Busy);
-        }
-        compilers.put(root.to_path_buf(), compiler.clone());
-        Ok(compiler)
-    }
-
     fn search_for_root(&self, root: &Path) -> Arc<search::SearchService> {
         let _ = root;
         self.search.clone()
-    }
-
-    fn evict_idle_typst(&self) {
-        self.pdf.evict_idle(std::time::Duration::from_secs(5 * 60));
-        let mut compilers = vec![self.typst.clone()];
-        compilers.extend(
-            self.typst_by_root
-                .lock()
-                .map(|cache| {
-                    cache
-                        .iter()
-                        .map(|(_, compiler)| compiler.clone())
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default(),
-        );
-        let all_idle = compilers
-            .iter()
-            .map(|compiler| compiler.evict_idle(std::time::Duration::from_secs(5 * 60)))
-            .fold(true, |all, idle| all && idle);
-        if all_idle {
-            // Typst's memoized computations are process-global, so clear them
-            // only after every root compiler has been idle for the grace period.
-            comemo::evict(0);
-        }
-    }
-
-    fn subscribe_tree_events(
-        &self,
-        root: PathBuf,
-        private: PathBuf,
-        initial_signature: u128,
-    ) -> tokio::sync::broadcast::Receiver<TreeEvent> {
-        let mut watchers = self
-            .tree_watchers
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(sender) = watchers.get(&root) {
-            return sender.subscribe();
-        }
-        let (sender, _) = tokio::sync::broadcast::channel(16);
-        let receiver = sender.subscribe();
-        watchers.insert(root.clone(), sender.clone());
-        let watcher_map = self.tree_watchers.clone();
-        tokio::spawn(async move {
-            let mut signature = initial_signature;
-            let mut timer = tokio::time::interval(std::time::Duration::from_secs(1));
-            loop {
-                timer.tick().await;
-                if sender.receiver_count() == 0 {
-                    let mut watchers = watcher_map
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    if watchers
-                        .get(&root)
-                        .is_some_and(|current| current.same_channel(&sender))
-                    {
-                        watchers.remove(&root);
-                    }
-                    break;
-                }
-                let root_scan = root.clone();
-                let private_scan = private.clone();
-                let current = tokio::task::spawn_blocking(move || {
-                    tree_signature(&root_scan, &root_scan, &private_scan)
-                })
-                .await;
-                match current {
-                    Ok(Ok(current)) if current != signature => {
-                        signature = current;
-                        let _ = sender.send(TreeEvent::Changed);
-                    }
-                    Ok(Ok(_)) => {}
-                    _ => {
-                        let _ = sender.send(TreeEvent::Removed);
-                        let mut watchers = watcher_map
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        if watchers
-                            .get(&root)
-                            .is_some_and(|current| current.same_channel(&sender))
-                        {
-                            watchers.remove(&root);
-                        }
-                        break;
-                    }
-                }
-            }
-        });
-        receiver
     }
 
     fn subscribe_file_events(
@@ -443,27 +287,6 @@ struct ApiError {
     error: String,
 }
 
-#[derive(Serialize)]
-struct TreeNode {
-    name: String,
-    path: String,
-    #[serde(rename = "absolutePath", skip_serializing_if = "Option::is_none")]
-    absolute_path: Option<String>,
-    #[serde(rename = "type")]
-    kind: &'static str,
-    modified: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    children: Vec<TreeNode>,
-}
-
-#[derive(Serialize)]
-struct TreeRoot {
-    name: String,
-    #[serde(rename = "absolutePath")]
-    absolute_path: String,
-    children: Vec<TreeNode>,
-}
-
 #[derive(Deserialize)]
 struct PathQuery {
     path: String,
@@ -529,10 +352,14 @@ fn new_capability_token() -> Result<String, std::io::Error> {
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-fn media_type(path: &Path) -> &'static str {
-    mime_guess::from_path(path)
-        .first_raw()
-        .unwrap_or("application/octet-stream")
+async fn media_type(path: &Path, file: &mut tokio::fs::File) -> io::Result<&'static str> {
+    let mut prefix = Vec::with_capacity(file_kind::HEADER_BYTES);
+    (&mut *file)
+        .take(file_kind::HEADER_BYTES as u64)
+        .read_to_end(&mut prefix)
+        .await?;
+    file.rewind().await?;
+    Ok(file_kind::detect(path, &prefix).mime)
 }
 
 fn html_resources_base(api_prefix: &str, token: &str, path: &str) -> String {
@@ -775,46 +602,6 @@ fn modified_rfc3339(path: &Path) -> String {
         .unwrap_or_default()
 }
 
-fn tree_signature(root: &Path, directory: &Path, private: &Path) -> std::io::Result<u128> {
-    let mut signature = 0u128;
-    for item in std::fs::read_dir(directory)? {
-        let item = item?;
-        let name = item.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with('.') || name == "node_modules" {
-            continue;
-        }
-        let ty = item.file_type()?;
-        if ty.is_symlink() {
-            continue;
-        }
-        let path = item.path();
-        if path.starts_with(private) {
-            continue;
-        }
-        let metadata = item.metadata()?;
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|time| time.as_nanos())
-            .unwrap_or_default();
-        signature = signature.wrapping_add(modified ^ u128::from(metadata.len()));
-        if ty.is_dir() {
-            signature = signature.wrapping_add(tree_signature(root, &path, private)?);
-        }
-        signature = signature.wrapping_add(
-            path.strip_prefix(root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .bytes()
-                .map(u128::from)
-                .sum::<u128>(),
-        );
-    }
-    Ok(signature)
-}
-
 fn browse_directories(
     path: Option<&str>,
     initial_root: &Path,
@@ -894,6 +681,8 @@ fn pdf_error_status(error: &pdf::PdfError) -> StatusCode {
         pdf::PdfError::PageNotFound => StatusCode::NOT_FOUND,
         pdf::PdfError::Changed => StatusCode::GONE,
         pdf::PdfError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+        pdf::PdfError::Busy => StatusCode::SERVICE_UNAVAILABLE,
+        pdf::PdfError::Cancelled => StatusCode::SERVICE_UNAVAILABLE,
         _ => StatusCode::BAD_REQUEST,
     }
 }
@@ -975,102 +764,32 @@ fn checked_library_path(
     Ok(path)
 }
 
-fn tree(root: &Path, directory: &Path, private: &Path) -> std::io::Result<Vec<TreeNode>> {
-    let mut nodes = Vec::new();
-    for item in std::fs::read_dir(directory)? {
-        let item = item?;
-        let name = item.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.')
-            || matches!(
-                name.as_str(),
-                ".git" | ".work" | ".archive" | "node_modules"
-            )
-        {
-            continue;
-        }
-        let ty = item.file_type()?;
-        if ty.is_symlink() {
-            continue;
-        }
-        let file = item.path();
-        if file.starts_with(private) {
-            continue;
-        }
-        let metadata = item.metadata()?;
-        let relative = file
-            .strip_prefix(root)
-            .unwrap_or(&file)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let seconds = metadata
-            .modified()
-            .unwrap_or(std::time::UNIX_EPOCH)
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-        let modified = time::OffsetDateTime::from_unix_timestamp(seconds)
-            .ok()
-            .and_then(|date| {
-                date.format(&time::format_description::well_known::Rfc3339)
-                    .ok()
-            })
-            .unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
-        if ty.is_dir() {
-            let children = tree(root, &file, private)?;
-            if !children.is_empty() {
-                nodes.push(TreeNode {
-                    name,
-                    path: relative.clone(),
-                    absolute_path: Some(file.to_string_lossy().into_owned()),
-                    kind: "directory",
-                    modified,
-                    children,
-                });
-            }
-        } else if ty.is_file() {
-            nodes.push(TreeNode {
-                name,
-                path: relative,
-                absolute_path: None,
-                kind: "file",
-                modified,
-                children: vec![],
-            });
-        }
-    }
-    nodes.sort_by(|a, b| {
-        (a.kind != "directory")
-            .cmp(&(b.kind != "directory"))
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-    Ok(nodes)
-}
-
-async fn get_tree(
-    State(state): State<AppState>,
-    OriginalUri(uri): OriginalUri,
-) -> impl IntoResponse {
+async fn get_tree(State(state): State<AppState>, OriginalUri(uri): OriginalUri) -> Response {
     let root = state.root_for_uri(uri.path());
-    let result = tokio::task::spawn_blocking(move || {
-        let children =
-            tree(&root, &root, &state.data_directory).map_err(|error| error.to_string())?;
-        Ok::<_, String>(TreeRoot {
-            name: root
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned(),
-            absolute_path: root.to_string_lossy().into_owned(),
-            children,
-        })
-    })
-    .await;
-    match result {
-        Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error).into_response(),
-        Err(error) => {
-            json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+    let entry = match state
+        .trees
+        .entry((*root).clone(), (*state.data_directory).clone())
+    {
+        Ok(entry) => entry,
+        Err(error) => return json_error(StatusCode::SERVICE_UNAVAILABLE, error).into_response(),
+    };
+    match entry.snapshot().await {
+        Ok(snapshot) => {
+            let mut response = (
+                [
+                    (axum::http::header::CONTENT_TYPE, "application/json"),
+                    (axum::http::header::CACHE_CONTROL, "no-store"),
+                ],
+                snapshot.body,
+            )
+                .into_response();
+            response.headers_mut().insert(
+                "x-tree-revision",
+                snapshot.revision.to_string().parse().unwrap(),
+            );
+            response
         }
+        Err(error) => json_error(StatusCode::SERVICE_UNAVAILABLE, error).into_response(),
     }
 }
 
@@ -1517,7 +1236,7 @@ async fn session_leases(
             && request.version <= existing.version
         {
             drop(leases);
-            state.refresh_typst_lease_paths();
+            state.refresh_document_leases();
             return Json(serde_json::json!({"ok":true})).into_response();
         }
     }
@@ -1534,7 +1253,7 @@ async fn session_leases(
         );
     }
     drop(leases);
-    state.refresh_typst_lease_paths();
+    state.refresh_document_leases();
     Json(serde_json::json!({"ok":true})).into_response()
 }
 
@@ -1596,9 +1315,13 @@ async fn library_session(
             }
         },
     );
-    Sse::new(connected.chain(events))
-        .keep_alive(KeepAlive::default())
-        .into_response()
+    Sse::new(
+        connected
+            .chain(events)
+            .take_until(wait_for_shutdown(state.shutdown.subscribe())),
+    )
+    .keep_alive(KeepAlive::default())
+    .into_response()
 }
 
 async fn library_activity(
@@ -2247,7 +1970,7 @@ async fn document(
     let compile_root = root.clone();
     let preview = query.view.as_deref() != Some("raw");
     let theme = query.theme.clone();
-    let pdf_renderer = state.pdf.clone();
+    let pdf_renderer = state.rendering.pdf.clone();
     let private = state.data_directory.clone();
     let api_prefix = uri
         .path()
@@ -2255,7 +1978,7 @@ async fn document(
         .unwrap_or("")
         .to_owned();
     let compile_prefix = api_prefix.clone();
-    let result = state.document_workers.run(move || -> Result<serde_json::Value, (StatusCode, String)> {
+    let result = state.document_workers.run_cancellable(0, move |cancellation| -> Result<serde_json::Value, (StatusCode, String)> {
         let path = checked_library_path(&root, &query.path, &private)?;
         if !path.is_file() { return Err((StatusCode::BAD_REQUEST, "Not a file".into())); }
         let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -2263,23 +1986,25 @@ async fn document(
         let extension = path.extension().and_then(|extension| extension.to_str())
             .unwrap_or_default().to_ascii_lowercase();
         let file_size = path.metadata().map(|metadata| metadata.len()).unwrap_or_default();
-        if matches!(extension.as_str(), "html" | "htm") {
+        let detected = file_kind::from_path(&path)
+            .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+        let mime = detected.mime;
+        if mime == "text/html" && !detected.binary {
             let source = String::from_utf8(read_document_source(&path)?).map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
             return Ok(serde_json::json!({"type":"html", "path":query.path,
                 "absolutePath":path.to_string_lossy(), "name":name, "size":file_size, "modified":modified,
                 "lineCount":source.split('\n').count(), "source":source,
                 "url":format!("{api_prefix}/api/html?path={}", encode_query_component(&query.path))}));
         }
-        let mime = media_type(&path);
         if mime.starts_with("image/") {
             return Ok(serde_json::json!({"type":"image", "path":query.path,
                 "absolutePath":path.to_string_lossy(), "name":name, "size":file_size, "modified":modified,
-                "mime":mime, "format":extension, "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
+                "mime":mime, "format":detected.format, "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
         }
-        if extension == "pdf" {
+        if mime == "application/pdf" {
             let revision = pdf::revision(&path)
                 .map_err(|error| (pdf_error_status(&error), error.to_string()))?;
-            let info = pdf_renderer.document(&path, &revision)
+            let info = pdf_renderer.document_cancellable(&path, &revision, &cancellation)
                 .map_err(|error| (pdf_error_status(&error), error.to_string()))?;
             let pages = info.pages.iter().enumerate().map(|(index, page)| serde_json::json!({
                 "url":format!("{api_prefix}/api/pdf/page?path={}&page={}",
@@ -2290,23 +2015,18 @@ async fn document(
                 "absolutePath":path.to_string_lossy(), "name":name, "size":path.metadata().map(|meta| meta.len()).unwrap_or_default(),
                 "modified":modified, "revision":revision, "outline":info.outline, "pages":pages}));
         }
-        if matches!(extension.as_str(), "zip" | "gz" | "7z" | "rar" | "tar" | "xz" | "bz2" | "exe" | "dll" | "so" | "dylib" | "wasm" | "node" | "mp3" | "mp4" | "mov" | "wav" | "flac" | "ogg" | "woff" | "woff2" | "ttf" | "otf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "epub" | "sqlite" | "db") {
+        if detected.binary {
             return Ok(serde_json::json!({"type":"binary", "path":query.path,
                 "absolutePath":path.to_string_lossy(), "name":name, "size":file_size, "modified":modified,
-                "mime":mime, "format":extension, "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
+                "mime":mime, "format":detected.format, "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
         }
         let bytes = read_document_source(&path)?;
-        let source = match String::from_utf8(bytes) {
-            Ok(source) => source,
-            Err(_) => return Ok(serde_json::json!({"type":"binary", "path":query.path,
-                "absolutePath":path.to_string_lossy(), "name":name, "size":file_size, "modified":modified,
-                "mime":"application/octet-stream", "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))})),
-        };
-        if source.chars().any(|ch| matches!(ch, '\0'..='\u{8}' | '\u{e}'..='\u{1f}')) {
+        if !file_kind::is_text(&bytes) {
             return Ok(serde_json::json!({"type":"binary", "path":query.path,
                 "absolutePath":path.to_string_lossy(), "name":name, "size":file_size, "modified":modified,
                 "mime":"application/octet-stream", "url":format!("{api_prefix}/api/asset?path={}", encode_query_component(&query.path))}));
         }
+        let source = String::from_utf8(bytes).expect("validated UTF-8 document");
         let line_count = if source.is_empty() { 0 } else { source.lines().count() };
         if matches!(extension.as_str(), "md" | "markdown") {
             if query.view.as_deref() == Some("raw") {
@@ -2348,34 +2068,42 @@ async fn compile_document(
     api_prefix: String,
     theme: Option<String>,
 ) -> Result<serde_json::Value, worker::WorkerError> {
-    let compiler = state.typst_for_root(root)?;
-    let source_bytes = value["source"].as_str().map_or(0, str::len);
-    state.compile_workers.run_sized(source_bytes.saturating_mul(2), move || {
-        let request = typst::CompileRequest {
-            path: value["absolutePath"].as_str().unwrap_or_default().to_owned(),
-            source: value["source"].as_str().unwrap_or_default().to_owned(),
-            theme,
-        };
-        match compiler.compile(request) {
-            Ok(compiled) => {
-                value["outline"] = serde_json::json!(compiled.outline);
-                value["anchors"] = serde_json::json!(compiled.anchors);
-                value["pages"] = serde_json::json!(compiled.pages.iter().enumerate().map(|(index, page)| serde_json::json!({
+    let request = typst::CompileRequest {
+        path: value["absolutePath"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+        source: value["source"].as_str().unwrap_or_default().to_owned(),
+        theme,
+    };
+    match state.rendering.compile(root, request).await? {
+        Ok(compiled) => {
+            value["outline"] = serde_json::json!(compiled.outline);
+            value["anchors"] = serde_json::json!(compiled.anchors);
+            value["pages"] = serde_json::json!(compiled.pages.iter().enumerate().map(|(index, page)| serde_json::json!({
                     "url":format!("{api_prefix}/api/typst/page?id={}&page={}", compiled.id, index + 1),
                     "width":page.width, "height":page.height,
                 })).collect::<Vec<_>>());
-                value["compile"] = serde_json::json!({"id":compiled.id, "status":"success", "diagnostics":compiled.diagnostics});
-            }
-            Err(error) => {
-                tracing::warn!(path = %value["path"], error = %error, "Typst compilation failed");
-                let diagnostics = serde_json::from_str::<Vec<typst::Diagnostic>>(&error).unwrap_or_else(|_| vec![typst::Diagnostic {
-                    file:value["path"].as_str().unwrap_or_default().to_owned(), severity:"error".into(), message:error, range:None,
-                }]);
-                value["compile"] = serde_json::json!({"id":null, "status":"failed", "diagnostics":diagnostics});
-            }
+            value["compile"] = serde_json::json!({"id":compiled.id, "status":"success", "diagnostics":compiled.diagnostics});
         }
-        value
-    }).await
+        Err(typst::CompileError::Busy) => return Err(worker::WorkerError::Busy),
+        Err(typst::CompileError::Cancelled) => return Err(worker::WorkerError::Stopped),
+        Err(typst::CompileError::Failed(error)) => {
+            tracing::warn!(path = %value["path"], error = %error, "Typst compilation failed");
+            let diagnostics = serde_json::from_str::<Vec<typst::Diagnostic>>(&error)
+                .unwrap_or_else(|_| {
+                    vec![typst::Diagnostic {
+                        file: value["path"].as_str().unwrap_or_default().to_owned(),
+                        severity: "error".into(),
+                        message: error,
+                        range: None,
+                    }]
+                });
+            value["compile"] =
+                serde_json::json!({"id":null, "status":"failed", "diagnostics":diagnostics});
+        }
+    }
+    Ok(value)
 }
 
 async fn html_document(
@@ -2425,6 +2153,11 @@ async fn html_document(
                     .as_str(),
                 "html" | "htm"
             ) {
+                return Err((StatusCode::BAD_REQUEST, "Not an HTML document".into()));
+            }
+            let detected = file_kind::from_path(&path)
+                .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+            if detected.mime != "text/html" || detected.binary {
                 return Err((StatusCode::BAD_REQUEST, "Not an HTML document".into()));
             }
             let source = String::from_utf8(read_document_source(&path)?)
@@ -2500,7 +2233,7 @@ async fn html_resource(
     if !HTML_RESOURCE_EXTENSION_RE.is_match(extension) {
         return json_error(StatusCode::FORBIDDEN, "Unsupported HTML resource").into_response();
     }
-    let file = match tokio::fs::File::open(&file_path).await {
+    let mut file = match tokio::fs::File::open(&file_path).await {
         Ok(file) => file,
         Err(error) => return json_error(StatusCode::NOT_FOUND, error.to_string()).into_response(),
     };
@@ -2509,7 +2242,12 @@ async fn html_resource(
         Ok(_) => return json_error(StatusCode::NOT_FOUND, "Resource not found").into_response(),
         Err(error) => return json_error(StatusCode::NOT_FOUND, error.to_string()).into_response(),
     };
-    let mime = media_type(&file_path);
+    let mime = match media_type(&file_path, &mut file).await {
+        Ok(mime) => mime,
+        Err(error) => {
+            return json_error(StatusCode::BAD_REQUEST, error.to_string()).into_response();
+        }
+    };
     let mut response = Response::new(Body::from_stream(stream_file(file)));
     let headers = response.headers_mut();
     headers.insert(axum::http::header::CONTENT_TYPE, mime.parse().unwrap());
@@ -2539,7 +2277,7 @@ async fn asset(
         Ok(path) => path,
         Err((status, message)) => return json_error(status, message).into_response(),
     };
-    let file = match tokio::fs::File::open(&path).await {
+    let mut file = match tokio::fs::File::open(&path).await {
         Ok(file) => file,
         Err(error) => return json_error(StatusCode::NOT_FOUND, error.to_string()).into_response(),
     };
@@ -2548,7 +2286,12 @@ async fn asset(
         Ok(_) => return json_error(StatusCode::NOT_FOUND, "Asset not found").into_response(),
         Err(error) => return json_error(StatusCode::NOT_FOUND, error.to_string()).into_response(),
     };
-    let mime = media_type(&path);
+    let mime = match media_type(&path, &mut file).await {
+        Ok(mime) => mime,
+        Err(error) => {
+            return json_error(StatusCode::BAD_REQUEST, error.to_string()).into_response();
+        }
+    };
     let mut response = Response::new(Body::from_stream(stream_file(file)));
     let headers = response.headers_mut();
     headers.insert(axum::http::header::CONTENT_TYPE, mime.parse().unwrap());
@@ -2628,7 +2371,7 @@ async fn library_events(State(state): State<AppState>, OriginalUri(uri): Origina
                 }
             },
         ));
-    Sse::new(events)
+    Sse::new(events.take_until(wait_for_shutdown(state.shutdown.subscribe())))
         .keep_alive(
             KeepAlive::new()
                 .interval(std::time::Duration::from_secs(15))
@@ -2639,53 +2382,56 @@ async fn library_events(State(state): State<AppState>, OriginalUri(uri): Origina
 
 async fn tree_events(State(state): State<AppState>, OriginalUri(uri): OriginalUri) -> Response {
     let root = state.root_for_uri(uri.path());
-    let private = state.data_directory.clone();
-    let root_for_scan = root.clone();
-    let private_for_scan = private.clone();
-    let initial_signature = match tokio::task::spawn_blocking(move || {
-        tree_signature(&root_for_scan, &root_for_scan, &private_for_scan)
-    })
-    .await
+    let entry = match state
+        .trees
+        .entry((*root).clone(), (*state.data_directory).clone())
     {
-        Ok(Ok(value)) => value,
-        Ok(Err(error)) => {
-            return json_error(StatusCode::NOT_FOUND, error.to_string()).into_response();
-        }
-        Err(error) => {
-            return json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
-                .into_response();
-        }
+        Ok(entry) => entry,
+        Err(error) => return json_error(StatusCode::SERVICE_UNAVAILABLE, error).into_response(),
     };
-    let receiver =
-        state.subscribe_tree_events((*root).clone(), (*private).clone(), initial_signature);
-    let events: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
-        Box::pin(stream::unfold(
-            (Some(receiver), true),
-            |(mut receiver, mut initial)| async move {
-                if initial {
-                    initial = false;
-                    return Some((
-                        Ok(Event::default().event("connected").data("{}")),
-                        (receiver, initial),
-                    ));
-                }
-                let current = receiver.as_mut()?;
-                loop {
-                    match current.recv().await {
-                        Ok(TreeEvent::Changed)
-                        | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                            return Some((
-                                Ok(Event::default().event("tree").data("{}")),
-                                (receiver, initial),
-                            ));
+    // Subscribe before reading the snapshot so initialization and concurrent
+    // updates cannot leave a gap between the HTTP tree and event stream.
+    let receiver = entry.subscribe();
+    let snapshot = match entry.snapshot().await {
+        Ok(snapshot) => snapshot,
+        Err(error) => return json_error(StatusCode::SERVICE_UNAVAILABLE, error).into_response(),
+    };
+    let events = stream::unfold(
+        (entry, receiver, true, snapshot.revision),
+        |(entry, mut receiver, initial, mut revision)| async move {
+            if initial {
+                let data = serde_json::json!({"revision": revision.to_string()}).to_string();
+                return Some((
+                    Ok::<_, Infallible>(Event::default().event("connected").data(data)),
+                    (entry, receiver, false, revision),
+                ));
+            }
+            loop {
+                let current = match receiver.recv().await {
+                    Ok(tree::Event::Changed(current)) => current,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        match entry.snapshot().await {
+                            Ok(snapshot) => snapshot.revision,
+                            Err(_) => return None,
                         }
-                        Ok(TreeEvent::Removed)
-                        | Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
                     }
+                    Ok(tree::Event::Removed)
+                    | Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+                };
+                if current <= revision {
+                    continue;
                 }
-            },
-        ));
-    Sse::new(events)
+                revision = current;
+                return Some((
+                    Ok(Event::default()
+                        .event("tree")
+                        .data(serde_json::json!({"revision":revision.to_string()}).to_string())),
+                    (entry, receiver, false, revision),
+                ));
+            }
+        },
+    );
+    Sse::new(events.take_until(wait_for_shutdown(state.shutdown.subscribe())))
         .keep_alive(
             KeepAlive::new()
                 .interval(std::time::Duration::from_secs(15))
@@ -2700,24 +2446,16 @@ async fn typst_page(
     Query(query): Query<TypstPageQuery>,
 ) -> Response {
     let root = state.root_for_uri(uri.path());
-    let compiler = match state.typst_for_root(&root) {
-        Ok(compiler) => compiler,
-        Err(error) => return worker_error(error),
-    };
     let result = state
-        .page_workers
-        .run(move || {
-            compiler
-                .page(&query.id, query.page)
-                .map(|page| (page, query.format.as_deref() == Some("json")))
-        })
+        .rendering
+        .typst_page(&root, query.id, query.page)
         .await;
     match result {
-        Ok(Ok((page, true))) => {
+        Ok(Ok(page)) if query.format.as_deref() == Some("json") => {
             Json(serde_json::json!({"svg":String::from_utf8_lossy(&page.svg),"links":page.links}))
                 .into_response()
         }
-        Ok(Ok((page, false))) => (
+        Ok(Ok(page)) => (
             [
                 (
                     axum::http::header::CONTENT_TYPE,
@@ -2747,34 +2485,31 @@ async fn pdf_page(
     // invalid and extreme requests behave like the former raster endpoint.
     let _target_width = (requested_width / 450.0).ceil().clamp(1.0, 8.0) * 450.0;
     let root = state.root_for_uri(uri.path());
-    let renderer = state.pdf.clone();
     let private = state.data_directory.clone();
-    let result = state.page_workers.run(move || {
-        let path = checked_library_path(&root, &query.path, &private)?;
-        if !path.is_file() {
-            return Err((StatusCode::BAD_REQUEST, "Not a file".into()));
-        }
-        if path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_none_or(|extension| !extension.eq_ignore_ascii_case("pdf"))
-        {
-            return Err((StatusCode::BAD_REQUEST, "Not a PDF".into()));
-        }
-        let revision = pdf::revision(&path)
-            .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-        if query.v.as_deref().is_some_and(|value| value != revision) {
-            return Err((StatusCode::GONE, "PDF changed; reload its metadata".into()));
-        }
-        renderer
-            .page_svg(&path, &revision, query.page)
-            .map_err(|error| {
-                tracing::warn!(path = %query.path, page = query.page, error = %error, "PDF page rendering failed");
-                let status = pdf_error_status(&error);
-                (status, error.to_string())
-            })
-    })
-    .await;
+    let page_number = query.page;
+    let checked = state
+        .document_workers
+        .run(move || {
+            let path = checked_library_path(&root, &query.path, &private)?;
+            if !path.is_file() {
+                return Err((StatusCode::BAD_REQUEST, "Not a file".into()));
+            }
+            let detected = file_kind::from_path(&path)
+                .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+            if detected.mime != "application/pdf" {
+                return Err((StatusCode::BAD_REQUEST, "Not a PDF".into()));
+            }
+            let revision = pdf::revision(&path)
+                .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+            Ok((path, query.v.unwrap_or(revision)))
+        })
+        .await;
+    let (path, revision) = match checked {
+        Ok(Ok(value)) => value,
+        Ok(Err((status, error))) => return json_error(status, error).into_response(),
+        Err(error) => return worker_error(error),
+    };
+    let result = state.rendering.pdf_page(path, revision, page_number).await;
     match result {
         Ok(Ok(svg)) => (
             [
@@ -2787,7 +2522,12 @@ async fn pdf_page(
             svg,
         )
             .into_response(),
-        Ok(Err((status, error))) => json_error(status, error).into_response(),
+        Ok(Err(error)) => {
+            if matches!(*error, pdf::PdfError::Busy) {
+                return worker_error(worker::WorkerError::Busy);
+            }
+            json_error(pdf_error_status(&error), error.to_string()).into_response()
+        }
         Err(error) => worker_error(error),
     }
 }
@@ -3015,6 +2755,28 @@ fn build_router(state: AppState) -> Router {
         .layer(TraceLayer::new_for_http())
 }
 
+async fn wait_for_shutdown(mut receiver: tokio::sync::watch::Receiver<bool>) {
+    if !*receiver.borrow_and_update() {
+        let _ = receiver.changed().await;
+    }
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        if let Ok(mut terminate) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {},
+                _ = terminate.recv() => {},
+            }
+            return;
+        }
+    }
+    let _ = tokio::signal::ctrl_c().await;
+}
+
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
@@ -3076,11 +2838,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .to_owned(),
     );
     let state = AppState {
-        compile_workers: worker::WorkerPool::new("compile", 1, 8),
         document_workers: worker::WorkerPool::new("document", 1, 16),
-        page_workers: worker::WorkerPool::new("page", 2, 32),
-        pdf: Arc::new(pdf::NativePdfRenderer::default()),
-        typst: Arc::new(typst::NativeTypstCompiler::new(root.clone())),
+        rendering: Arc::new(render::RenderService::default()),
+        shutdown: tokio::sync::watch::channel(false).0,
         root: Arc::new(root),
         service_root: Arc::new(service_root),
         dist: Arc::new(web_dist),
@@ -3089,26 +2849,25 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         data_directory: Arc::new(data_directory.clone()),
         leases: Arc::new(Mutex::new(HashMap::new())),
         library_clients: Arc::new(Mutex::new(HashMap::new())),
-        tree_watchers: Arc::new(Mutex::new(HashMap::new())),
+        trees: tree::Service::default(),
         file_watchers: Arc::new(Mutex::new(HashMap::new())),
         repositories,
-        typst_by_root: Arc::new(Mutex::new(LruCache::unbounded())),
         reading: Arc::new(reading::ReadingStore::new(data_directory.clone())),
         cross_search: Arc::new(Mutex::new(HashMap::new())),
         base_url,
     };
     let lease_state = state.clone();
-    tokio::spawn(async move {
+    let maintenance = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
         let mut idle_sweep = tokio::time::interval(std::time::Duration::from_secs(60));
         loop {
             tokio::select! {
-                _ = interval.tick() => lease_state.refresh_typst_lease_paths(),
+                _ = interval.tick() => lease_state.refresh_document_leases(),
                 _ = idle_sweep.tick() => {
                     let sweep = lease_state.clone();
                     // Font/layout and comemo reclamation can be expensive.
                     // Keep it off the HTTP runtime threads too.
-                    let _ = lease_state.document_workers.run(move || sweep.evict_idle_typst()).await;
+                    let _ = lease_state.document_workers.run(move || sweep.rendering.sweep()).await;
                 },
             }
         }
@@ -3126,17 +2885,60 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         serde_json::json!({"event":"ready","baseUrl":base_url,"root":state.service_root.to_string_lossy(),"repoId":default_repo.map(|repo|repo.id),"libraryUrl":library_url,"dataDirectory":state.data_directory.to_string_lossy(),"urls":{"library":library_url}})
     );
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+    let shutdown = state.shutdown.clone();
+    let served = axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            shutdown.send_replace(true);
         })
-        .await?;
+        .await;
+    maintenance.abort();
+    let _ = maintenance.await;
+    state.document_workers.shutdown().await;
+    state.rendering.close().await;
+    served?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn shutdown_ends_all_sse_streams_and_releases_session_registration() {
+        let temporary = tempfile::tempdir().unwrap();
+        let (state, slug) = test_state(&temporary);
+        let app = build_router(state.clone());
+        let paths = [
+            format!("/{slug}/api/library/events?path=note.md"),
+            format!("/{slug}/api/library/tree-events"),
+            format!("/api/library/session?client=shutdown-client-1234&repo={slug}"),
+        ];
+        let mut streams = Vec::new();
+        for path in paths {
+            let response = request(&app, "GET", &path, None).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let mut stream = response.into_body().into_data_stream();
+            tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            streams.push(stream);
+        }
+        state.shutdown.send_replace(true);
+        for mut stream in streams {
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        assert!(state.library_clients.lock().unwrap().is_empty());
+        state.document_workers.shutdown().await;
+        state.rendering.close().await;
+    }
     use axum::{
         body::{Body, to_bytes},
         http::Request as HttpRequest,
@@ -3198,20 +3000,17 @@ mod tests {
                 root: Arc::new(root.clone()),
                 service_root: Arc::new(root.clone()),
                 dist: Arc::new(web),
-                compile_workers: worker::WorkerPool::new("compile", 1, 8),
                 document_workers: worker::WorkerPool::new("document", 1, 16),
-                page_workers: worker::WorkerPool::new("page", 2, 32),
-                pdf: Arc::new(pdf::NativePdfRenderer::default()),
-                typst: Arc::new(typst::NativeTypstCompiler::new(root.clone())),
+                rendering: Arc::new(render::RenderService::default()),
+                shutdown: tokio::sync::watch::channel(false).0,
                 html_token: Arc::new(new_capability_token().unwrap()),
                 search: Arc::new(search::SearchService::default()),
                 data_directory: Arc::new(data.clone()),
                 leases: Arc::new(Mutex::new(HashMap::new())),
                 library_clients: Arc::new(Mutex::new(HashMap::new())),
-                tree_watchers: Arc::new(Mutex::new(HashMap::new())),
+                trees: tree::Service::default(),
                 file_watchers: Arc::new(Mutex::new(HashMap::new())),
                 repositories,
-                typst_by_root: Arc::new(Mutex::new(LruCache::unbounded())),
                 reading: Arc::new(reading::ReadingStore::new(data)),
                 cross_search: Arc::new(Mutex::new(HashMap::new())),
                 base_url: Arc::new("http://127.0.0.1:49191".into()),
@@ -3333,6 +3132,86 @@ mod tests {
         let chunks = stream_file(file).try_collect::<Vec<_>>().await.unwrap();
         let actual = chunks.into_iter().flatten().collect::<Vec<_>>();
         assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn content_detection_preserves_renamed_previews_assets_and_text_semantics() {
+        let temporary = tempfile::tempdir().unwrap();
+        let (state, slug) = test_state(&temporary);
+        let root = state.default_repository().unwrap().root;
+        let pdf = minimal_pdf(595, 842);
+        let png = b"\x89PNG\r\n\x1a\n";
+        std::fs::write(root.join("renamed.txt"), &pdf).unwrap();
+        std::fs::write(root.join("picture.pdf"), png).unwrap();
+        std::fs::write(root.join("archive.txt"), b"PK\x03\x04\0\0\0\0").unwrap();
+        std::fs::write(root.join("inline.md"), "<div>needle</div>\n").unwrap();
+        let app = build_router(state);
+
+        let metadata = json(
+            request(
+                &app,
+                "GET",
+                &format!("/{slug}/api/document?path=renamed.txt"),
+                None,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(metadata["type"], "pdf");
+        assert_eq!(metadata["pages"].as_array().unwrap().len(), 1);
+        let page_url = metadata["pages"][0]["url"].as_str().unwrap();
+        assert_eq!(
+            request(&app, "GET", page_url, None).await.status(),
+            StatusCode::OK
+        );
+
+        let image = json(
+            request(
+                &app,
+                "GET",
+                &format!("/{slug}/api/document?path=picture.pdf"),
+                None,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(image["type"], "image");
+        assert_eq!(image["mime"], "image/png");
+        assert_eq!(image["format"], "png");
+        let asset = request(&app, "GET", image["url"].as_str().unwrap(), None).await;
+        assert_eq!(asset.headers()["content-type"], "image/png");
+        assert_eq!(
+            &to_bytes(asset.into_body(), usize::MAX).await.unwrap()[..],
+            png
+        );
+
+        let archive = json(
+            request(
+                &app,
+                "GET",
+                &format!("/{slug}/api/document?path=archive.txt"),
+                None,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(archive["type"], "binary");
+        assert_eq!(archive["mime"], "application/zip");
+        let markdown = json(
+            request(
+                &app,
+                "GET",
+                &format!("/{slug}/api/document?path=inline.md&view=raw"),
+                None,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(markdown["type"], "markdown");
+
+        let search =
+            json(request(&app, "GET", &format!("/{slug}/api/search?q=PDF-1"), None).await).await;
+        assert_eq!(search["total"], 0);
     }
 
     #[tokio::test]
@@ -3760,7 +3639,7 @@ mod tests {
             assert_eq!(response.status(), StatusCode::OK);
             streams.push(Box::pin(response.into_body().into_data_stream()));
         }
-        assert_eq!(state.tree_watchers.lock().unwrap().len(), 1);
+        assert_eq!(state.trees.cached_roots(), 1);
         for stream in &mut streams {
             let mut handshake = String::new();
             while !handshake.contains("event: connected") {
@@ -3786,6 +3665,6 @@ mod tests {
         }
         drop(streams);
         tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
-        assert!(state.tree_watchers.lock().unwrap().is_empty());
+        assert_eq!(state.trees.cached_roots(), 1); // Reuse the idle cache on reconnect.
     }
 }

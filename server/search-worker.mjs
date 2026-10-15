@@ -4,16 +4,15 @@ import { resolve, relative, isAbsolute, extname } from 'node:path';
 import { ripgrep } from 'ripgrep';
 import { MAX_FILE, MAX_BYTES, MAX_FILES, MAX_RESULT_BYTES, searchFileBytes, ignored, binaryExtensions, decodeSearchText, searchLanguage, searchSnippets } from './search-core.mjs';
 
-async function scan({ root, query, caseSensitive, excludedDirectory, regex, allowedPaths = null }) {
+async function scan({ root, query, caseSensitive, excludedDirectory, regex, allowedPaths = null, respectGitignore = true }) {
   root = await realpath(root);
   let candidates;
-  if (allowedPaths !== null) candidates = allowedPaths.map(path => resolve(root, path)).sort();
-  else {
+  {
     // Regex candidates are enumerated, then matched by the same JS engine that
     // generates snippets. This avoids Rust/JS regex differences dropping results.
-    const args = ['--no-config', '--no-ignore', ...(regex ? ['--files'] : ['--files-with-matches', '--fixed-strings']), '--null', '--max-filesize', String(MAX_FILE),
+    const args = ['--no-config', '--no-require-git', ...(!respectGitignore ? ['--no-ignore-vcs'] : []), ...(regex || allowedPaths !== null ? ['--files'] : ['--files-with-matches', '--fixed-strings']), '--null', '--max-filesize', String(MAX_FILE),
       ...(caseSensitive ? ['--case-sensitive'] : ['--ignore-case']),
-      '-g', '!**/node_modules/**', '-g', '!**/.work/**', '-g', '!**/.archive/**', '--', ...(regex ? [root] : [query, root])];
+      '-g', '!**/node_modules/**', '-g', '!**/.work/**', '-g', '!**/.archive/**', '--', ...(regex || allowedPaths !== null ? [root] : [query, root])];
     const chunks = [];
     let stderr = '', outputBytes = 0;
     const result = await ripgrep(args, { nodeWasi: false, env: {}, preopens: { '.': root },
@@ -27,6 +26,10 @@ async function scan({ root, query, caseSensitive, excludedDirectory, regex, allo
     if (result.code !== 0 && result.code !== 1) throw new Error(stderr || 'ripgrep search failed');
     const output = Buffer.concat(chunks).toString('utf8');
     candidates = output.split('\0').filter(Boolean).sort();
+    if (allowedPaths !== null) {
+      const allowed = new Set(allowedPaths.map(path => resolve(root, path)));
+      candidates = candidates.filter(path => allowed.has(resolve(root, path)));
+    }
   }
   const files = [];
   let bytes = 0, resultBytes = 0, truncated = false;
