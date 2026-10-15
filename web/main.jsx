@@ -36,7 +36,6 @@ import './markdown/heading-sections.css';
 import './markdown/highlight.css';
 import './markdown/footnotes.css';
 import 'katex/dist/katex.min.css';
-import 'markdown-it-texmath/css/texmath.css';
 import './theme.css';
 import '../shared/image-theme.css';
 import { ThemeProvider, useTheme } from '@primer/react/next';

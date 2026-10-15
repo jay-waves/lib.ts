@@ -1,6 +1,6 @@
 # Library 使用与接口
 
-启动和配置见 [根 README](../README.md)。服务入口为 `server-node.mjs`，前端入口为 `web/main.jsx`。
+启动和配置见 [根 README](../README.md)。前端入口为 `web/main.jsx`，服务由 Rust 后端提供。
 
 ## 使用
 
@@ -45,7 +45,7 @@ Search 的 Current File 范围只搜索当前文件的正文，支持正则及�
 
 HTML head 内联一条画布背景规则，在脚本及样式加载前提供正确底色，无构建插件或主题启动脚本。文件树使用公开属性、应用自己的类名和 `aria-current` 标记，新 Tooltip 和加载指示器采用官方实现。
 
-`shared/image-theme.css` 定义暗色图片亮度策略，通过预览容器的 `data-dim-images` 显式启用。图片、Markdown 和服务端生成的 HTML iframe 共用该文件，悬停恢复原始滤镜；PDF、Typst 不启用。HTML 预览保留文档自身的配色，只注入图片规则。
+`shared/image-theme.css` 定义暗色图片亮度策略，通过预览容器的 `data-dim-images` 显式启用。图片和 Markdown 共用该文件，悬停恢复原始滤镜；PDF、Typst 不启用。
 
 ## 前端阅读架构
 
@@ -63,7 +63,7 @@ Git 分组使用原生 `<details>` / `<summary>`，折叠由浏览器管理，�
 
 ## 常用 API
 
-前后端共用的 URL、查询语法、Git 变更规则、阅读策略和字节缓存放在 `shared/`，两侧直接引用同一实现。`server-node.mjs` 负责组装服务和启动/关闭；`server/typst/service.mjs` 持有 Typst 编译器、编译索引和页面缓存，路由只接收一个 `typst` 服务。仓库搜索由仓库路由统一持有，普通搜索与跨仓库聚合复用实例。普通文本正文统一使用 `source`，不再重复传输 `text` 字段。资源预算和队列上限见 [CODE_REVIEW.md](../CODE_REVIEW.md)。
+前端共享的 URL、查询语法、Git 变更分组、阅读策略和浏览器字节缓存放在 `shared/`；服务端对应实现位于 Rust 的 `src/`。普通文本正文使用 `source` 字段。服务端资源预算和队列上限见 [CODE_REVIEW.md](../CODE_REVIEW.md)。
 
 仓库 API 前缀为 `/:repoName/api`。路径相对仓库根目录，查询参数需 URL 编码。`/api` 为全局接口，`/assets` 为应用静态资源。
 
@@ -75,7 +75,7 @@ Git 分组使用原生 `<details>` / `<summary>`，折叠由浏览器管理，�
 | `GET /library/tree-events` | 文件树变更 SSE |
 | `GET /library/events?path=...` | 当前文档及资源变更 SSE |
 | `GET /typst/page?id=...&page=...` | SVG；`format=json` 返回 SVG 和链接区域 |
-| `GET /pdf/page?path=...&page=...` | PDF 页面 WebP |
+| `GET /pdf/page?path=...&page=...` | PDF 页面 SVG |
 | `GET /search?q=...` | 默认搜索整个仓库正文；可选 `scope=files/bookmarks/current-file` 限定范围，支持筛选和 `offset`，后续页携带 `searchId` |
 | `POST /library/session-leases` | 按浏览器页面保活当前文档；30 秒续约，90 秒失联后解除 |
 | `GET /recent-files` | `{ "recent": ["note.md"], "visitedAt": { "note.md": "ISO 时间" } }` 最近浏览路径和时间 |

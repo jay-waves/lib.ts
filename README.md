@@ -4,7 +4,7 @@
 
 ## 启动
 
-开发环境需要 Rust/Cargo、Node.js 和 npm。Node.js 仅用于构建前端：
+开发环境需要 Rust/Cargo、Node.js 和 npm。Node.js 仅用于前端构建、测试和打包：
 
 ```sh
 npm ci
@@ -99,8 +99,8 @@ saved-notes-library E:/notes
 
 部署包包含 `fonts/` 的字体和许可证；Typst 包缓存和现有用户数据不随部署包复制。
 
-功能回归：`node --test tests/*.test.mjs`。Rust release 测试：`npm run test:rust`。前端构建检查：`npm run build`。
+前端和共享逻辑回归：`node --test tests/*.test.mjs`。Rust release 测试：`npm run test:rust`。前端构建检查：`npm run build`。
 
-后端为 Rust 原生服务；`npm run bench:memory` 是迁移期间保留的旧 Node 基准工具。
+服务端由 Rust 实现；Node.js 仅用于前端构建、测试和打包。
 
 使用与接口见 [web/README.md](web/README.md)；缓存约束和调优提示见 [CODE_REVIEW.md](CODE_REVIEW.md)。
