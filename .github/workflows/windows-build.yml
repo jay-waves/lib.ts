@@ -2,6 +2,7 @@ name: Windows native build
 
 on:
   push:
+    branches: [main]
     tags: ['*']
   pull_request:
     branches: [main]
@@ -16,6 +17,7 @@ concurrency:
 
 jobs:
   build-frontend:
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -41,6 +43,7 @@ jobs:
           retention-days: 1
 
   build-windows:
+    if: github.ref_type != 'tag'
     runs-on: windows-latest
     steps:
       - name: Check out repository
@@ -97,7 +100,7 @@ jobs:
           retention-days: 1
 
   assemble-windows:
-    if: github.event_name != 'pull_request'
+    if: github.ref_type != 'tag' && github.event_name != 'pull_request'
     needs: [build-frontend, build-windows]
     runs-on: windows-latest
     steps:
@@ -133,19 +136,62 @@ jobs:
           path: ${{ runner.temp }}/lib.ts
           if-no-files-found: error
           compression-level: 9
+          retention-days: 90
 
   publish-release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: assemble-windows
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     permissions:
+      actions: read
       contents: write
     steps:
+      - name: Find successful main build for this commit
+        id: main-build
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            for (let attempt = 1; attempt <= 60; attempt++) {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'windows-build.yml',
+                branch: 'main',
+                event: 'push',
+                head_sha: context.sha,
+                per_page: 100,
+              });
+              const successful = data.workflow_runs
+                .filter(run => run.status === 'completed' && run.conclusion === 'success')
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+              if (successful) {
+                core.setOutput('run_id', String(successful.id));
+                core.info(`Using successful main build ${successful.html_url}`);
+                return;
+              }
+              const active = data.workflow_runs.some(run => run.status !== 'completed');
+              const completed = data.workflow_runs.some(run => run.status === 'completed');
+              if (completed && !active) {
+                core.setFailed(`The main build for ${context.sha} completed without success. Rerun the main build before publishing this tag.`);
+                return;
+              }
+              core.info(`Waiting for the main build of ${context.sha} (attempt ${attempt}/60).`);
+              await sleep(30_000);
+            }
+            core.setFailed(`Timed out waiting for a successful main build for ${context.sha}.`);
+
       - name: Download Windows build
         uses: actions/download-artifact@v4
         with:
           name: lib.ts
           path: ${{ runner.temp }}/lib.ts
+          run-id: ${{ steps.main-build.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+
+      - name: Verify downloaded build
+        run: test -f "$RUNNER_TEMP/lib.ts/lib.ts.exe"
 
       - name: Package Windows release
         run: zip -r "$RUNNER_TEMP/lib.ts-${GITHUB_REF_NAME}-windows-x86_64.zip" lib.ts
