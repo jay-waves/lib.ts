@@ -26,6 +26,7 @@ const searchTips = [
   <>Enter a query in the sidebar and press <kbd>Enter</kbd> to search.</>,
   <>Use <code>/TODO|FIXME/i</code> to find either term, ignoring case.</>,
   <>Add <code>case:yes</code> to match uppercase and lowercase exactly.</>,
+  <>Search respects .gitignore by default. Add <code>gitignore:no</code> to include ignored files.</>,
   <>Add <code>lang:js</code> to search only JavaScript files.</>,
   <>Add <code>path:src/</code> to search within the src directory.</>,
   <>Use <code>path:src/**/*.js</code> to match JavaScript files throughout src.</>,
@@ -236,7 +237,8 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
     if (pathSearch || symbolSearch || !textQuery.trim() || syntax.error) { setLoading(false); setError(syntax.error); return () => controller.abort(); }
     setLoading(true);
     const identity = JSON.stringify([query, currentFile, revision, scope]);
-    const params = new URLSearchParams({ q: query, scope, currentFile: currentFile || '' });
+    const params = new URLSearchParams({ q: query, currentFile: currentFile || '' });
+    if (scope) params.set('scope', scope);
     if (snapshot.current?.identity === identity) params.set('searchId', snapshot.current.searchId);
     else params.set('refresh', 'true');
     fetchResults(params, controller.signal).then(value => {
@@ -255,8 +257,9 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
     moreRequest.current = controller; fetchingMore.current = true;
     setLoadingMore(true); setPageError('');
     try {
-      const params = new URLSearchParams({ q: query, scope, currentFile: currentFile || '',
+      const params = new URLSearchParams({ q: query, currentFile: currentFile || '',
         searchId: result.searchId, offset: String(result.nextOffset) });
+      if (scope) params.set('scope', scope);
       const page = await fetchResults(params, controller.signal);
       if (generation.current !== id || controller.signal.aborted) return;
       setResult(current => ({ ...page, files: [...current.files, ...page.files] }));
@@ -306,7 +309,7 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
   const sidebar = <>
     <form className="file-search code-search-form" onSubmit={submit}>
       <SearchInput size="small" block autoFocus aria-label={pathSearch ? 'Filter file names and paths' : 'Search text and code'}
-        placeholder={pathSearch ? 'Filter files…' : scope === 'current-file' ? 'Search current file…' : 'Search code…'} title="Enter to search · /pattern/i · case:yes lang:js path:src/"
+        placeholder={pathSearch ? 'Filter files…' : scope === 'current-file' ? 'Search current file…' : 'Search code…'} title="Enter to search · /pattern/i · case:yes gitignore:no lang:js path:src/"
         clearable={Boolean(draft || query)} onClear={clearSearch}
         value={draft} maxLength={256} onChange={event => setDraft(event.target.value)} />
       {(language || path) && <div className="search-options">

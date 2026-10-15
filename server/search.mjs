@@ -8,9 +8,9 @@ export { decodeSearchText, searchSnippets } from './search-core.mjs';
 
 const scheduleScan = createTaskQueue(2, 16);
 
-function scan(root, query, caseSensitive, excludedDirectory, regex, allowedPaths = null) {
+function scan(root, query, caseSensitive, excludedDirectory, regex, allowedPaths = null, respectGitignore = true) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./search-worker.mjs', import.meta.url), { workerData: { root, query, caseSensitive, excludedDirectory, regex, allowedPaths }, execArgv: [], resourceLimits: { maxOldGenerationSizeMb: 128 } });
+    const worker = new Worker(new URL('./search-worker.mjs', import.meta.url), { workerData: { root, query, caseSensitive, excludedDirectory, regex, allowedPaths, respectGitignore }, execArgv: [], resourceLimits: { maxOldGenerationSizeMb: 128 } });
     let result, failure;
     const timeout = setTimeout(() => {
       failure = new Error('Search timed out. Try a more specific query.');
@@ -47,7 +47,7 @@ export function createLibrarySearch(root, excludedDirectory, getSearchPaths) {
     if (scope === 'current-file' && (!currentFile || /[\\\0:]/.test(currentFile)
       || currentFile.split('/').some(part => !part || part === '.' || part === '..')))
       throw new Error('Choose a repository-relative current file.');
-    const identity = JSON.stringify([query, caseSensitive, !!parsed.regex, scope, scope === 'current-file' ? currentFile : null]);
+    const identity = JSON.stringify([query, caseSensitive, !!parsed.regex, parsed.respectGitignore !== false, scope, scope === 'current-file' ? currentFile : null]);
     const searchId = params.get('searchId');
     // Paging retains the original membership even if a bookmark/tab changes.
     const allowedPaths = searchId || scope === 'files' ? null : scope === 'current-file'
@@ -60,7 +60,7 @@ export function createLibrarySearch(root, excludedDirectory, getSearchPaths) {
     if (!searchId && (!result || Date.now() - result.time > 60000 || params.get('refresh') === 'true')) {
       if (!pending.has(key)) {
         if (pending.size >= 2) throw new Error('Search is busy. Please retry shortly.');
-        pending.set(key, scheduleScan(() => scan(root, query, caseSensitive, excludedDirectory, !!parsed.regex, allowedPaths))
+        pending.set(key, scheduleScan(() => scan(root, query, caseSensitive, excludedDirectory, !!parsed.regex, allowedPaths, parsed.respectGitignore !== false))
           .finally(() => pending.delete(key)));
       }
       result = await pending.get(key);

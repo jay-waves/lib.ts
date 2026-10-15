@@ -76,7 +76,7 @@ Git 分组使用原生 `<details>` / `<summary>`，折叠由浏览器管理，�
 | `GET /library/events?path=...` | 当前文档及资源变更 SSE |
 | `GET /typst/page?id=...&page=...` | SVG；`format=json` 返回 SVG 和链接区域 |
 | `GET /pdf/page?path=...&page=...` | PDF 页面 WebP |
-| `GET /search?q=...` | `scope=files/bookmarks` 单选全文搜索；支持筛选和 `offset`，后续页携带 `searchId` |
+| `GET /search?q=...` | 默认搜索整个仓库正文；可选 `scope=files/bookmarks/current-file` 限定范围，支持筛选和 `offset`，后续页携带 `searchId` |
 | `POST /library/session-leases` | 按浏览器页面保活当前文档；30 秒续约，90 秒失联后解除 |
 | `GET /recent-files` | `{ "recent": ["note.md"], "visitedAt": { "note.md": "ISO 时间" } }` 最近浏览路径和时间 |
 | `POST /recent-files` | `{ "path": "note.md" }` 浏览置顶，最多 100 条 |

@@ -7,7 +7,7 @@ export function useFileTree(apiBase, selected, active = true) {
     const response = await fetch(`${apiBase}/tree`, { signal });
     const value = await response.json();
     if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
-    return value;
+    return { ...value, revision: response.headers.get('x-tree-revision') };
   }), [apiBase]);
   const [state, setState] = useState({ tree: null, loading: true, error: '' });
   const update = useCallback((path, force = false) => {
@@ -23,12 +23,21 @@ export function useFileTree(apiBase, selected, active = true) {
   useEffect(() => { if (active) void update(selected); }, [selected, update, active]);
   useEffect(() => {
     if (!active) return;
-    // The initial tree request already covers the first connection. On later
-    // reconnects, refresh to catch changes made while this tab was hidden.
+    let disposed = false;
+    // Compare the server snapshot after any pending load completes. This also
+    // catches changes between the initial HTTP response and SSE connection.
+    const synchronize = event => {
+      const revision = JSON.parse(event.data).revision;
+      void resource.ensure('').then(tree => {
+        if (!disposed && BigInt(tree.revision || 0) < BigInt(revision)) void refresh();
+      }).catch(error => {
+        if (!disposed && error.name !== 'AbortError') void refresh();
+      });
+    };
     const stream = visibleEvents(`${apiBase}/library/tree-events`, {
-      tree: refresh, connected: () => { if (resource.has('')) void refresh(); },
+      tree: synchronize, connected: synchronize,
     });
-    return stream.close;
+    return () => { disposed = true; stream.close(); };
   }, [apiBase, resource, refresh, active]);
   useEffect(() => () => resource.dispose(), [resource]);
   return { ...state, index: resource.index, refresh };

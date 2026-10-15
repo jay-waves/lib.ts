@@ -10,7 +10,7 @@ export function queryTokens(query) {
     while (/\s/.test(query[index] || '') && index < query.length) index++;
     if (index >= query.length) break;
     const start = index;
-    const qualifier = /^(lang|language|path|case):/i.exec(query.slice(index));
+    const qualifier = /^(lang|language|path|case|gitignore):/i.exec(query.slice(index));
     const kind = qualifier ? (qualifier[1].toLowerCase() === 'language' ? 'lang' : qualifier[1].toLowerCase()) : 'text';
     if (qualifier) index += qualifier[0].length;
     if (!qualifier && query[index] === '/') {
@@ -54,7 +54,9 @@ export function queryTokens(query) {
       while (index < query.length && !/\s/.test(query[index])) value += query[index++];
     }
     if (qualifier && !value) throw new Error(`Enter a value after ${kind}:`);
-    tokens.push({ kind, value: unquote(value), quoted, raw: query.slice(start, index) });
+    if (!qualifier && !quoted && value === '--no-gitignore')
+      tokens.push({ kind: 'gitignore', value: 'no', quoted: false, raw: query.slice(start, index) });
+    else tokens.push({ kind, value: unquote(value), quoted, raw: query.slice(start, index) });
   }
   return tokens;
 }
@@ -63,10 +65,13 @@ export function parseSearchQuery(query) {
   const tokens = queryTokens(query);
   const caseToken = tokens.findLast(token => token.kind === 'case');
   if (caseToken && !['yes', 'no'].includes(caseToken.value)) throw new Error('Use case:yes or case:no.');
+  const gitignoreToken = tokens.findLast(token => token.kind === 'gitignore');
+  if (gitignoreToken && !['yes', 'no'].includes(gitignoreToken.value)) throw new Error('Use gitignore:yes or gitignore:no.');
   const regex = tokens.find(token => token.kind === 'regex');
   if (regex && tokens.filter(token => ['regex', 'text'].includes(token.kind)).length !== 1)
     throw new Error('Use one regular expression with optional lang/path filters; quote text for a literal search.');
   return { ...(regex ? { regex: true, caseSensitive: regex.flags !== 'i' } : {}), ...(!regex && caseToken ? { caseSensitive: caseToken.value === 'yes' } : {}), text: regex ? regex.value : tokens.filter(token => token.kind === 'text').map(token => token.value).join(' '),
+    ...(gitignoreToken ? { respectGitignore: gitignoreToken.value === 'yes' } : {}),
     languages: tokens.filter(token => token.kind === 'lang').map(token => token.value),
     paths: tokens.filter(token => token.kind === 'path').map(({ value, quoted }) => ({ value, quoted })) };
 }

@@ -4,6 +4,8 @@
 mod markdown;
 #[path = "../src/pdf.rs"]
 mod pdf;
+#[path = "../src/resources.rs"]
+mod resources;
 #[path = "../src/typst.rs"]
 mod typst;
 
@@ -185,6 +187,77 @@ fn markdown_node_count(root: &comrak::nodes::AstNode<'_>) -> usize {
 }
 
 #[test]
+#[ignore = "native edit/switch/cleanup benchmark; run explicitly with --ignored --nocapture"]
+fn report_native_resource_lifecycle() {
+    let temporary = tempfile::tempdir().unwrap();
+    let compiler = typst::NativeTypstCompiler::new(temporary.path().to_owned());
+    let renderer = pdf::NativePdfRenderer::default();
+    let typst_paths = (0..8)
+        .map(|index| temporary.path().join(format!("note-{index}.typ")))
+        .collect::<Vec<_>>();
+    let pdf_paths = (0..8)
+        .map(|index| temporary.path().join(format!("book-{index}.pdf")))
+        .collect::<Vec<_>>();
+    compiler.set_active_paths(typst_paths.clone());
+    renderer.set_active_paths(pdf_paths.clone());
+    let rss_before = process_memory_kib("VmRSS");
+    let started = Instant::now();
+    let mut samples = Vec::new();
+    for round in 0..128 {
+        let index = round % 8;
+        let source = format!(
+            "#set page(width: 300pt, height: 300pt)\n= Document {index}\n中文 notes $x^2$ — revision {round}"
+        );
+        fs::write(&typst_paths[index], &source).unwrap();
+        let request = || typst::CompileRequest {
+            path: typst_paths[index].to_string_lossy().into_owned(),
+            source: source.clone(),
+            theme: Some(if round / 8 % 2 == 0 { "light" } else { "dark" }.into()),
+        };
+        let compiled = compiler.compile(request()).unwrap();
+        assert_eq!(compiled.id, compiler.compile(request()).unwrap().id);
+        assert!(!compiler.page(&compiled.id, 1).unwrap().svg.is_empty());
+        let mut bytes = fixture_pdf(3);
+        bytes.extend_from_slice(format!("\n% revision {round}\n").as_bytes());
+        fs::write(&pdf_paths[index], bytes).unwrap();
+        let revision = pdf::revision(&pdf_paths[index]).unwrap();
+        renderer.document(&pdf_paths[index], &revision).unwrap();
+        assert!(
+            !renderer
+                .page_svg(&pdf_paths[index], &revision, round % 3 + 1)
+                .unwrap()
+                .is_empty()
+        );
+        let typst = compiler.cache_usage();
+        let pdf = renderer.cache_usage();
+        assert!(
+            typst.0 <= 32
+                && typst.1 <= 16 * 1024 * 1024
+                && typst.2 <= 64
+                && typst.3 <= 16 * 1024 * 1024
+        );
+        assert!(
+            pdf.0 <= 16 && pdf.1 <= 128 * 1024 * 1024 && pdf.2 <= 64 && pdf.3 <= 8 * 1024 * 1024
+        );
+        if round % 16 == 15 {
+            samples.push(serde_json::json!({"round":round + 1,"rss_kib":process_memory_kib("VmRSS"),"typst":typst,"pdf":pdf}));
+        }
+    }
+    compiler.clear();
+    renderer.clear();
+    comemo::evict(0);
+    assert_eq!(compiler.cache_usage(), (0, 0, 0, 0));
+    assert_eq!(renderer.cache_usage(), (0, 0, 0, 0));
+    println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+        "scenario":"128 edits and page renders across 8 leased Typst/PDF documents",
+        "usage_fields":["documents","source_bytes","pages","encoded_bytes"],
+        "elapsed_ms":started.elapsed().as_secs_f64() * 1000.0,
+        "rss_before_kib":rss_before,"samples":samples,"rss_after_clear_kib":process_memory_kib("VmRSS"),
+        "typst_after_clear":compiler.cache_usage(),"pdf_after_clear":renderer.cache_usage()
+    })).unwrap());
+}
+
+#[test]
 #[ignore = "performance benchmark; run with cargo test --test rust_backend_perf -- --ignored --nocapture"]
 fn report_native_backend_parse_compile_performance() {
     let iterations = std::env::var("RUST_BACKEND_PERF_ITERATIONS")
@@ -238,7 +311,7 @@ fn report_native_backend_parse_compile_performance() {
         || {
             let renderer = pdf::NativePdfRenderer::default();
             renderer
-                .document(&pdf_path, "fixture-revision")
+                .document(&pdf_path, &pdf::revision(&pdf_path).unwrap())
                 .unwrap()
                 .pages
                 .len()
@@ -252,7 +325,7 @@ fn report_native_backend_parse_compile_performance() {
         || {
             let renderer = pdf::NativePdfRenderer::default();
             renderer
-                .page_svg(&pdf_path, "fixture-revision", 1)
+                .page_svg(&pdf_path, &pdf::revision(&pdf_path).unwrap(), 1)
                 .unwrap()
                 .len()
         },
@@ -316,8 +389,25 @@ fn report_native_backend_parse_compile_performance() {
             response.pages.len()
         },
     ));
+    let mut warm_version = 0;
     results.push(measure(
         "typst_compile_warm",
+        typst_bytes,
+        iterations,
+        "pages",
+        || {
+            warm_version += 1;
+            let mut request = compile_request();
+            request
+                .source
+                .push_str(&format!("\n// warm revision {warm_version}\n"));
+            compiler.compile(request).unwrap().pages.len()
+        },
+    ));
+
+    compiler.compile(compile_request()).unwrap();
+    results.push(measure(
+        "typst_compile_cache_hit",
         typst_bytes,
         iterations,
         "pages",

@@ -8,7 +8,6 @@
 .search-scope-icon { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; }
 .search-scope-icon > svg { display: block; flex: none; }
 .search-symbol-level-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; color: var(--fgColor-muted); font-size: 10px; font-weight: 600; line-height: 1; letter-spacing: -0.04em; }
-.code-search-results { width: var(--content-width); box-sizing: border-box; margin: 0 auto 36px; }
 .search-results-heading { display: flex; align-items: center; gap: 8px; min-height: 32px; margin-bottom: 14px; font-size: 13px; }
 .search-results-heading > span { color: var(--fgColor-muted); }
 .search-result-list { display: flex; flex-direction: column; gap: 12px; }
@@ -60,3 +59,5 @@
 .search-facet > button, .search-options button { color: var(--fgColor-muted); font: inherit; font-size: 12px; }
 .search-facet > button:hover, .search-options button:hover { color: var(--fgColor-accent); }
 }
+
+.code-search-results { width: var(--content-width); box-sizing: border-box; margin: 0 auto 36px; }

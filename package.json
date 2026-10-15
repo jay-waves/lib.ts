@@ -6,6 +6,7 @@
     "bench:memory": "node tests/benchmark/memory.mjs",
     "build": "vite build",
     "build:rust": "cargo build --release",
+    "test:rust": "cargo test --release --locked",
     "serve:rust": "cargo run --release --",
     "serve": "cargo run --release --",
     "package": "node scripts/package.mjs"

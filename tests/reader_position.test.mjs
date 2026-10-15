@@ -41,6 +41,19 @@ test('PDF outline navigation scrolls the internal viewport without scrolling its
   assert.deepEqual(movement, { top: 538, behavior: 'instant' });
 });
 
+test('PDF bookmarks navigate within a scaled page and groups do not move the reader', () => {
+  let movement;
+  const viewport = { clientTop: 0, scrollTop: 100, getBoundingClientRect: () => ({ top: 50 }),
+    querySelectorAll: () => [{ getBoundingClientRect: () => ({ top: 500, height: 1200 }) }],
+    scrollTo: value => { movement = value; } };
+  const panel = { querySelector: () => viewport };
+  assert.equal(navigateReaderSymbol(panel, { type: 'pdf' }, 'preview', { page: 1, y: .25 }, 62), true);
+  assert.deepEqual(movement, { top: 838, behavior: 'instant' });
+  movement = null;
+  assert.equal(navigateReaderSymbol(panel, { type: 'pdf' }, 'preview', { group: true }, 62), false);
+  assert.equal(movement, null);
+});
+
 test('raw restoration waits for the preview shell layout to be removed', () => {
   let previewLayout = true, movement;
   const line = { getBoundingClientRect: () => ({ top: 500, height: 20 }) };

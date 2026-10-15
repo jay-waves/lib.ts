@@ -6,7 +6,8 @@ import styles from './symbols-panel.module.css';
 
 export function documentSymbols(document) {
   if (document.type === 'pdf') return (document.outline || []).map((item, index) => ({
-    id: `pdf-symbol-${index}`, name: item.name, level: item.level, page: item.page,
+    id: `pdf-symbol-${index}`, name: item.name, level: item.level, page: item.page, y: item.y,
+    group: !Number.isInteger(item.page),
   }));
   if (document.type === 'typst') return (document.outline || []).map((heading, index) => ({
     id: `typst-symbol-${index}`, name: heading.name, level: heading.level, line: heading.line, position: heading.position,
@@ -37,12 +38,12 @@ export function SymbolsPanel({ symbols, status, onSelect, hidden, visible }) {
 
   return <div className={styles.panel} hidden={hidden}>
     <div className={styles.filter}>
-      <SearchInput block onClear={() => setSymbolSearch('')} aria-label="Search symbols" placeholder="Search symbols…"
+      <SearchInput size="small" block onClear={() => setSymbolSearch('')} aria-label="Search symbols" placeholder="Search symbols…"
         value={symbolSearch} onChange={event => setSymbolSearch(event.target.value)} />
     </div>
     <nav ref={scrollRef} className={styles.list} aria-label="Document symbols">
       {filteredSymbols.length ? <ActionList variant="full">
-        {filteredSymbols.map(symbol => <ActionList.Item className={styles.item} key={symbol.id}
+        {filteredSymbols.map(symbol => <ActionList.Item className={styles.item} key={symbol.id} disabled={symbol.group}
           active={symbol.id === currentSymbol} aria-current={symbol.id === currentSymbol ? 'location' : undefined}
           style={{ marginInlineStart: `${Math.max(0, (symbol.level || 1) - 1) * 20}px` }}
           onSelect={() => onSelect(symbol)}><span className={styles.name}>{symbol.name}</span></ActionList.Item>)}
