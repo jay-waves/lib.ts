@@ -1652,7 +1652,7 @@ async fn open_directory(
     }
     #[cfg(target_os = "windows")]
     let result = tokio::process::Command::new("explorer.exe")
-        .arg(dunce::simplified(&directory).as_ref())
+        .arg(dunce::simplified(&directory))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
