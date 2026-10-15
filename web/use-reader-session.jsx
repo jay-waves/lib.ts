@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { SessionActivity } from './session-activity.jsx';
+import { SessionActivity } from './session-activity';
 import { apiBase, pageBase } from './urls.mjs';
 import { readingKey, readPosition, loadPosition, savePosition } from './reading-state.mjs';
 import { readerPosition, restoreReaderPosition, navigateReaderSymbol } from './reader-position.mjs';
@@ -16,6 +16,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
   const [fitRequest, setFitRequest] = useState(0);
   const latest = useRef(null), initial = useRef(null), consumed = useRef(null), previousDocument = useRef(document);
   const selectedSymbol = useRef(null);
+  const settlingLayout = useRef(true);
   const [navigation] = useState(() => createReaderNavigation(requestAnimationFrame, cancelAnimationFrame));
   const key = readingKey(pageBase, document.path);
   latest.current = { document, view, scale, ready, active, request, onActivity };
@@ -33,7 +34,8 @@ export function useReaderSession({ document, root, request, onActivity }) {
     // This also handles saved progress without requiring a user scroll.
     const viewport = panel().querySelector('.document-viewport') || panel();
     selectedSymbol.current = symbolSelectionAt(selectedSymbol.current, viewport.scrollTop);
-    notify({ kind: 'scroll', top: viewport.scrollTop });
+    notify({ kind: 'scroll', top: viewport.scrollTop, view: state.view, source: settlingLayout.current ? 'restore' : 'measurement' });
+    settlingLayout.current = false;
     notify({ kind: 'position', line: position.line || null,
       page: position.page ? position.page.index + 1 : null, view: state.view, pending: false });
   };
@@ -41,7 +43,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
     retry: () => navigation.retry(), onPending: () => notify({ kind: 'position', view: latest.current.view, pending: true }),
     onScroll: top => {
       selectedSymbol.current = symbolSelectionAt(selectedSymbol.current, top);
-      if (!navigation.pending) notify({ kind: 'scroll', top });
+      if (!navigation.pending && !settlingLayout.current) notify({ kind: 'scroll', top, view: latest.current.view, source: 'scroll' });
     } });
 
   useEffect(() => {
@@ -58,6 +60,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
   }, [key]);
 
   const restore = position => {
+    settlingLayout.current = true;
     selectedSymbol.current = null;
     const state = latest.current;
     if (!panel() || !state.ready || !state.active) return false;
@@ -115,7 +118,9 @@ export function useReaderSession({ document, root, request, onActivity }) {
     const next = readerView(document, requested);
     if (next === view) return;
     const position = panel() ? readerPosition(panel(), document, view, inset()) : {};
-    capture(); selectedSymbol.current = null; setView(next);
+    capture(); selectedSymbol.current = null;
+    settlingLayout.current = true;
+    setView(next);
     // Update the shell layout in the same batch as the reader content. A
     // preview shell constrains raw content and clamps its restored scroll.
     notify({ kind: 'position', view: next, pending: true });

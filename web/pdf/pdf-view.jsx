@@ -1,8 +1,8 @@
 import React, { memo, useContext, useEffect, useMemo, useState } from 'react';
-import { SessionActivity } from '../session-activity.jsx';
+import { SessionActivity } from '../session-activity';
 import { Spinner } from '@primer/react';
-import { createByteCache } from '../../shared/byte-cache.mjs';
-import { PDF_PAGE_WIDTH, pdfRenderWidth } from '../../shared/pdf-render.mjs';
+import { createByteCache } from '../byte-cache.ts';
+import { PDF_PAGE_WIDTH, pdfRenderWidth } from './render.ts';
 import { usePageWindow } from '../page-window.jsx';
 import './preview.css';
 

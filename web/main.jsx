@@ -1,33 +1,34 @@
-import { useDocumentLease } from './document-session.jsx';
-import { BrowserSession, SessionActivity } from './session-activity.jsx';
+import { useDocumentLease } from './use-document-lease';
+import { BrowserSession, SessionActivity } from './session-activity';
 import { HISTORY_GROUPS } from './time-labels.mjs';
 import { visibleEvents } from './visible-events.mjs';
 import { parseDocumentOpenEvent } from './session-events.mjs';
 import { sortFileTree, fileTreeForView } from './file-tree.mjs';
-import { useFileTree } from './use-file-tree.jsx';
+import { useFileTree } from './use-file-tree';
 import { apiBase, pageBase, repoId, routeKind, fileUrl } from './urls.mjs';
-import { searchUrl, gitUrl, parseRepositoryLocation } from '../shared/paths.mjs';
+import { searchUrl, gitUrl, parseRepositoryLocation } from './paths.ts';
 import React, { useContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BaseStyles, Breadcrumbs, Button, IconButton, Spinner } from '@primer/react';
 import { Dialog as SideSheet } from '@primer/react/experimental';
-import { SearchInput } from './search-input.jsx';
+import { SearchInput } from './search-input.tsx';
 import { FocusCenterIcon, SortDescIcon, FoldIcon, FileDirectoryIcon, SearchIcon, SidebarExpandIcon, ListUnorderedIcon, RepoIcon, GitBranchIcon, BookmarkIcon, HistoryIcon } from '@primer/octicons-react';
-import { useBookmarks } from './bookmarks.jsx';
-import { RecentFiles, useRecentFiles } from './recent-files.jsx';
-import { RepoPicker } from './repo-picker.jsx';
-import { useWorkspaceSearch } from './workspace-search.jsx';
-import { useGitStatus } from './use-git-status.jsx';
+import { useBookmarks } from './bookmarks';
+import { RecentFiles, useRecentFiles } from './recent-files';
+import { RepoPicker } from './repo-picker';
+import { useWorkspaceSearch } from './workspace-search.tsx';
+import { useGitStatus } from './use-git-status.tsx';
 import { readSidebarState, saveSidebarState } from './sidebar-state.mjs';
 import { Reader } from './reader.jsx';
 import { hasDocumentViewport } from './preview-kind.mjs';
-import { syncReadingPositions, loadPosition, readingKey } from './reading-state.mjs';
+import { syncReadingPositions } from './reading-state.mjs';
+import { useDocument } from './use-document.ts';
 import { readerRouteRequest } from './reader-session.mjs';
 import { randomId } from './random-id.mjs';
-import { FileTree } from './file-tree-view.jsx';
-import { documentSymbols, SymbolsPanel } from './symbols-panel.jsx';
-import { DocumentToolbar } from './document-toolbar.jsx';
-import { DirectoryView } from './directory-view.jsx';
+import { FileTree } from './file-tree-view.tsx';
+import { documentSymbols, SymbolsPanel } from './symbols-panel.tsx';
+import { DocumentToolbar } from './document-toolbar.tsx';
+import { DirectoryView } from './directory-view.tsx';
 import '@primer/primitives/dist/css/functional/themes/light.css';
 import '@primer/primitives/dist/css/functional/themes/dark.css';
 import '@primer/primitives/dist/css/base/motion/motion.css';
@@ -37,13 +38,13 @@ import './markdown/highlight.css';
 import './markdown/footnotes.css';
 import 'katex/dist/katex.min.css';
 import './theme.css';
-import '../shared/image-theme.css';
+import './image-theme.css';
 import { ThemeProvider, useTheme } from '@primer/react/next';
 import './style.css';
 import './sidebar.css';
 
-const GitPanel = lazy(() => import('./git-panel.jsx'));
-const GitDiffView = lazy(() => import('./git-diff-view.jsx'));
+const GitPanel = lazy(() => import('./git-panel.tsx'));
+const GitDiffView = lazy(() => import('./git-diff-view'));
 
 const sidebarViews = [
   { id: 'files', label: 'Files', icon: FileDirectoryIcon },
@@ -97,17 +98,23 @@ function App() {
   const [selected, setSelected] = useState(() => currentPath());
   const { tree, index: treeIndex, loading: treeLoading, error: treeError } = useFileTree(apiBase, selected, active);
   const bookmarkState = useBookmarks(active && Boolean(apiBase));
-  const [document, setDocument] = useState(null);
   const [recentOnly, setRecentOnly] = useState(() => Boolean(initialSidebar.recentOnly));
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const recentState = useRecentFiles(active && Boolean(apiBase), !error && document?.path === selected ? selected : null);
   const [documentRevision, setDocumentRevision] = useState(0);
   const [search, setSearch] = useState('');
   const [bookmarkSearch, setBookmarkSearch] = useState('');
   const [bookmarkExpandedPaths, setBookmarkExpandedPaths] = useState({});
   const [expandedPaths, setExpandedPaths] = useState(() => expandedPathEntries(currentPath()));
   const [readerStatus, setReaderStatus] = useState({ view: 'preview', line: null, page: null, pending: true });
+  const readerRef = useRef(null);
+  const { colorScheme: theme } = useTheme();
+  const selectedNode = treeIndex.get(selected);
+  const { document, loading, error, setError } = useDocument({
+    apiBase, pageBase, path: selected, active, treeReady: Boolean(tree), treeLoading,
+    node: selectedNode, revision: documentRevision, theme, view: readerStatus.view, request: readerRequest,
+    capture: () => readerRef.current?.capture(),
+    onOpen: view => setReaderStatus({ view, line: null, page: null, pending: true }),
+  });
+  const recentState = useRecentFiles(active && Boolean(apiBase), !error && document?.path === selected ? selected : null);
   const activeView = document?.type === 'text' ? 'raw' : document?.type === 'binary' ? 'preview' : readerStatus.view;
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 960px)').matches);
   const [filesVisible, setFilesVisible] = useState(() => initialSidebar.filesVisible ?? !narrow);
@@ -136,16 +143,13 @@ function App() {
     if (element) element.scrollTop = filesScrollTop.current;
   }, []);
   const searchMode = sidebarTab === 'search';
-  const readerRef = useRef(null);
-  const [pathBarHidden, setPathBarHidden] = useState(true);
-  const { colorScheme: theme } = useTheme();
+  const [pathBar, setPathBar] = useState({ path: null, view: null, hidden: false, animated: false });
+  const pathBarHidden = pathBar.path === document?.path && pathBar.hidden;
+  const pathBarAnimated = pathBar.path === document?.path && pathBar.view === activeView && pathBar.animated;
   const [toolbarStuck, setToolbarStuck] = useState(false);
   const toolbarSentinelRef = useRef(null);
   const mainPanelRef = useRef(null);
 
-  useEffect(() => {
-    setPathBarHidden(true);
-  }, [document?.path, searchMode]);
   useEffect(() => {
     setReaderStatus(status => ({ view: status.view, line: null, page: null, pending: true }));
   }, [document?.path]);
@@ -163,7 +167,19 @@ function App() {
         page: activity.pending ? status.page : activity.page || null }));
     } else if (activity.kind === 'scroll') {
       setToolbarStuck(activity.top > 8);
-      setPathBarHidden(activity.top > 2);
+      setPathBar(previous => {
+        const hidden = previous.path === document?.path && previous.hidden;
+        // Restoring or measuring a view may hide the bar, but never reveal it.
+        // The gap exceeds the header height so its layout cannot toggle itself.
+        const nextHidden = activity.top > 64 ? true
+          : activity.source === 'scroll' && activity.top <= 2 ? false : hidden;
+        const next = { path: document?.path, view: activity.view, hidden: nextHidden,
+          animated: activity.source === 'scroll' || (activity.source === 'measurement'
+            && previous.path === document?.path && previous.view === activity.view
+            && previous.hidden === nextHidden && previous.animated) };
+        return previous.path === next.path && previous.view === next.view
+          && previous.hidden === next.hidden && previous.animated === next.animated ? previous : next;
+      });
     }
   }
 
@@ -243,61 +259,10 @@ function App() {
     return () => removeEventListener('popstate', pop);
   }, []);
   useDocumentLease(apiBase, apiBase && document?.path === selected ? selected : null);
-  const selectedNode = treeIndex.get(selected);
-  const selectedNodePath = selectedNode?.path;
-  const selectedNodeType = selectedNode?.type;
   useEffect(() => {
     const name = selected.split('/').filter(Boolean).at(-1) || tree?.name || 'Notes';
     if (active) window.document.title = name;
   }, [selected, tree?.name, active]);
-  const loadedDocumentRequest = useRef(null);
-  const documentView = document?.path === selected ? activeView
-    : readerRequest?.path === selected ? readerRequest.view : null;
-  useEffect(() => {
-    if (!active || !repoId) { loadedDocumentRequest.current = null; setDocument(null); setLoading(false); setError(''); return; }
-    if (!tree) return;
-    if (selected && !selectedNode && treeLoading) {
-      setLoading(true); setDocument(null); setError(''); return;
-    }
-    // Ignored files found through gitignore:no or a direct URL need not be in
-    // the visible tree. The document endpoint validates existence and access.
-    if (!selected || selectedNode?.type === 'directory') { setLoading(false); setDocument(null); setError(''); return; }
-    const loadKey = JSON.stringify([selected, selectedNodePath, selectedNodeType, documentRevision, theme]);
-    const hasRequestedContent = document?.path === selected && (documentView === 'raw'
-      || (document.type === 'markdown' ? typeof document.html === 'string'
-        : document.type === 'typst' ? Boolean(document.compile) : true));
-    if (loadedDocumentRequest.current === loadKey && hasRequestedContent) {
-      setLoading(false); setError(''); return;
-    }
-    const controller = new AbortController();
-    if (document?.path === selected && document.type === 'typst') readerRef.current?.capture();
-    setLoading(true);
-    if (document?.path !== selected) setDocument(null);
-    setError('');
-    let fetchedView = documentView;
-    const fetchDocument = async () => {
-      const view = documentView || (await loadPosition(readingKey(pageBase, selected), apiBase, selected)).view || 'preview';
-      fetchedView = view;
-      controller.signal.throwIfAborted();
-      return fetch(`${apiBase}/document?${new URLSearchParams({ path: selected, view, theme })}`,
-        { signal: controller.signal });
-    };
-    fetchDocument().then(async response => {
-      const value = await response.json();
-      if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
-      return value;
-    }).then(async value => {
-      if (controller.signal.aborted) return;
-      loadedDocumentRequest.current = loadKey;
-      if (document?.path === value.path && document.modified === value.modified
-        && document.compile?.id === value.compile?.id && document.html === value.html) return;
-      if (document?.path !== value.path) setReaderStatus({ view: fetchedView, line: null, page: null, pending: true });
-      setDocument(value);
-    })
-      .catch(cause => { if (!controller.signal.aborted) setError(String(cause)); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [active, selected, selectedNodePath, selectedNodeType, documentRevision, documentView, theme, selected && !selectedNode && treeLoading]);
   function navigate(path, directory = false, line = null) {
     readerRef.current?.capture();
     setGitPath(null);
@@ -462,7 +427,7 @@ function App() {
             const width = Math.max(180, Math.min(480, sidebarWidth + (event.key === 'ArrowRight' ? 10 : -10)));
             setSidebarWidth(width);
           }} />
-        <main className={`main-panel${gitPath === null && !searchMode && !error && activeView === 'preview' && hasDocumentViewport(document) ? ' has-document-viewport' : ''}${gitPath === null && !searchMode && !error && document && pathBarHidden ? ' path-bar-hidden' : ''}`} ref={mainPanelRef}>
+        <main className={`main-panel${pathBarAnimated ? ' path-bar-animated' : ''}${gitPath === null && !searchMode && !error && activeView === 'preview' && hasDocumentViewport(document) ? ' has-document-viewport' : ''}${gitPath === null && !searchMode && !error && document && pathBarHidden ? ' path-bar-hidden' : ''}`} ref={mainPanelRef}>
           <div className="page-header" inert={gitPath === null && !searchMode && !error && document && pathBarHidden ? true : undefined}>
             <div className="path-row">
               <Breadcrumbs>

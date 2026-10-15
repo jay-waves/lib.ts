@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groupGitChanges } from '../shared/git-changes.mjs';
+import { groupGitChanges } from '../web/git-changes.ts';
 
 test('partially staged files appear in both groups with their own status codes', () => {
   const groups = groupGitChanges([

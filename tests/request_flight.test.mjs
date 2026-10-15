@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { requestFlight } from '../shared/request-flight.mjs';
+import { requestFlight } from '../web/typst/request-flight.ts';
 
 test('cancelling one subscriber preserves work; cancelling the last releases its key immediately', async () => {
   const pending = new Map(), a = new AbortController(), b = new AbortController();

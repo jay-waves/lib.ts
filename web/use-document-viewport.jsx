@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { bindViewportGestures, clampScale, fitDocumentPage } from './document-viewport.mjs';
 import { pagePosition, restorePagePosition } from './reading-state.mjs';
-import { SessionActivity } from './session-activity.jsx';
+import { SessionActivity } from './session-activity';
 import { useReader } from './reader-context.jsx';
 
 export function useDocumentViewport(layout) {

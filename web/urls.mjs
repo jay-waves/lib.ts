@@ -1,4 +1,4 @@
-import { repositoryApiUrl, repositoryUrl, documentUrl, searchUrl, gitUrl, parseRepositoryLocation } from '../shared/paths.mjs';
+import { repositoryApiUrl, repositoryUrl, documentUrl, searchUrl, gitUrl, parseRepositoryLocation } from './paths.ts';
 
 // URL names are folder names; stable IDs remain internal to the registry.
 const current = parseRepositoryLocation(globalThis.location?.pathname || '');

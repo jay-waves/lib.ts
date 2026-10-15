@@ -13,6 +13,10 @@ export function isPlainTreeActivation(event) {
   return !event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey
     && (event.button === undefined || event.button === 0);
 }
+/**
+ * @param {import('./api/contracts').TreeNode[]} nodes
+ * @param {Map<string, import('./api/contracts').TreeNode>} index
+ */
 export function indexFileTree(nodes = [], index = new Map()) {
   for (const node of nodes) {
     index.set(node.path, node);

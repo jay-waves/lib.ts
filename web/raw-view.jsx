@@ -2,6 +2,12 @@ import React, { Suspense, use, useMemo } from 'react';
 import { loadRawHighlighter } from './raw-highlight-loader.mjs';
 import './raw-view.css';
 
+let codeFontReady;
+function loadCodeFont() {
+  return codeFontReady ??= window.document.fonts.load('400 13px "Iosevka"')
+    .catch(() => []);
+}
+
 function HighlightedCode({ source, name }) {
   const { highlightRaw, rawLanguage } = use(loadRawHighlighter());
   const highlighted = useMemo(() => highlightRaw(source, name), [source, name, highlightRaw]);
@@ -10,6 +16,13 @@ function HighlightedCode({ source, name }) {
 }
 
 export function RawView({ document, targetLine }) {
+  return <Suspense fallback={<div className="status" role="status">Loading code font…</div>}>
+    <ReadyRawView document={document} targetLine={targetLine} />
+  </Suspense>;
+}
+
+function ReadyRawView({ document, targetLine }) {
+  use(loadCodeFont());
   const source = document.source || '';
   const lines = Math.max(1, source.split('\n').length);
   return <div className="raw-view" aria-label="Source code">

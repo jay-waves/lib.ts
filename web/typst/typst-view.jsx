@@ -1,5 +1,5 @@
 import React, { memo, useContext, useEffect, useMemo, useState } from 'react';
-import { SessionActivity } from '../session-activity.jsx';
+import { SessionActivity } from '../session-activity';
 import { Spinner } from '@primer/react';
 import { createSvgCache } from './svg-cache.mjs';
 import { usePageWindow } from '../page-window.jsx';

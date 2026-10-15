@@ -1,6 +1,6 @@
 import React, { useCallback, useContext, useImperativeHandle, useMemo, useRef } from 'react';
 import { ReaderContext } from './reader-context.jsx';
-import { SessionActivity } from './session-activity.jsx';
+import { SessionActivity } from './session-activity';
 import { Preview } from './preview.jsx';
 import { RawView } from './raw-view.jsx';
 import { prepareMarkdown } from './markdown/markdown.mjs';

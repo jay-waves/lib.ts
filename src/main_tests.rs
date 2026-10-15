@@ -783,3 +783,109 @@ async fn tree_event_scanning_is_shared_and_emits_after_changes() {
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
     assert_eq!(state.trees.cached_roots(), 1); // Reuse the idle cache on reconnect.
 }
+
+#[tokio::test]
+async fn api_routes_keep_global_and_repository_operations_separate() {
+    let temporary = tempfile::tempdir().unwrap();
+    let (state, slug) = test_state(&temporary);
+    let app = build_router(state.clone());
+    for path in [
+        "/api/tree",
+        "/api/document?path=note.md",
+        "/api/bookmarks",
+        "/api/reading",
+        "/api/recent-files",
+        "/api/git/status",
+        "/api/search?q=needle",
+        "/api/library/tree-events",
+        "/api/library/events?path=note.md",
+        &format!("/{slug}/api/repos"),
+        &format!("/{slug}/api/directories"),
+        &format!("/{slug}/api/search-repos?q=needle"),
+        &format!("/{slug}/api/library/session?client=separate-routes-1234"),
+    ] {
+        let response = request(&app, "GET", path, None).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+        assert!(json(response).await["error"].is_string(), "{path}");
+    }
+    for path in ["/api/library/activity", "/api/library/open"] {
+        let response = request(
+            &app,
+            "POST",
+            &format!("/{slug}{path}"),
+            Some(serde_json::json!({})),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+    let response = request(
+        &app,
+        "POST",
+        "/api/library/session-leases",
+        Some(serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        request(&app, "GET", "/api/repos", None).await.status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(&app, "GET", &format!("/{slug}/api/tree"), None)
+            .await
+            .status(),
+        StatusCode::OK
+    );
+    state.document_workers.shutdown().await;
+    state.rendering.close().await;
+}
+
+#[tokio::test]
+async fn text_document_variants_serialize_camel_case_line_counts() {
+    let temporary = tempfile::tempdir().unwrap();
+    let (state, slug) = test_state(&temporary);
+    let root = state.default_repository().unwrap().root;
+    for path in ["lines.md", "lines.typ", "lines.txt", "lines.html"] {
+        std::fs::write(root.join(path), "first\nsecond").unwrap();
+    }
+    let app = build_router(state.clone());
+    for (path, kind) in [
+        ("lines.md", "markdown"),
+        ("lines.typ", "typst"),
+        ("lines.txt", "text"),
+        ("lines.html", "html"),
+    ] {
+        let response = request(
+            &app,
+            "GET",
+            &format!("/{slug}/api/document?path={path}&view=raw"),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let value = json(response).await;
+        assert_eq!(value["type"], kind);
+        assert_eq!(value["lineCount"], 2, "{path}: {value}");
+        assert!(value.get("line_count").is_none());
+        assert_eq!(value["source"], "first\nsecond");
+    }
+    let response = request(
+        &app,
+        "GET",
+        &format!("/{slug}/api/library/events?path=lines.md"),
+        None,
+    )
+    .await;
+    let mut stream = response.into_body().into_data_stream();
+    let chunk = stream.next().await.unwrap().unwrap();
+    let event = String::from_utf8_lossy(&chunk);
+    let payload = event
+        .lines()
+        .find_map(|line| line.strip_prefix("data: "))
+        .unwrap();
+    let payload: serde_json::Value = serde_json::from_str(payload).unwrap();
+    assert!(payload["modified"].is_string());
+    drop(stream);
+    state.document_workers.shutdown().await;
+    state.rendering.close().await;
+}

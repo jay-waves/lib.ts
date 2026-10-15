@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useLayoutEffect, useRef } from 'react';
 import morphdom from 'morphdom';
-import { SessionActivity } from '../session-activity.jsx';
+import { SessionActivity } from '../session-activity';
 import { pageBase, treeBase } from '../urls.mjs';
 import { readingKey, readPosition, savePosition } from '../reading-state.mjs';
 import { observeMarkdownPosition } from './markdown-position.mjs';

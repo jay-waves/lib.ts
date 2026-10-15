@@ -1,4 +1,5 @@
-import { READING_RECORD_LIMIT, READING_FLUSH_INTERVAL } from '../shared/reading-policy.mjs';
+const READING_RECORD_LIMIT = 100;
+const READING_FLUSH_INTERVAL = 2000;
 
 export function readingKey(repo, path) { return `library-reading:${repo || 'default'}:${path}`; }
 

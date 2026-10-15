@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTreeResource } from '../web/tree-resource.mjs';
+import { createTreeResource } from '../web/tree-resource.ts';
 
 const tree = (...paths) => ({ children: paths.map(path => ({ path, type: 'file' })) });
 

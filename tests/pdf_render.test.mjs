@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pdfRenderWidth, pdfRasterScale, PDF_MAX_PIXELS } from '../shared/pdf-render.mjs';
+import { pdfRenderWidth, pdfRasterScale, PDF_MAX_PIXELS } from '../web/pdf/render.ts';
 
 test('PDF pixel width follows zoom and DPR with stable cache buckets', () => {
   assert.equal(pdfRenderWidth(1, 1), 1800);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { repositoryUrl, documentUrl, repositoryApiUrl, searchUrl, gitUrl, parseRepositoryLocation } from '../shared/paths.mjs';
+import { repositoryUrl, documentUrl, repositoryApiUrl, searchUrl, gitUrl, parseRepositoryLocation } from '../web/paths.ts';
 
 test('repository URLs encode each path segment and round-trip through the page parser', () => {
   const repo = '中文 notes #%';

@@ -1,7 +1,7 @@
 @scope (.raw-view) {
-  :scope { display: grid; grid-template-columns: auto minmax(0, 1fr); min-width: 0; background: var(--bgColor-default); color: var(--hljs-fg); font: 12px/20px var(--md-font-mono, ui-monospace, monospace); }
+  :scope { display: grid; grid-template-columns: auto minmax(0, 1fr); min-width: 0; background: var(--bgColor-default); color: var(--hljs-fg); font: 13px/var(--md-code-line-height, 1.6) var(--md-font-mono, ui-monospace, monospace); }
   .raw-line-numbers { display: flex; flex-direction: column; min-width: 43px; box-sizing: border-box; padding: 14px 9px 14px 14px; color: var(--fgColor-muted); opacity: .78; text-align: right; user-select: none; }
-  .raw-line-numbers span { height: 20px; }
+  .raw-line-numbers span { height: 1lh; flex-shrink: 0; }
   .raw-code { min-width: 0; margin: 0; padding: 14px 22px 14px 7px; overflow-x: auto; color: var(--hljs-fg); background: transparent; font: inherit; tab-size: 2; }
   .raw-code code { display: block; color: inherit; background: transparent; font: inherit; white-space: pre; }
   .raw-line-numbers .target-line { background: var(--bgColor-attention-muted); color: var(--fgColor-default); scroll-margin-top: 90px; }

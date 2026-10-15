@@ -1,5 +1,5 @@
-import { createByteCache, svgImageBytes } from '../../shared/byte-cache.mjs';
-import { requestFlight } from '../../shared/request-flight.mjs';
+import { createByteCache, svgImageBytes } from '../byte-cache.ts';
+import { requestFlight } from './request-flight.ts';
 
 // Bounded SVG response cache with in-flight request deduplication.
 export function createSvgCache(limit = 16, request = globalThis.fetch, readResponse = response => response.text(), maxBytes = 4 * 1024 * 1024) {

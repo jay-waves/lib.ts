@@ -1,6 +1,6 @@
 use crate::{
-    AppState, PathQuery, checked_library_path, encode_path, encode_query_component, file_kind,
-    json_error, media_type, read_document_source, stream_file, worker_error,
+    AppState, PathQuery, checked_library_path, documents::read_document_source, encode_path,
+    encode_query_component, file_kind, json_error, media_type, stream_file, worker_error,
 };
 use axum::{
     body::Body,
@@ -96,7 +96,7 @@ fn html_preview(source: &str, base: &str, document_url: &str) -> String {
         base.replace('&', "&amp;").replace('"', "&quot;")
     );
     let no_scroll = "<style>html,body{scrollbar-width:none!important}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none!important}</style>";
-    let image_style = include_str!("../shared/image-theme.css");
+    let image_style = include_str!("../web/image-theme.css");
     let injection = format!("{base_tag}{no_scroll}<style>{image_style}</style>");
     let output = if let Some(found) = HEAD_OPEN_RE.find(&source) {
         let mut value = source.to_string();

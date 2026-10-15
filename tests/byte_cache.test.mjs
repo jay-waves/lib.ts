@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createByteCache, svgImageBytes } from '../shared/byte-cache.mjs';
+import { createByteCache, svgImageBytes } from '../web/byte-cache.ts';
 
 test('byte budget evicts LRU values and oversized replacements are never retained', () => {
   const cache = createByteCache({ maxEntries: 3, maxBytes: 10, sizeOf: value => value.length });

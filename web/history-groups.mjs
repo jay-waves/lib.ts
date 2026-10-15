@@ -1,6 +1,7 @@
 import { fileListFromPaths } from './file-tree.mjs';
 import { HISTORY_GROUPS, historyTimeGroup } from './time-labels.mjs';
 
+/** @returns {import('./file-tree-view').FileTreeNode[]} */
 export function historyFileGroups(paths = [], visitedAt = {}, now = Date.now()) {
   const groups = new Map(HISTORY_GROUPS.map(group => [group.id,
     { name: group.name, path: `history:${group.id}`, type: 'directory', virtual: true, children: [] }]));

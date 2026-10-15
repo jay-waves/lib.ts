@@ -1,4 +1,4 @@
-import { SessionActivity } from './session-activity.jsx';
+import { SessionActivity } from './session-activity';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observePageWindow } from './page-window.mjs';
 

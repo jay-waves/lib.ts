@@ -45,13 +45,13 @@ Search 的 Current File 范围只搜索当前文件的正文，支持正则及�
 
 HTML head 内联一条画布背景规则，在脚本及样式加载前提供正确底色，无构建插件或主题启动脚本。文件树使用公开属性、应用自己的类名和 `aria-current` 标记，新 Tooltip 和加载指示器采用官方实现。
 
-`shared/image-theme.css` 定义暗色图片亮度策略，通过预览容器的 `data-dim-images` 显式启用。图片和 Markdown 共用该文件，悬停恢复原始滤镜；PDF、Typst 不启用。
+`web/image-theme.css` 定义暗色图片亮度策略，通过预览容器的 `data-dim-images` 显式启用。图片和 Markdown 共用该文件，悬停恢复原始滤镜；PDF、Typst 不启用。Rust HTML 响应通过 `include_str!` 内联同一份样式，浏览器入口直接导入。
 
 ## 前端阅读架构
 
-`main.jsx` 负责仓库、文件路由、侧栏和页面外壳，只提交带文件路径的阅读请求（行号、视图或目录项），不控制位置恢复时序。`Reader` 是 Markdown、Typst、PDF、图片和源码的组合入口。外层通过 Reader 的 ref 调用 `capture`、`switchView`、`fit` 和 `toTop`，通过 `onActivity` 接收阅读状态及实际滚动位置以更新路径栏和行号。
+`main.jsx` 负责仓库、文件路由、侧栏和页面外壳，`use-document.ts` 负责文档请求、取消、内容完整性检查和版本复用；页面只提交带文件路径的阅读请求（行号、视图或目录项），不控制位置恢复时序。`Reader` 是 Markdown、Typst、PDF、图片和源码的组合入口。外层通过 Reader 的 ref 调用 `capture`、`switchView`、`fit` 和 `toTop`，通过 `onActivity` 接收阅读状态及实际滚动位置以更新路径栏和行号。
 
-`document-toolbar.jsx` 独立管理文件操作菜单和复制反馈，`directory-view.jsx` 管理目录操作并用 React 表单 Action 处理打开目录的异步状态，`symbols-panel.jsx` 管理符号筛选及选中项定位。`file-tree-view.jsx` 封装递归渲染，展开状态仍由页面控制以协调导航和历史视图；递归过程中不再逐层传递相同参数，也不增加树专用 Context。这些功能组件直接使用本地状态，不共用通用业务控制器。
+`document-toolbar.tsx` 独立管理文件操作菜单和复制反馈，`directory-view.tsx` 管理目录操作并用 React 表单 Action 处理打开目录的异步状态，`symbols-panel.tsx` 管理符号筛选及选中项定位。`file-tree-view.tsx` 封装递归渲染，展开状态仍由页面控制以协调导航和历史视图；递归过程中不再逐层传递相同参数，也不增加树专用 Context。这些功能组件直接使用本地状态，不共用通用业务控制器。
 
 Git 分组使用原生 `<details>` / `<summary>`，折叠由浏览器管理，不再额外同步 React 展开状态。侧栏设置统一保存到仓库对应的状态条目，不再同时写入旧的全局宽度缓存。
 
@@ -63,9 +63,11 @@ Git 分组使用原生 `<details>` / `<summary>`，折叠由浏览器管理，�
 
 ## 常用 API
 
-前端共享的 URL、查询语法、Git 变更分组、阅读策略和浏览器字节缓存放在 `shared/`；服务端对应实现位于 Rust 的 `src/`。普通文本正文使用 `source` 字段。服务端资源预算和队列上限见 [CODE_REVIEW.md](../CODE_REVIEW.md)。
+URL、查询语法、Git 变更分组和浏览器字节缓存分别放在 `web/paths.ts`、`web/search-query.ts`、`web/git-changes.ts` 和 `web/byte-cache.ts`。阅读策略常量由 `reading-state.mjs` 就地管理，PDF 渲染策略和 Typst 请求合并分别放在 `pdf/render.ts` 和 `typst/request-flight.ts`。模块直接导入所需文件，不设统一导出层。普通文本正文使用 `source` 字段。服务端资源预算和队列上限见 [CODE_REVIEW.md](../CODE_REVIEW.md)。
 
-仓库 API 前缀为 `/:repoName/api`。路径相对仓库根目录，查询参数需 URL 编码。`/api` 为全局接口，`/assets` 为应用静态资源。
+前端正在逐步迁移到 TypeScript 7（Go 原生编译器）。运行 `npm run typecheck` 检查已迁移模块；新增 TS/TSX 模块应纳入 `tsconfig.json` 检查范围。`web/api/contracts.ts` 维护 API 和 SSE 的 Zod schema，`web/api/library.ts` 集中封装文件树与书签接口；最近浏览客户端也使用同一 JSON 校验层。文档请求与文档变化订阅集中在 `web/api/documents.ts`，按 `type` 校验各格式响应；Reader 使用同一 SSE 校验层。已接入的网络响应和 SSE 载荷在运行时校验，阅读状态与外部打开命令仍待迁移。
+
+仓库 API 前缀为 `/:repoName/api`。路径相对仓库根目录，查询参数需 URL 编码。`/api` 为全局接口，`/assets` 为应用静态资源。Rust 分别声明全局与仓库路由，仓库文档、树、搜索及租约接口仅在 `/:repoName/api` 提供；不再把仓库接口隐式挂到全局默认仓库。文档元数据、源码加载和预览编译由 `src/documents.rs` 管理。
 
 | 方法与路径（相对于前缀） | 用途 |
 | --- | --- |
