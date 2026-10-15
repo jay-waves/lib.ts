@@ -28,6 +28,8 @@ curl -X POST http://127.0.0.1:49191/api/library/open \
 
 修改前端后重新构建；修改后端后重启服务。Rust 服务构建入口为 `cargo build --release`。
 
+Windows CI 的 Rust 依赖编译产物通过 `Swatinem/rust-cache` 缓存。不同 tag 不能互相读取缓存，但都能读取默认分支 `main` 的缓存。首次发布前，以及更新 Rust 工具链或依赖后，在 GitHub Actions 的 `Windows native build` 中选择 `Run workflow`，使用 `main` 分支完整运行一次，再推送发布 tag。后续 tag 可复用该 release 依赖缓存；PR 的 `cargo check` 产物不能替代 release 编译产物。工作流固定 Rust 为 1.99.0，编译耗时报告保存在 `rust-build-timings` artifact 中。
+
 ## 配置与数据
 
 | 环境变量 | 用途 |
