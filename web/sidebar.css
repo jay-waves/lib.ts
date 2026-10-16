@@ -99,6 +99,9 @@
   grid-template-columns: var(--spacer-width) var(--leading-action-width) var(--toggle-width) minmax(0, 1fr) auto;
 }
 .sidebar .PRIVATE_TreeView-item-content { min-width: 0; }
+.sidebar .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container > .PRIVATE_TreeView-item-toggle:hover {
+  background-color: transparent;
+}
 .sidebar .file-tree-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Only the outer box is RTL: bdi keeps the actual path in logical order. */
 .sidebar .sidebar-path { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
