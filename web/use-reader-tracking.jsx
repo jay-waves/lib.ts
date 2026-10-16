@@ -17,9 +17,8 @@ export function useReaderTracking({ root, active, document, view, capture, retry
     if (!active) return;
     const panel = root.current?.closest('.main-panel');
     if (!panel) return;
-    const viewport = panel.querySelector('.document-viewport') || panel;
     const changed = event => {
-      if (event?.type === 'scroll' && event.target === viewport) latest.current.onScroll(viewport.scrollTop);
+      if (event?.type === 'scroll' && event.target === panel) latest.current.onScroll(panel.scrollTop);
       latest.current.retry(); schedule();
     };
     const observer = new ResizeObserver(changed);
@@ -27,7 +26,7 @@ export function useReaderTracking({ root, active, document, view, capture, retry
     for (const content of root.current.querySelectorAll('.rendered-markdown, .raw-view, .document-page')) observer.observe(content);
     panel.addEventListener('scroll', changed, true);
     const frame = requestAnimationFrame(changed);
-    const stopSmoothWheel = viewport === panel ? enableSmoothWheel(panel) : undefined;
+    const stopSmoothWheel = view === 'raw' || !panel.matches('.document-viewport') ? enableSmoothWheel(panel) : undefined;
     return () => {
       cancelAnimationFrame(frame); clearTimeout(timer.current);
       timer.current = null;

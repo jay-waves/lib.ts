@@ -41,7 +41,7 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
   return <>
     {error && <div className="action-error" role="alert">{error}</div>}
     <div className={styles.sentinel} ref={sentinelRef} aria-hidden="true" />
-    <div className={`file-toolbar ${styles.toolbar}`} data-paged={status.view === 'preview' && hasDocumentViewport(document)}>
+    <div className={`file-toolbar ${styles.toolbar}`}>
       <div className={styles.tabs} role="tablist" aria-label="File view">
         {document.type !== 'text' && <button className={styles.tab} role="tab"
           aria-selected={status.view === 'preview'} onClick={() => readerRef.current?.switchView('preview')}>Preview</button>}

@@ -10,7 +10,7 @@ export function fitDocumentPage(width, height, viewportWidth, viewportHeight) {
 }
 
 // All gestures operate on the same native two-axis scroll viewport.
-export function bindViewportGestures(viewport, { zoom, getScale }) {
+export function bindViewportGestures(viewport, { zoom, getScale, isEnabled = () => true }) {
   const pointers = new Map();
   let pan = null, pinch = null, suppressClick = false;
   const center = () => {
@@ -22,6 +22,7 @@ export function bindViewportGestures(viewport, { zoom, getScale }) {
     return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.hypot(a.x - b.x, a.y - b.y) };
   };
   const wheel = event => {
+    if (!isEnabled()) return;
     if (!(event.ctrlKey || event.metaKey)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -29,6 +30,8 @@ export function bindViewportGestures(viewport, { zoom, getScale }) {
     zoom(clampScale(getScale() * Math.exp(-event.deltaY * unit * .0005)), { x: event.clientX, y: event.clientY });
   };
   const down = event => {
+    if (!isEnabled()) return;
+    if (event.target.closest?.('.page-header, .file-toolbar')) return;
     if (event.pointerType !== 'touch' && event.button !== 1) return;
     if (event.target.closest?.('button, input, textarea, select')) return;
     if (event.pointerType === 'touch' && event.target.closest?.('a')) return;
@@ -78,6 +81,7 @@ export function bindViewportGestures(viewport, { zoom, getScale }) {
     event.preventDefault(); event.stopPropagation();
   };
   const key = event => {
+    if (!isEnabled()) return;
     if (!(event.ctrlKey || event.metaKey)) return;
     if (event.altKey) return;
     const direction = ['+', '=', 'Add'].includes(event.key) ? 1 : ['-', '_', 'Subtract'].includes(event.key) ? -1 : 0;

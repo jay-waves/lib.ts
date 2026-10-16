@@ -61,5 +61,14 @@ export function fileListFromPaths(paths = []) {
 }
 
 export function fileTreeForView(nodes, { bookmarksOnly = false, bookmarks = [], query = "" } = {}) {
-  return bookmarksOnly ? filterBookmarkedTree(nodes, bookmarks) : filterFileTree(nodes, query);
+  if (!bookmarksOnly) return filterFileTree(nodes, query);
+  const files = [];
+  function collect(entries) {
+    for (const node of entries) {
+      if (node.type === 'directory') collect(node.children || []);
+      else files.push(node);
+    }
+  }
+  collect(filterBookmarkedTree(nodes, bookmarks));
+  return filterFileTree(files, query);
 }

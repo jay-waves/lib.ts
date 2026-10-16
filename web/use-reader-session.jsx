@@ -16,7 +16,6 @@ export function useReaderSession({ document, root, request, onActivity }) {
   const [fitRequest, setFitRequest] = useState(0);
   const latest = useRef(null), initial = useRef(null), consumed = useRef(null), previousDocument = useRef(document);
   const selectedSymbol = useRef(null);
-  const settlingLayout = useRef(true);
   const [navigation] = useState(() => createReaderNavigation(requestAnimationFrame, cancelAnimationFrame));
   const key = readingKey(pageBase, document.path);
   latest.current = { document, view, scale, ready, active, request, onActivity };
@@ -32,10 +31,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
     if (position.line || position.page) savePosition(key, { ...position, scale: state.scale });
     // Publish only the settled position, after restoration/initial fitting.
     // This also handles saved progress without requiring a user scroll.
-    const viewport = panel().querySelector('.document-viewport') || panel();
-    selectedSymbol.current = symbolSelectionAt(selectedSymbol.current, viewport.scrollTop);
-    notify({ kind: 'scroll', top: viewport.scrollTop, view: state.view, source: settlingLayout.current ? 'restore' : 'measurement' });
-    settlingLayout.current = false;
+    selectedSymbol.current = symbolSelectionAt(selectedSymbol.current, panel().scrollTop);
     notify({ kind: 'position', line: position.line || null,
       page: position.page ? position.page.index + 1 : null, view: state.view, pending: false });
   };
@@ -43,7 +39,6 @@ export function useReaderSession({ document, root, request, onActivity }) {
     retry: () => navigation.retry(), onPending: () => notify({ kind: 'position', view: latest.current.view, pending: true }),
     onScroll: top => {
       selectedSymbol.current = symbolSelectionAt(selectedSymbol.current, top);
-      if (!navigation.pending && !settlingLayout.current) notify({ kind: 'scroll', top, view: latest.current.view, source: 'scroll' });
     } });
 
   useEffect(() => {
@@ -60,7 +55,6 @@ export function useReaderSession({ document, root, request, onActivity }) {
   }, [key]);
 
   const restore = position => {
-    settlingLayout.current = true;
     selectedSymbol.current = null;
     const state = latest.current;
     if (!panel() || !state.ready || !state.active) return false;
@@ -79,8 +73,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
   const navigateSymbol = symbol => {
     if (!panel() || !latest.current.ready || !latest.current.active) return false;
     const found = navigateReaderSymbol(panel(), latest.current.document, latest.current.view, symbol, inset(), updateHeadingAvailability);
-    const viewport = panel().querySelector('.document-viewport') || panel();
-    selectedSymbol.current = found ? { id: symbol.id, top: viewport.scrollTop } : null;
+    selectedSymbol.current = found ? { id: symbol.id, top: panel().scrollTop } : null;
     notify({ kind: 'position', view: latest.current.view, pending: true });
     scheduleCapture();
     // A missing outline target completes the attempt instead of indefinitely
@@ -118,13 +111,19 @@ export function useReaderSession({ document, root, request, onActivity }) {
     const next = readerView(document, requested);
     if (next === view) return;
     const position = panel() ? readerPosition(panel(), document, view, inset()) : {};
+    // A visible PathBar is part of the document top, not a source-line anchor.
+    // Preserve that native offset when the two views start on different lines.
+    const headerTop = panel() && panel().scrollTop < (panel().querySelector('.page-header')?.offsetHeight || 0)
+      ? panel().scrollTop : null;
     capture(); selectedSymbol.current = null;
-    settlingLayout.current = true;
     setView(next);
-    // Update the shell layout in the same batch as the reader content. A
-    // preview shell constrains raw content and clamps its restored scroll.
+    // Keep the toolbar and preview styling in sync with the reader content.
     notify({ kind: 'position', view: next, pending: true });
-    navigation.request(() => latest.current.view === next ? restore(position) : false);
+    navigation.request(() => {
+      if (latest.current.view !== next || !restore(position)) return false;
+      if (headerTop !== null) panel().scrollTop = headerTop;
+      return true;
+    });
   };
   const click = event => {
     if (document.type !== 'typst' || view !== 'preview') return;
@@ -138,7 +137,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
   return {
     ready, view, targetLine: request?.path === document.path ? request.line : null, click,
     actions: { capture, switchView, fit: () => setFitRequest(value => value + 1),
-      toTop: () => (panel()?.querySelector('.document-viewport') || panel())?.scrollTo({ top: 0, behavior: 'smooth' }) },
+      toTop: () => panel()?.scrollTo({ top: 0, behavior: 'smooth' }) },
     viewport: {
       scale, fitRequest,
       onScale: scale => { setScale(scale); savePosition(key, { scale }); scheduleCapture(); },

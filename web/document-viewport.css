@@ -1,7 +1,9 @@
-.document-viewer { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
-.document-viewport { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; touch-action: none; background: var(--bgColor-muted); scrollbar-gutter: stable; }
+.document-viewer { min-width: 0; background: var(--bgColor-muted); }
+.main-panel.document-viewport { overflow: auto; touch-action: none; scrollbar-gutter: stable; }
+.document-viewport > .content-panel { width: max(var(--content-width), var(--document-width, 0px)); margin-block-end: 16px; }
+.document-viewport .file-toolbar { width: min(calc(100cqw - var(--content-gutter)), 1120px); max-width: 100%; left: 0; }
 .document-viewport:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
-.document-stage { box-sizing: border-box; min-height: 100%; padding: 24px; }
+.document-stage { box-sizing: border-box; padding: 24px; }
 .document-viewport.is-panning, .document-viewport.is-panning * { cursor: grabbing !important; user-select: none !important; }
 
 .document-stage .document-page { position: relative; flex: none; background: white; box-shadow: 0 2px 12px #0003; }

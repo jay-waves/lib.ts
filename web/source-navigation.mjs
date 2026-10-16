@@ -2,8 +2,6 @@ import { lineForPosition, positionForLine } from './typst/anchors.mjs';
 import { markdownLineAtViewport, markdownTopForLine } from './markdown/markdown-position.mjs';
 
 export function sourceLineAtViewport(panel, document, view, inset) {
-  const viewport = view === 'preview' && (panel.matches?.('.document-viewport') ? panel : panel.querySelector?.('.document-viewport'));
-  if (viewport) { panel = viewport; inset = 12; }
   if (view !== 'raw' && document.type === 'markdown')
     return markdownLineAtViewport(panel, document.lineCount, inset);
   const y = panel.getBoundingClientRect().top + panel.clientTop + inset;
@@ -41,8 +39,6 @@ function outlineViewportTop(panel) {
 }
 
 export function scrollToTypstSource(panel, document, view, line, inset, { position, behavior = 'instant', navigation = 'source' } = {}) {
-  const viewport = view === 'preview' && (panel.matches?.('.document-viewport') ? panel : panel.querySelector?.('.document-viewport'));
-  if (viewport) { panel = viewport; inset = 12; }
   let target, fraction = 0;
   if (view === 'raw') target = panel.querySelector(`#L${line}`);
   else if (document.type === 'markdown') {

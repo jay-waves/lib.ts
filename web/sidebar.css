@@ -29,6 +29,18 @@
 
 .sidebar .file-tree-link { display: block; color: inherit; font: inherit; text-decoration: none; }
 .sidebar .file-tree-link:hover { text-decoration: none; }
+.sidebar .bookmark-list { list-style: none; margin: 0; padding: 0; }
+.sidebar .bookmark-row { display: flex; align-items: center; gap: 4px; border-radius: 6px; }
+.sidebar .bookmark-row:hover { background: var(--bgColor-muted); }
+.sidebar .bookmark-row:has(.bookmark-link[aria-current="page"]) { background: var(--bgColor-accent-muted); }
+.sidebar .bookmark-link { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; color: inherit; text-decoration: none; }
+.sidebar .bookmark-link:hover { text-decoration: none; }
+.sidebar .bookmark-link:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
+.sidebar .bookmark-icon { display: flex; flex: none; color: var(--fgColor-muted); }
+.sidebar .bookmark-label { min-width: 0; }
+.sidebar .bookmark-row > button { flex: none; margin-right: 4px; }
+.sidebar .bookmark-file-name { display: block; font-weight: var(--sidebar-emphasis-weight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .bookmark-parent-path { display: block; color: var(--fgColor-muted); font-size: var(--sidebar-meta-size); font-weight: var(--sidebar-text-weight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar .files-toolbar-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .sidebar .files-search { display: flex; align-items: center; gap: 4px; flex: none; max-height: 64px; opacity: 1; transform: translateY(0); overflow: hidden; transition: max-height 200ms ease, padding 200ms ease, opacity 150ms ease, transform 200ms ease; }
 .sidebar .files-search > span { flex: 1; min-width: 0; width: 0; }

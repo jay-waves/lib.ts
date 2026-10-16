@@ -26,6 +26,7 @@ import { useDocument } from './use-document.ts';
 import { readerRouteRequest } from './reader-session.mjs';
 import { randomId } from './random-id.mjs';
 import { FileTree } from './file-tree-view.tsx';
+import { BookmarkList } from './bookmark-list';
 import { documentSymbols, SymbolsPanel } from './symbols-panel.tsx';
 import { DocumentToolbar } from './document-toolbar.tsx';
 import { DirectoryView } from './directory-view.tsx';
@@ -102,7 +103,6 @@ function App() {
   const [documentRevision, setDocumentRevision] = useState(0);
   const [search, setSearch] = useState('');
   const [bookmarkSearch, setBookmarkSearch] = useState('');
-  const [bookmarkExpandedPaths, setBookmarkExpandedPaths] = useState({});
   const [expandedPaths, setExpandedPaths] = useState(() => expandedPathEntries(currentPath()));
   const [readerStatus, setReaderStatus] = useState({ view: 'preview', line: null, page: null, pending: true });
   const readerRef = useRef(null);
@@ -143,9 +143,6 @@ function App() {
     if (element) element.scrollTop = filesScrollTop.current;
   }, []);
   const searchMode = sidebarTab === 'search';
-  const [pathBar, setPathBar] = useState({ path: null, view: null, hidden: false, animated: false });
-  const pathBarHidden = pathBar.path === document?.path && pathBar.hidden;
-  const pathBarAnimated = pathBar.path === document?.path && pathBar.view === activeView && pathBar.animated;
   const [toolbarStuck, setToolbarStuck] = useState(false);
   const toolbarSentinelRef = useRef(null);
   const mainPanelRef = useRef(null);
@@ -165,21 +162,6 @@ function App() {
         symbolId: activity.symbolId,
         line: activity.pending ? status.line : activity.line || null,
         page: activity.pending ? status.page : activity.page || null }));
-    } else if (activity.kind === 'scroll') {
-      setToolbarStuck(activity.top > 8);
-      setPathBar(previous => {
-        const hidden = previous.path === document?.path && previous.hidden;
-        // Restoring or measuring a view may hide the bar, but never reveal it.
-        // The gap exceeds the header height so its layout cannot toggle itself.
-        const nextHidden = activity.top > 64 ? true
-          : activity.source === 'scroll' && activity.top <= 2 ? false : hidden;
-        const next = { path: document?.path, view: activity.view, hidden: nextHidden,
-          animated: activity.source === 'scroll' || (activity.source === 'measurement'
-            && previous.path === document?.path && previous.view === activity.view
-            && previous.hidden === nextHidden && previous.animated) };
-        return previous.path === next.path && previous.view === next.view
-          && previous.hidden === next.hidden && previous.animated === next.animated ? previous : next;
-      });
     }
   }
 
@@ -205,7 +187,7 @@ function App() {
   useEffect(() => {
     setToolbarStuck(false);
     const sentinel = toolbarSentinelRef.current, panel = mainPanelRef.current;
-    if (!sentinel || !panel || panel.querySelector('.document-viewport')) return;
+    if (!sentinel || !panel) return;
     const observer = new IntersectionObserver(([entry]) => {
       setToolbarStuck(Boolean(entry.rootBounds && entry.boundingClientRect.bottom <= entry.rootBounds.top));
     }, { root: panel, threshold: [0, 1] });
@@ -278,8 +260,7 @@ function App() {
   const entries = selectedNode?.type === 'directory' ? selectedNode.children : !selected ? tree?.children : null;
   const filteredTree = useMemo(() => {
     const nodes = sortMode === 'name' ? tree?.children : sortFileTree(tree?.children);
-    const filtered = fileTreeForView(nodes, { bookmarksOnly, bookmarks: bookmarkState.bookmarks, query: search });
-    return bookmarksOnly ? fileTreeForView(filtered, { query: bookmarkSearch }) : filtered;
+    return fileTreeForView(nodes, { bookmarksOnly, bookmarks: bookmarkState.bookmarks, query: bookmarksOnly ? bookmarkSearch : search });
   }, [tree, search, bookmarkSearch, sortMode, bookmarksOnly, bookmarkState.bookmarks]);
   useLayoutEffect(() => {
     if (!locateRequest) return;
@@ -314,7 +295,6 @@ function App() {
     symbols, onSelectSymbol: jumpToSymbol });
   function selectSidebarView(id, collapse = true) {
     readerRef.current?.capture();
-    if (id === 'bookmarks' && sidebarTab !== 'bookmarks') setBookmarkExpandedPaths({});
     if (id === 'search' && currentRouteKind() !== 'search') history.pushState(null, '', searchUrl(repoId, searchConfig.query, searchConfig.scope, selected));
     else if (id === 'git' && currentRouteKind() !== 'git') history.pushState(null, '', gitUrl(repoId, gitPath || '', gitScope));
     else if (!['search', 'git'].includes(id) && ['search', 'git'].includes(currentRouteKind())) {
@@ -385,11 +365,11 @@ function App() {
           {treeError && <div className="action-error" role="alert">{treeError}</div>}
           <div className="tree-scroll" ref={restoreFilesScroll}
             onScroll={event => { filesScrollTop.current = event.currentTarget.scrollTop; }}>{!bookmarksOnly && recentOnly ? <RecentFiles state={recentState} renderTree={nodes => <FileTree nodes={nodes} label="Browsing history"
-              selected={selected} navigate={navigate} expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />} /> : bookmarksOnly && bookmarkState.loading ? <div className="tree-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading bookmarks</span></div> : tree ? filteredTree.length ? <FileTree nodes={filteredTree} label={bookmarksOnly ? 'Bookmarked files tree' : 'Notes tree'}
-            selected={selected} navigate={navigate} searching={Boolean((bookmarksOnly ? bookmarkSearch : search).trim())}
-            defaultExpanded={bookmarksOnly} expandedPaths={bookmarksOnly ? bookmarkExpandedPaths : expandedPaths}
-            setExpandedPaths={bookmarksOnly ? setBookmarkExpandedPaths : setExpandedPaths}
-            bookmarkState={bookmarksOnly ? bookmarkState : undefined} /> : <div className="tree-empty">{bookmarksOnly ? bookmarkSearch.trim() ? 'No matching bookmarks' : bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="tree-loading"><Spinner size="small" /></div> : null}</div>
+              selected={selected} navigate={navigate} expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />} /> : bookmarksOnly && bookmarkState.loading ? <div className="tree-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading bookmarks</span></div> : tree ? filteredTree.length ? bookmarksOnly
+            ? <BookmarkList files={filteredTree} selected={selected} navigate={navigate} state={bookmarkState} />
+            : <FileTree nodes={filteredTree} label="Notes tree" selected={selected} navigate={navigate} searching={Boolean(search.trim())}
+              expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />
+            : <div className="tree-empty">{bookmarksOnly ? bookmarkSearch.trim() ? 'No matching bookmarks' : bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="tree-loading"><Spinner size="small" /></div> : null}</div>
           </> : null}
     <SymbolsPanel symbols={symbols} status={readerStatus} onSelect={jumpToSymbol}
       hidden={sidebarTab !== 'symbols'} visible={filesVisible} />
@@ -427,8 +407,8 @@ function App() {
             const width = Math.max(180, Math.min(480, sidebarWidth + (event.key === 'ArrowRight' ? 10 : -10)));
             setSidebarWidth(width);
           }} />
-        <main className={`main-panel${pathBarAnimated ? ' path-bar-animated' : ''}${gitPath === null && !searchMode && !error && activeView === 'preview' && hasDocumentViewport(document) ? ' has-document-viewport' : ''}${gitPath === null && !searchMode && !error && document && pathBarHidden ? ' path-bar-hidden' : ''}`} ref={mainPanelRef}>
-          <div className="page-header" inert={gitPath === null && !searchMode && !error && document && pathBarHidden ? true : undefined}>
+        <main className={`main-panel${gitPath === null && !searchMode && !error && activeView === 'preview' && hasDocumentViewport(document) ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}>
+          <div className="page-header">
             <div className="path-row">
               <Breadcrumbs>
                 <Breadcrumbs.Item href={`${pageBase}/`} onClick={event => { event.preventDefault(); navigate(''); }}>{tree?.name || 'Notes'}</Breadcrumbs.Item>

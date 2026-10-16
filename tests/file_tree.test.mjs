@@ -63,19 +63,18 @@ test('bookmark filtering handles missing files, empty folders and exact paths wi
 });
 
 
-test('Bookmarks preserve ordinary folder hierarchy and real file paths', () => {
+test('Bookmarks flatten files with real paths, preserve order and search full paths', () => {
   const file = path => ({ name: path.split('/').at(-1), path, type: 'file' });
   const folder = (path, children) => ({ name: path.split('/').at(-1), path, type: 'directory', children });
   const nodes = [folder('math', [folder('math/linalg', [file('math/linalg/note.md'), file('math/linalg/other.md')])]),
     folder('books', [file('books/note.md')]), file('root.md')];
   const original = structuredClone(nodes);
   const bookmarks = ['math/linalg/note.md', 'books/note.md', 'missing.md'].map(path => ({ path }));
-  const result = fileTreeForView(nodes, { bookmarksOnly: true, bookmarks, query: 'unrelated' });
-  assert.deepEqual(result.map(node => node.name), ['math', 'books']);
-  assert.equal(result[0].children[0].children[0].path, 'math/linalg/note.md');
-  assert.equal(result[1].children[0].path, 'books/note.md');
-  assert.equal(result[0].children[0].name, 'linalg');
-  assert.equal(result[0].children[0].children.length, 1);
+  const result = fileTreeForView(nodes, { bookmarksOnly: true, bookmarks });
+  assert.deepEqual(result.map(node => node.path), ['math/linalg/note.md', 'books/note.md']);
+  assert.ok(result.every(node => node.type === 'file' && !node.children));
+  assert.deepEqual(fileTreeForView(nodes, { bookmarksOnly: true, bookmarks, query: 'linalg' }), [result[0]]);
+  assert.deepEqual(fileTreeForView(nodes, { bookmarksOnly: true, bookmarks, query: 'unrelated' }), []);
   assert.deepEqual(nodes, original);
   assert.equal(fileTreeForView(nodes)[0].type, 'directory');
 });

@@ -14,7 +14,7 @@ test('automatic fitting uses page dimensions and available viewport space', () =
   assert.equal(landscape.scale, 1);
 });
 
-function fixture() {
+function fixture(options = {}) {
   const captures = new Set(), zooms = [];
   let scale = .8;
   const viewport = Object.assign(new EventTarget(), {
@@ -28,6 +28,7 @@ function fixture() {
   const dispose = bindViewportGestures(viewport, {
     getScale: () => scale,
     zoom: (next, point, previous) => { scale = next; zooms.push({ next, point, previous }); },
+    ...options,
   });
   function send(type, props = {}) {
     const event = new Event(type, { cancelable: true });
@@ -117,5 +118,27 @@ test('ordinary scrolling keys and wheel input remain native', () => {
   for (const key of ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '])
     assert.equal(f.send('keydown', { key }).defaultPrevented, false);
   assert.equal(f.zooms.length, 0);
+  f.dispose();
+});
+
+test('shared viewport leaves search and Git views out of document gestures', () => {
+  let enabled = false;
+  const f = fixture({ isEnabled: () => enabled });
+  assert.equal(f.send('wheel', { ctrlKey: true }).defaultPrevented, false);
+  assert.equal(f.send('keydown', { ctrlKey: true, key: '+' }).defaultPrevented, false);
+  assert.equal(f.send('pointerdown').defaultPrevented, false);
+  assert.equal(f.captures.size, 0);
+  assert.equal(f.zooms.length, 0);
+  enabled = true;
+  assert.equal(f.send('wheel', { ctrlKey: true }).defaultPrevented, true);
+  f.dispose();
+});
+
+test('PathBar links and toolbar controls do not start a document pan', () => {
+  const f = fixture();
+  f.viewport.closest = selector => selector === '.page-header, .file-toolbar' ? {} : null;
+  assert.equal(f.send('pointerdown').defaultPrevented, false);
+  assert.equal(f.send('pointerdown', { pointerType: 'touch' }).defaultPrevented, false);
+  assert.equal(f.captures.size, 0);
   f.dispose();
 });
