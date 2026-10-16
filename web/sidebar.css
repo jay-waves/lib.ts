@@ -1,5 +1,15 @@
 /* Shared sidebar hierarchy, including the narrow-screen drawer. */
-.sidebar, .sidebar-drawer-header {
+.sidebar, .sidebar-drawer-header, .sidebar-rail {
+  --sidebar-list-gutter: 8px;
+  --sidebar-row-height: 32px;
+  --sidebar-header-height: 44px;
+  --sidebar-header-padding: 8px 12px;
+  --sidebar-row-radius: 6px;
+  --sidebar-selection-width: 3px;
+  --sidebar-selection-offset: -4px;
+  --sidebar-selection-inset: 4px;
+  --sidebar-selection-color: var(--fgColor-accent);
+  --sidebar-selection-background: var(--bgColor-accent-muted);
   --sidebar-font: "Mona Sans VF", var(--BaseStyles-fontFamily, sans-serif);
   --sidebar-text-size: 13px;
   --sidebar-meta-size: 12px;
@@ -14,16 +24,16 @@
   --control-transparent-bgColor-hover: var(--bgColor-muted);
   --control-transparent-bgColor-selected: var(--bgColor-accent-muted);
 }
-.sidebar .tree-scroll { padding: 4px 8px 16px; }
+.sidebar .tree-scroll { padding: 4px var(--sidebar-list-gutter) 16px; }
 
-.sidebar .file-search { box-sizing: border-box; min-height: 38px; padding: 12px 12px 5px; }
+.sidebar .file-search { box-sizing: border-box; min-height: var(--sidebar-header-height); flex: none; padding: var(--sidebar-header-padding); }
 .sidebar .file-search input { font-size: 13px; }
 
 .sidebar .file-tree-link[aria-current="page"] {
   font-weight: var(--sidebar-emphasis-weight);
 }
 
-.sidebar .files-toolbar { position: relative; display: flex; align-items: center; justify-content: center; min-height: 38px; box-sizing: border-box; flex: none; padding: 4px 8px; border-bottom: 1px solid var(--borderColor-muted); }
+.sidebar .files-toolbar { position: relative; display: flex; align-items: center; justify-content: center; min-height: var(--sidebar-header-height); box-sizing: border-box; flex: none; padding: 4px 8px; border-bottom: 1px solid var(--borderColor-muted); }
 .sidebar .files-toolbar button { flex: none; color: var(--fgColor-muted); }
 .sidebar .files-toolbar button[aria-pressed="true"] { color: var(--fgColor-accent); background: var(--bgColor-accent-muted); }
 
@@ -31,18 +41,67 @@
 .sidebar .file-tree-link:hover { text-decoration: none; }
 .sidebar .bookmark-list { list-style: none; margin: 0; padding: 0; }
 .sidebar .bookmark-row { display: flex; align-items: center; gap: 4px; border-radius: 6px; }
-.sidebar .bookmark-row:hover { background: var(--bgColor-muted); }
-.sidebar .bookmark-row:has(.bookmark-link[aria-current="page"]) { background: var(--bgColor-accent-muted); }
 .sidebar .bookmark-link { position: relative; display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; color: inherit; text-decoration: none; }
-.sidebar .bookmark-link[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: var(--fgColor-accent); }
 .sidebar .bookmark-link:hover { text-decoration: none; }
-.sidebar .bookmark-link:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
 .sidebar .bookmark-icon { display: flex; flex: none; color: var(--fgColor-muted); }
-.sidebar .bookmark-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .sidebar .files-toolbar-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .sidebar .files-search { display: flex; align-items: center; gap: 4px; flex: none; max-height: 64px; opacity: 1; transform: translateY(0); overflow: hidden; transition: max-height 200ms ease, padding 200ms ease, opacity 150ms ease, transform 200ms ease; }
 .sidebar .files-search > span { flex: 1; min-width: 0; width: 0; }
 .sidebar .files-search.is-collapsed { min-height: 0; max-height: 0; padding-top: 0; padding-bottom: 0; border-bottom: 0; opacity: 0; transform: translateY(18px) scale(.92); pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   .sidebar .files-search { transition: none; }
+}
+
+/* Shared navigation state. Primer's ActionList uses ::after on the item;
+   TreeView uses ::after on its row container (not the nested subtree).
+   Keep this small TreeView adapter together when upgrading Primer. */
+.sidebar .sidebar-list-item,
+.sidebar .file-tree-item > .PRIVATE_TreeView-item-container {
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: var(--sidebar-row-height);
+  border-radius: var(--sidebar-row-radius);
+}
+.sidebar .sidebar-list-item:not([data-is-disabled]):hover {
+  background: var(--control-transparent-bgColor-hover);
+}
+.sidebar .sidebar-list-item:not([data-is-disabled]):is([data-active="true"], [aria-current="page"], [aria-current="location"]),
+.sidebar .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container {
+  background: var(--sidebar-selection-background);
+}
+.sidebar .sidebar-list-item:not([data-is-disabled]):is([data-active="true"], [aria-current="page"], [aria-current="location"])::after,
+.sidebar .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container::after {
+  content: "";
+  position: absolute;
+  left: var(--sidebar-selection-offset);
+  top: var(--sidebar-selection-inset);
+  bottom: var(--sidebar-selection-inset);
+  width: var(--sidebar-selection-width);
+  height: auto;
+  border-radius: 2px;
+  background: var(--sidebar-selection-color);
+  pointer-events: none;
+}
+.sidebar .bookmark-link[aria-current="page"] .sidebar-path,
+.sidebar .sidebar-list-item[data-active="true"] .git-change-path {
+  font-weight: var(--sidebar-emphasis-weight);
+}
+.sidebar .sidebar-list-item:focus-visible,
+.sidebar .sidebar-list-item :focus-visible,
+.sidebar .file-tree-item:focus-visible > .PRIVATE_TreeView-item-container {
+  outline: 2px solid var(--sidebar-selection-color);
+  outline-offset: -2px;
+}
+.sidebar .file-tree-item > .PRIVATE_TreeView-item-container {
+  --custom-line-height: 20px;
+  --min-item-height: var(--sidebar-row-height);
+  grid-template-columns: var(--spacer-width) var(--leading-action-width) var(--toggle-width) minmax(0, 1fr) auto;
+}
+.sidebar .PRIVATE_TreeView-item-content { min-width: 0; }
+.sidebar .file-tree-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Only the outer box is RTL: bdi keeps the actual path in logical order. */
+.sidebar .sidebar-path { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+@media (forced-colors: active) {
+  .sidebar, .sidebar-rail { --sidebar-selection-color: Highlight; }
 }

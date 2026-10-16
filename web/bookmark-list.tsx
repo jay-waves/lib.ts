@@ -10,7 +10,7 @@ export function BookmarkList({ files, selected, navigate }: {
 }) {
   return <ul className="bookmark-list" aria-label="Bookmarked files">
     {files.map(file => <li key={file.path} className="bookmark-row">
-      <a className="bookmark-link" href={fileUrl(file.path, false)} title={file.path}
+      <a className="sidebar-list-item bookmark-link" href={fileUrl(file.path, false)} title={file.path}
         aria-current={file.path === selected ? 'page' : undefined}
         onClick={event => {
           if (!isPlainTreeActivation(event)) return;
@@ -18,7 +18,7 @@ export function BookmarkList({ files, selected, navigate }: {
           navigate(file.path, false);
         }}>
         <span className="bookmark-icon" aria-hidden="true"><FileTypeIcon name={file.name} /></span>
-        <span className="bookmark-path"><bdi dir="ltr">{file.path}</bdi></span>
+        <span className="sidebar-path"><bdi dir="ltr">{file.path}</bdi></span>
       </a>
     </li>)}
   </ul>;

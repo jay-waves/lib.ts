@@ -39,7 +39,7 @@ export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
         event.preventDefault(); navigate(node.path, node.type === 'directory');
       }}>
       {node.type === 'directory' ? <FileDirectoryIcon /> : node.name.toLowerCase().endsWith('.md') ? <MarkdownIcon /> : <FileIcon />}
-      <span>{node.name}</span>
+      <span title={node.name}>{node.name}</span>
       {node.type === 'directory' && node.modified && <time className={styles.modified} dateTime={node.modified}
         title={formatModified(node.modified)}>{formatRelativeModified(node.modified)}</time>}
     </a>)}

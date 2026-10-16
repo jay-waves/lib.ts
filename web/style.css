@@ -17,7 +17,7 @@ body, .workspace { background: var(--library-canvas); }
 .sidebar-rail .sidebar-rail-button svg { width: 20px; height: 20px; }
 .sidebar-rail .sidebar-rail-repos { margin-top: auto; }
 .sidebar-rail .sidebar-rail-button[aria-pressed="true"] { color: var(--fgColor-default); background: var(--control-transparent-bgColor-selected); }
-.sidebar-rail-button[aria-pressed="true"]::before { content: ''; position: absolute; inset: 6px auto 6px -4px; width: 2px; border-radius: 2px; background: var(--fgColor-accent); }
+.sidebar-rail-button[aria-pressed="true"]::before { content: ''; position: absolute; inset: var(--sidebar-selection-inset) auto var(--sidebar-selection-inset) var(--sidebar-selection-offset); width: var(--sidebar-selection-width); border-radius: 2px; background: var(--sidebar-selection-color); pointer-events: none; }
 .sidebar-resize { position: relative; z-index: 2; background: var(--bgColor-default); cursor: col-resize; touch-action: none; outline: none; }
 .sidebar-resize::after { position: absolute; inset: 0 auto 0 2px; width: 1px; content: ''; background: var(--borderColor-default); }
 .sidebar-resize:hover::after, .sidebar-resize:focus-visible::after { background: var(--bgColor-accent-emphasis); }

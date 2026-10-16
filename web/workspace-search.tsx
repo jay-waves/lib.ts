@@ -22,8 +22,8 @@ export function useWorkspaceSearch({ config, onConfig, navigate, active, current
   const scopeFilter = <>
       <section className="search-facet search-scope-picker">
         <h2>Scope</h2>
-        <ActionList role="listbox" aria-label="Search scope" aria-multiselectable={false}>
-          {scopes.map(item => <ActionList.Item key={item.value} role="option"
+        <ActionList variant="full" role="listbox" aria-label="Search scope" aria-multiselectable={false}>
+          {scopes.map(item => <ActionList.Item className="sidebar-list-item" key={item.value} role="option"
             disabled={item.value === 'current-file' && treeIndex.get(currentFile)?.type !== 'file'}
             active={scope === item.value} aria-selected={scope === item.value}
             onSelect={() => onConfig({ ...config, scope: scope === item.value ? '' : item.value })}>

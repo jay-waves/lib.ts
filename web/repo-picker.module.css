@@ -1,35 +1,40 @@
-.picker { flex: 1; min-block-size: 0; overflow: auto; overscroll-behavior-block: none; padding: 12px 8px 16px; font-size: 13px; }
+.picker { display: flex; flex-direction: column; flex: 1; min-block-size: 0; min-inline-size: 0; overflow: hidden; font-size: var(--sidebar-text-size); }
+.pickerHeading { display: flex; align-items: center; flex: none; box-sizing: border-box; min-height: var(--sidebar-header-height); padding: var(--sidebar-header-padding); border-bottom: 1px solid var(--borderColor-muted); font-weight: var(--sidebar-emphasis-weight); }
+.navigation { flex: 1; min-block-size: 0; overflow: auto; overscroll-behavior-block: none; padding: 4px var(--sidebar-list-gutter) 16px; }
 .picker[hidden] { display: none; }
-.list {
-  & > a { display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; border-radius: 6px; color: var(--fgColor-default); font-weight: 400; text-decoration: none; }
-  & > a:hover { background: var(--bgColor-muted); }
-  & > a[aria-current] { background: var(--bgColor-accent-muted); }
-  & > a[aria-current] > span { font-weight: 600; }
-  & > a:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
-  & small { overflow: hidden; color: var(--fgColor-muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
-}
+.list { display: grid; gap: 4px; }
+.list > a { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 8px; padding: 8px; color: var(--fgColor-default); font-weight: 400; text-decoration: none; }
+.repoIcon { display: flex; align-items: center; height: 20px; color: var(--fgColor-muted); }
+.repoText { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.repoName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--sidebar-text-size); line-height: 20px; }
+.list > a[aria-current] .repoName { font-weight: var(--sidebar-emphasis-weight); }
+.repoPath { color: var(--fgColor-muted); font-size: var(--sidebar-meta-size); line-height: 18px; }
 .addMore, .textButton { border: 0; background: transparent; color: var(--fgColor-muted); font: inherit; cursor: pointer; }
-.addMore { display: block; padding: 8px; font-size: 12px; text-align: start; }
-.addMore:hover { color: var(--fgColor-accent); text-decoration: underline; }
-:is(.addMore, .textButton):focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: 2px; }
+.addMore { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; min-height: var(--sidebar-row-height); margin-top: 8px; padding: 6px 8px; border-radius: var(--sidebar-row-radius); font-size: var(--sidebar-text-size); line-height: 20px; text-align: start; }
+.addMore > svg { flex: none; }
+.addMore:hover, .textButton:hover { background: var(--control-transparent-bgColor-hover); color: var(--fgColor-default); }
+.textButton { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 6px; }
+:is(.addMore, .textButton):focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
 .dialog {
-  box-sizing: border-box; inline-size: min(620px, calc(100vw - 32px)); max-block-size: calc(100dvh - 48px); padding: 16px; border: 1px solid var(--borderColor-default); border-radius: 6px; background: var(--bgColor-default); color: var(--fgColor-default); font: 13px var(--BaseStyles-fontFamily); box-shadow: 0 8px 32px #0002;
+  box-sizing: border-box; inline-size: min(620px, calc(100vw - 32px)); max-block-size: calc(100dvh - 48px); overflow: auto; padding: 16px; border: 1px solid var(--borderColor-default); border-radius: 6px; background: var(--bgColor-default); color: var(--fgColor-default); font: 13px var(--BaseStyles-fontFamily); box-shadow: 0 8px 32px #0002;
   &::backdrop { background: #0006; }
   & :where(button) { font: inherit; cursor: pointer; }
+  & button:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
   & button:disabled { opacity: .55; cursor: default; }
 }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.header h2 { margin: 0; font-size: 18px; }
+.header h2 { margin: 0; font-size: 16px; line-height: 24px; }
 .drives { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 10px; }
 .drives button { padding: 5px 10px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: inherit; background: var(--bgColor-muted); }
 .entries {
   block-size: min(320px, 40dvh); overflow: auto; border-block: 1px solid var(--borderColor-muted); padding-block: 6px;
-  & > button { display: flex; align-items: center; gap: 9px; inline-size: 100%; padding: 7px 8px; border: 0; border-radius: 5px; color: inherit; background: transparent; text-align: start; overflow-wrap: anywhere; }
+  & > button { display: flex; align-items: center; gap: 8px; inline-size: 100%; box-sizing: border-box; min-height: 32px; padding: 6px 8px; line-height: 20px; border: 0; border-radius: 6px; color: inherit; background: transparent; text-align: start; overflow-wrap: anywhere; }
   & > button:hover { background: var(--bgColor-muted); }
+  & > button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   & svg { flex: none; color: var(--fgColor-muted); }
   & p { padding: 8px; color: var(--fgColor-muted); }
 }
-.footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-block-start: 12px; }
+.footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-block-start: 12px; }
 .footer > span { min-inline-size: 0; color: var(--fgColor-muted); font-size: 12px; overflow-wrap: anywhere; }
-.addButton { flex: none; padding: 7px 11px; border: 1px solid var(--borderColor-default); border-radius: 4px; color: var(--fgColor-default); background: var(--bgColor-muted); }
+.addButton { flex: none; padding: 7px 11px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-default); background: var(--bgColor-muted); }
 .error { margin: 8px; color: var(--fgColor-danger); font-size: 12px; overflow-wrap: anywhere; }

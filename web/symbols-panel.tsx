@@ -63,10 +63,9 @@ export function SymbolsPanel({ symbols, status, onSelect, hidden, visible }: Sym
     </div>
     <nav ref={scrollRef} className={styles.list} aria-label="Document symbols">
       {filteredSymbols.length ? <ActionList variant="full">
-        {filteredSymbols.map(symbol => <ActionList.Item className={styles.item} key={symbol.id} disabled={symbol.group}
+        {filteredSymbols.map(symbol => <ActionList.Item className={`sidebar-list-item ${styles.item}`} key={symbol.id} disabled={symbol.group}
           active={symbol.id === currentSymbol} aria-current={symbol.id === currentSymbol ? 'location' : undefined}
-          style={{ marginInlineStart: `${Math.max(0, (symbol.level || 1) - 1) * 20}px` }}
-          onSelect={() => onSelect(symbol)}><span className={styles.name}>{symbol.name}</span></ActionList.Item>)}
+          onSelect={() => onSelect(symbol)}><span className={styles.name} title={symbol.name} style={{ paddingInlineStart: `${Math.max(0, (symbol.level || 1) - 1) * 20}px` }}>{symbol.name}</span></ActionList.Item>)}
       </ActionList> : <div className="tree-empty">{symbols.length ? 'No matching symbols' : 'No symbols found'}</div>}
     </nav>
   </div>;

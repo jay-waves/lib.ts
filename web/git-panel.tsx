@@ -38,12 +38,12 @@ export default function GitPanel({ onSelect, selected, scope, state: { status, l
         <summary className="git-group-summary">
           <ChevronRightIcon /> {group.label} <CounterLabel>{group.changes.length}</CounterLabel>
         </summary>
-        <ActionList aria-label={group.label}>{group.changes.map(change => {
+        <ActionList variant="full" aria-label={group.label}>{group.changes.map(change => {
           const label = changeLabel(change.code);
-          return <ActionList.Item key={change.path} active={selected === change.path && scope === group.id}
+          return <ActionList.Item className="sidebar-list-item" key={change.path} active={selected === change.path && scope === group.id}
             onSelect={() => onSelect(change.path, group.id)}>
             <ActionList.LeadingVisual><FileDiffIcon /></ActionList.LeadingVisual>
-            <span className="git-change-path" title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path}><bdi dir="ltr">{change.path}</bdi></span>
+            <span className="sidebar-path git-change-path" title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path}><bdi dir="ltr">{change.path}</bdi></span>
             <ActionList.TrailingVisual>
               <span className="git-change-status" data-kind={label} title={label} aria-label={label}>{change.code}</span>
             </ActionList.TrailingVisual>

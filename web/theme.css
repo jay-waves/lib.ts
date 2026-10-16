@@ -9,6 +9,9 @@
     --fgColor-muted: #73746e;
     --fgColor-accent: #5d625f;
     --borderColor-default: #dfe1df;
+    --borderColor-accent-emphasis: var(--fgColor-accent);
+    --focus-outline-color: var(--fgColor-accent);
+    --focus-outlineColor: var(--focus-outline-color);
     --control-transparent-bgColor-hover: #eef0ee;
     --control-transparent-bgColor-selected: #e9ecea;
     --treeViewItem-leadingVisual-iconColor-rest: #777c78;

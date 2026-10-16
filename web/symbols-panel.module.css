@@ -1,5 +1,5 @@
 .panel:not([hidden]) { display: flex; flex-direction: column; flex: 1; min-block-size: 0; }
-.filter { box-sizing: border-box; min-block-size: 38px; padding: 12px 12px 5px; }
-.list { flex: 1; min-block-size: 0; overflow: auto; overscroll-behavior-block: none; padding: 4px 8px 16px; }
-.name { display: block; min-inline-size: 0; overflow: hidden; color: var(--fgColor-default); font-size: 13px; font-weight: 400; line-height: 20px; white-space: nowrap; }
+.filter { box-sizing: border-box; flex: none; min-block-size: var(--sidebar-header-height); padding: var(--sidebar-header-padding); }
+.list { flex: 1; min-block-size: 0; overflow: auto; overscroll-behavior-block: none; padding: 4px var(--sidebar-list-gutter) 16px; }
+.name { box-sizing: border-box; text-overflow: ellipsis; display: block; min-inline-size: 0; overflow: hidden; color: var(--fgColor-default); font-size: 13px; font-weight: 400; line-height: 20px; white-space: nowrap; }
 .item[aria-current="location"] .name { font-weight: 600; }

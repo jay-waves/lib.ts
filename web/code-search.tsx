@@ -171,12 +171,12 @@ function Facet({ title, items, selected, onSelect, icon, languages = false }: { 
   if (selectedItem && !visible.includes(selectedItem)) visible.push(selectedItem);
   return <section className="search-facet">
     <h2>{title}</h2>
-    <ActionList role="listbox" aria-label={title}>
-      <ActionList.Item active={!selected} aria-selected={!selected} onSelect={() => onSelect('')} role="option">
+    <ActionList variant="full" role="listbox" aria-label={title}>
+      <ActionList.Item className="sidebar-list-item" active={!selected} aria-selected={!selected} onSelect={() => onSelect('')} role="option">
         <ActionList.LeadingVisual>{React.createElement(icon)}</ActionList.LeadingVisual>
         All {title.toLowerCase()}
       </ActionList.Item>
-      {visible.map(item => <ActionList.Item key={item.value} active={selected === item.value} aria-selected={selected === item.value} role="option"
+      {visible.map(item => <ActionList.Item className="sidebar-list-item" key={item.value} active={selected === item.value} aria-selected={selected === item.value} role="option"
         onSelect={() => onSelect(selected === item.value ? '' : item.value)}>
         <ActionList.LeadingVisual>{languages ? <LanguageSwatch language={item.value} /> : React.createElement(icon)}</ActionList.LeadingVisual>
         <span className="search-facet-value" title={item.value}>{item.value}</span>

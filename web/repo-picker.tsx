@@ -1,6 +1,6 @@
 import { syncReadingPositions } from './reading-state.mjs';
 import React, { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { FileDirectoryIcon, ArrowUpIcon, XIcon } from '@primer/octicons-react';
+import { FileDirectoryIcon, ArrowUpIcon, XIcon, RepoIcon, PlusIcon } from '@primer/octicons-react';
 import { repoId } from './urls.mjs';
 import styles from './repo-picker.module.css';
 import { browseDirectories, listRepositories, markRepositoryUsed, registerRepository } from './api/repositories';
@@ -55,7 +55,7 @@ function DirectoryPicker({ initialPath, onClose, beforeNavigate }: DirectoryPick
     <div className={styles.entries} aria-busy={loading}>
       {loading ? <p>Loading directories…</p> : <>
         {directory?.parent && <button type="button" disabled={adding} onClick={() => setRequestedPath(directory.parent ?? '')}><ArrowUpIcon size={16} />Parent directory</button>}
-        {!error && directory?.directories.map(child => <button type="button" key={child.path} disabled={adding} onClick={() => setRequestedPath(child.path)}><FileDirectoryIcon size={16} />{child.name}</button>)}
+        {!error && directory?.directories.map(child => <button type="button" key={child.path} disabled={adding} onClick={() => setRequestedPath(child.path)}><FileDirectoryIcon size={16} /><span title={child.path}>{child.name}</span></button>)}
         {!error && !directory?.directories.length && <p>No subdirectories</p>}
       </>}
     </div>
@@ -93,17 +93,20 @@ export function RepoPicker({ hidden = false, beforeNavigate = async () => {} }: 
   }, []);
   const active = repos.find(repo => repo.id === activeId);
   return <div className={styles.picker} hidden={hidden}>
-    <nav aria-label="Repositories by recent use">
-      <div className={styles.list}>{repos.map(repo => <a key={repo.id} href={repo.url} onClick={async (event: MouseEvent<HTMLAnchorElement>) => {
+    <div className={styles.pickerHeading}>Repositories</div>
+    <nav className={styles.navigation} aria-label="Repositories by recent use">
+      <div className={styles.list}>{repos.map(repo => <a className="sidebar-list-item" key={repo.id} href={repo.url} onClick={async (event: MouseEvent<HTMLAnchorElement>) => {
         if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
         dispatchEvent(new Event('reading-capture'));
         try { await syncReadingPositions(); await beforeNavigate(); location.assign(repo.url); }
         catch (cause) { setError(errorMessage(cause)); }
       }} title={repo.root} aria-current={repo.id === activeId ? 'page' : undefined}>
-        <span>{repo.name}</span><small>{repo.root}</small></a>)}</div>
+        <span className={styles.repoIcon} aria-hidden="true"><RepoIcon size={16} /></span>
+        <span className={styles.repoText}><span className={styles.repoName}>{repo.name}</span>
+          <span className={`sidebar-path ${styles.repoPath}`}><bdi dir="ltr">{repo.root}</bdi></span></span></a>)}</div>
       {error && <p className={styles.error} role="alert">{error}</p>}
-      <button type="button" className={styles.addMore} onClick={() => setOpen(true)}>add more</button>
+      <button type="button" className={styles.addMore} onClick={() => setOpen(true)}><PlusIcon size={16} />Add repository</button>
     </nav>
     {open && <DirectoryPicker beforeNavigate={beforeNavigate} initialPath={active?.root} onClose={() => setOpen(false)} />}
   </div>;

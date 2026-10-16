@@ -18,3 +18,10 @@
 .git-diff-line.is-add { background: light-dark(#dafbe1, #12261e); }
 .git-diff-line.is-delete { background: light-dark(#ffebe9, #331a1e); }
 .git-diff-line.is-note { color: var(--fgColor-muted); font-style: italic; }
+
+@container reader (inline-size <= 600px) {
+  .git-diff-toolbar { padding-inline: 12px 8px; }
+}
+@container reader (inline-size <= 360px) {
+  .git-diff-toolbar { flex-wrap: wrap; padding-block: 4px; }
+}
