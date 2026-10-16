@@ -3,7 +3,7 @@ name: Windows native build
 on:
   push:
     branches: [main]
-    tags: ['*']
+    tags: ['*', '!*-latest']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -162,13 +162,42 @@ jobs:
           retention-days: 90
 
   publish-release:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') && !endsWith(github.ref, '-latest')
+    concurrency:
+      group: rolling-release-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
       actions: read
       contents: write
     steps:
+      - name: Resolve release series
+        id: series
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = context.ref.replace('refs/tags/', '');
+            const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version);
+            if (!match) throw new Error(`Expected a stable version tag such as 0.2.2, got ${version}`);
+            const tag = `${match[1]}.${match[2]}-latest`;
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            // Resolve annotated tags to the commit, rather than using the tag object SHA.
+            const { data: commit } = await github.rest.repos.getCommit({ ...repo, ref: version });
+            try {
+              const { data: release } = await github.rest.repos.getReleaseByTag({ ...repo, tag });
+              const current = /Actual version: \[([0-9]+\.[0-9]+\.[0-9]+)\]/.exec(release.body || '');
+              if (current && BigInt(current[1].split('.')[2]) > BigInt(match[3])) {
+                throw new Error(`Refusing to replace ${current[1]} with older version ${version}`);
+              }
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            core.setOutput('tag', tag);
+            core.setOutput('version', version);
+            core.setOutput('sha', commit.sha);
+            core.setOutput('asset', `lib.ts-${tag}-windows-x86_64.zip`);
+
       - name: Find successful main build for this commit
         id: main-build
         uses: actions/github-script@v7
@@ -182,7 +211,7 @@ jobs:
                 workflow_id: 'windows-build.yml',
                 branch: 'main',
                 event: 'push',
-                head_sha: context.sha,
+                head_sha: '${{ steps.series.outputs.sha }}',
                 per_page: 100,
               });
               const successful = data.workflow_runs
@@ -217,14 +246,40 @@ jobs:
         run: test -f "$RUNNER_TEMP/lib.ts/lib.ts.exe"
 
       - name: Package Windows release
-        run: zip -r "$RUNNER_TEMP/lib.ts-${GITHUB_REF_NAME}-windows-x86_64.zip" lib.ts
+        env:
+          RELEASE_ASSET: ${{ steps.series.outputs.asset }}
+        run: zip -r "$RUNNER_TEMP/$RELEASE_ASSET" lib.ts
         working-directory: ${{ runner.temp }}
 
-      - name: Publish tag release
+      - name: Publish rolling release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: lib.ts ${{ github.ref_name }}
-          generate_release_notes: true
-          files: ${{ runner.temp }}/lib.ts-${{ github.ref_name }}-windows-x86_64.zip
+          tag_name: ${{ steps.series.outputs.tag }}
+          target_commitish: ${{ steps.series.outputs.sha }}
+          name: lib.ts ${{ steps.series.outputs.tag }}
+          body: |
+            Actual version: [${{ steps.series.outputs.version }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ steps.series.outputs.version }})
+
+            This release tracks the latest stable version in this series. Its download is replaced on each release.
+          files: ${{ runner.temp }}/${{ steps.series.outputs.asset }}
+          overwrite_files: true
           fail_on_unmatched_files: true
+
+      - name: Point rolling tag at the published version
+        uses: actions/github-script@v7
+        env:
+          ROLLING_TAG: ${{ steps.series.outputs.tag }}
+          RELEASE_SHA: ${{ steps.series.outputs.sha }}
+        with:
+          script: |
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const ref = `tags/${process.env.ROLLING_TAG}`;
+            const sha = process.env.RELEASE_SHA;
+            try {
+              await github.rest.git.getRef({ ...repo, ref });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({ ...repo, ref: `refs/${ref}`, sha });
+              return;
+            }
+            await github.rest.git.updateRef({ ...repo, ref, sha, force: true });

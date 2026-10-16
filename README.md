@@ -99,6 +99,8 @@ lib-ts E:/notes
 
 部署包包含 `fonts/` 的字体和许可证；Typst 包缓存和现有用户数据不随部署包复制。
 
+GitHub 发布按主版本和次版本维护滚动 Release：推送 `0.2.2`、`0.2.3` 等实际版本标签，只更新 `0.2-latest` 的 Release、标签指向和同名 Windows 安装包，发布说明链接当前实际版本标签。实际版本标签保留，但不分别创建 Release；旧版本重跑不能覆盖较新的版本。`*-latest` 标签不触发发布，已有历史 Release 不自动删除。
+
 前端和共享逻辑回归：`node --test tests/*.test.mjs`。Rust release 测试：`npm run test:rust`。前端构建检查：`npm run build`。
 
 服务端由 Rust 实现；Node.js 仅用于前端构建、测试和打包。
