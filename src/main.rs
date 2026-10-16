@@ -54,6 +54,7 @@ fn stream_file(
     )
 }
 
+mod access;
 mod cross_search;
 mod documents;
 mod file_kind;
@@ -81,6 +82,7 @@ struct AppState {
     html: html::Service,
     search: Arc<search::SearchService>,
     data_directory: Arc<PathBuf>,
+    access: Arc<access::AccessPolicy>,
     trees: tree::Service,
     repositories: Arc<repositories::RepositoryStore>,
     reading: Arc<reading::ReadingStore>,
@@ -528,6 +530,8 @@ fn library_events_query(uri: &Uri) -> Result<LibraryEventsQuery, String> {
 #[derive(Deserialize)]
 struct DirectoryQuery {
     path: Option<String>,
+    #[serde(default)]
+    root: bool,
 }
 
 #[derive(Deserialize)]
@@ -612,13 +616,67 @@ struct DirectoryListing {
     name: String,
     parent: Option<String>,
     directories: Vec<DirectoryEntry>,
-    drives: Vec<DirectoryEntry>,
+    hostname: String,
+    root_path: String,
 }
 
 #[derive(Serialize)]
 struct DirectoryEntry {
     name: String,
     path: String,
+}
+
+fn server_hostname() -> &'static str {
+    static HOSTNAME: LazyLock<String> = LazyLock::new(|| {
+        let name = std::env::var(if cfg!(windows) {
+            "COMPUTERNAME"
+        } else {
+            "HOSTNAME"
+        })
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+        .or_else(|| std::fs::read_to_string("/proc/sys/kernel/hostname").ok())
+        .or_else(|| {
+            std::process::Command::new("hostname")
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
+        })
+        .unwrap_or_else(|| "Computer".into());
+        name.trim().to_owned()
+    });
+    &HOSTNAME
+}
+
+fn machine_root_path() -> &'static str {
+    if cfg!(windows) { "" } else { "/" }
+}
+
+fn browse_machine_root(data_directory: &Path) -> Result<DirectoryListing, (StatusCode, String)> {
+    #[cfg(windows)]
+    {
+        let directories = (b'A'..=b'Z')
+            .filter_map(|drive| {
+                let path = PathBuf::from(format!("{}:/", drive as char));
+                path.exists().then(|| DirectoryEntry {
+                    name: format!("{}:", drive as char),
+                    path: client_path(&path),
+                })
+            })
+            .collect();
+        let _ = data_directory;
+        Ok(DirectoryListing {
+            path: String::new(),
+            name: server_hostname().into(),
+            parent: None,
+            directories,
+            hostname: server_hostname().into(),
+            root_path: String::new(),
+        })
+    }
+    #[cfg(not(windows))]
+    browse_directories(Some("/"), Path::new("/"), data_directory)
 }
 
 fn browse_directories(
@@ -676,21 +734,6 @@ fn browse_directories(
     }
     directories.sort_by_key(|directory| directory.name.to_lowercase());
     let parent = directory.parent().filter(|parent| *parent != directory);
-    #[cfg(windows)]
-    let drives = (b'A'..=b'Z')
-        .filter_map(|drive| {
-            let path = PathBuf::from(format!("{}:/", drive as char));
-            path.exists().then(|| DirectoryEntry {
-                name: client_path(&path),
-                path: client_path(&path),
-            })
-        })
-        .collect::<Vec<_>>();
-    #[cfg(not(windows))]
-    let drives = vec![DirectoryEntry {
-        name: "/".into(),
-        path: "/".into(),
-    }];
     Ok(DirectoryListing {
         path: client_path(&directory),
         name: directory
@@ -699,7 +742,8 @@ fn browse_directories(
             .unwrap_or_else(|| directory.as_os_str().to_string_lossy().into_owned()),
         parent: parent.map(client_path),
         directories,
-        drives,
+        hostname: server_hostname().into(),
+        root_path: machine_root_path().into(),
     })
 }
 
@@ -755,27 +799,15 @@ fn require_json_content_type(headers: &HeaderMap) -> Result<(), Response> {
     }
 }
 
-fn require_same_origin(headers: &HeaderMap, message: &'static str) -> Result<(), Response> {
-    let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    else {
-        return Ok(());
-    };
-    let host = headers
-        .get(axum::http::header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-    let scheme = headers
-        .get("x-forwarded-proto")
-        .and_then(|value| value.to_str().ok())
-        .filter(|value| matches!(*value, "http" | "https"))
-        .unwrap_or("http");
-    if origin == format!("{scheme}://{host}") {
-        Ok(())
-    } else {
-        Err(json_error(StatusCode::FORBIDDEN, message).into_response())
+async fn validate_access(
+    State(state): State<AppState>,
+    request: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if let Err(message) = state.access.check(request.headers(), request.method()) {
+        return json_error(StatusCode::FORBIDDEN, message).into_response();
     }
+    next.run(request).await
 }
 
 fn checked_path(root: &Path, value: &str) -> Result<PathBuf, (StatusCode, String)> {
@@ -863,11 +895,16 @@ async fn directories(
     State(state): State<AppState>,
     Query(query): Query<DirectoryQuery>,
 ) -> Response {
-    match browse_directories(
-        query.path.as_deref(),
-        &state.service_root,
-        &state.data_directory,
-    ) {
+    let listing = if query.root {
+        browse_machine_root(&state.data_directory)
+    } else {
+        browse_directories(
+            query.path.as_deref(),
+            &state.service_root,
+            &state.data_directory,
+        )
+    };
+    match listing {
         Ok(value) => Json(value).into_response(),
         Err((status, error)) => json_error(status, error).into_response(),
     }
@@ -942,9 +979,6 @@ async fn use_repository(
     if let Err(response) = require_json_content_type(&headers) {
         return response;
     }
-    if let Err(response) = require_same_origin(&headers, "Cross-origin registration is forbidden") {
-        return response;
-    }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
     };
@@ -969,9 +1003,6 @@ async fn set_bookmark(
     Json(request): Json<SetBookmarkRequest>,
 ) -> Response {
     if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
-    if let Err(response) = require_same_origin(&headers, "Cross-origin request is forbidden") {
         return response;
     }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
@@ -1015,9 +1046,6 @@ async fn put_reading(
     if let Err(response) = require_json_content_type(&headers) {
         return response;
     }
-    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
-        return response;
-    }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
     };
@@ -1049,9 +1077,6 @@ async fn add_recent_file(
     if let Err(response) = require_json_content_type(&headers) {
         return response;
     }
-    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
-        return response;
-    }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
     };
@@ -1077,9 +1102,6 @@ async fn clear_recent_files(
     if let Err(response) = require_json_content_type(&headers) {
         return response;
     }
-    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
-        return response;
-    }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
     };
@@ -1097,9 +1119,6 @@ async fn add_repository(
     if let Err(response) = require_json_content_type(&headers) {
         return response;
     }
-    if let Err(response) = require_same_origin(&headers, "Cross-origin registration is forbidden") {
-        return response;
-    }
     match state
         .repositories
         .add(&request.root, request.name.as_deref())
@@ -1115,9 +1134,6 @@ async fn session_leases(
     headers: HeaderMap,
     Json(request): Json<LeaseRequest>,
 ) -> Response {
-    if let Err(response) = require_same_origin(&headers, "Cross-origin retention is forbidden") {
-        return response;
-    }
     if let Err(response) = require_json_content_type(&headers) {
         return response;
     }
@@ -1225,9 +1241,6 @@ async fn library_activity(
     if let Err(response) = require_json_content_type(&headers) {
         return response;
     }
-    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
-        return response;
-    }
     let active = state
         .runtime
         .library_events
@@ -1242,9 +1255,6 @@ async fn library_open(
     Json(request): Json<LibraryOpenRequest>,
 ) -> Response {
     if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
-    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
         return response;
     }
     if request.line.is_some_and(|line| line < 1)
@@ -1406,9 +1416,6 @@ async fn open_directory(
 ) -> Response {
     let root = state.root_for_uri(uri.path());
     if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
-    if let Err(response) = require_same_origin(&headers, "Cross-origin request forbidden") {
         return response;
     }
     let requested = request.path.unwrap_or_default();
@@ -2008,6 +2015,10 @@ fn build_router(state: AppState) -> Router {
             state.clone(),
             validate_repository_route,
         ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            validate_access,
+        ))
         .layer(axum::middleware::from_fn(security_headers))
         .layer(TraceLayer::new_for_http())
 }
@@ -2104,6 +2115,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         html: html::Service::new()?,
         search: Arc::new(search::SearchService::default()),
         data_directory: Arc::new(data_directory.clone()),
+        access: Arc::new(
+            access::AccessPolicy::load(&data_directory, server_hostname(), &base_url)
+                .map_err(std::io::Error::other)?,
+        ),
         trees: tree::Service::default(),
         repositories,
         reading: Arc::new(reading::ReadingStore::new(data_directory.clone())),

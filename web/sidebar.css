@@ -1,50 +1,30 @@
+@reference "./tailwind.css";
+
 /* Shared sidebar hierarchy, including the narrow-screen drawer. */
 .sidebar, .sidebar-drawer-header, .sidebar-rail {
-  --sidebar-list-gutter: 8px;
-  --sidebar-row-height: 32px;
-  --sidebar-header-height: 44px;
-  --sidebar-header-padding: 8px 12px;
-  --sidebar-row-radius: 6px;
-  --sidebar-selection-width: 3px;
-  --sidebar-selection-offset: -4px;
-  --sidebar-selection-inset: 4px;
+  @apply font-ui text-ui font-normal;
   --sidebar-selection-color: var(--fgColor-accent);
-  --sidebar-selection-background: var(--bgColor-accent-muted);
-  --sidebar-font: "Mona Sans VF", var(--BaseStyles-fontFamily, sans-serif);
-  --sidebar-text-size: 13px;
-  --sidebar-meta-size: 12px;
-  --sidebar-text-weight: 400;
-  --sidebar-emphasis-weight: 600;
-  font-family: var(--sidebar-font);
-  font-size: var(--sidebar-text-size);
-  font-weight: var(--sidebar-text-weight);
-  line-height: 20px;
-  --text-body-size-medium: var(--sidebar-text-size);
-  --text-body-size-small: var(--sidebar-meta-size);
   --control-transparent-bgColor-hover: var(--bgColor-muted);
   --control-transparent-bgColor-selected: var(--bgColor-accent-muted);
 }
-.sidebar .tree-scroll { padding: 4px var(--sidebar-list-gutter) 16px; }
 
-.sidebar .file-search { box-sizing: border-box; min-height: var(--sidebar-header-height); flex: none; padding: var(--sidebar-header-padding); }
-.sidebar .file-search input { font-size: 13px; }
+.sidebar :where(button, input, select, textarea) { font-family: var(--BaseStyles-fontFamily); }
+.sidebar input { @apply text-meta leading-5; }
+.sidebar input::placeholder { font: inherit; }
+
+/* The search container already supplies the gap before the first list row. */
+.sidebar .sidebar-search:not(.is-collapsed) + .sidebar-scroll { padding-top: 0; }
+.sidebar .sidebar-search + .sidebar-scroll > section:first-child > .search-facet-title { margin-top: 0; }
+
+/* Keep the Files inset independent of the first row's file or folder content. */
+.sidebar .files-scroll { padding-top: var(--spacing-sidebar-top); }
 
 .sidebar .file-tree-link[aria-current="page"] {
-  font-weight: var(--sidebar-emphasis-weight);
+  @apply font-semibold;
 }
 
-.sidebar .files-toolbar { position: relative; display: flex; align-items: center; justify-content: center; min-height: var(--sidebar-header-height); box-sizing: border-box; flex: none; padding: 4px 8px; border-bottom: 1px solid var(--borderColor-muted); }
-.sidebar .files-toolbar button { flex: none; color: var(--fgColor-muted); }
-.sidebar .files-toolbar button[aria-pressed="true"] { color: var(--fgColor-accent); background: var(--bgColor-accent-muted); }
-
-.sidebar .file-tree-link { display: block; color: inherit; font: inherit; text-decoration: none; }
+.sidebar .file-tree-link { @apply block truncate font-ui text-ui font-normal text-inherit no-underline; }
 .sidebar .file-tree-link:hover { text-decoration: none; }
-.sidebar .bookmark-list { list-style: none; margin: 0; padding: 0; }
-.sidebar .bookmark-row { display: flex; align-items: center; gap: 4px; border-radius: 6px; }
-.sidebar .bookmark-link { position: relative; display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; color: inherit; text-decoration: none; }
-.sidebar .bookmark-link:hover { text-decoration: none; }
-.sidebar .bookmark-icon { display: flex; flex: none; color: var(--fgColor-muted); }
-.sidebar .files-toolbar-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .sidebar .files-search { display: flex; align-items: center; gap: 4px; flex: none; max-height: 64px; opacity: 1; transform: translateY(0); overflow: hidden; transition: max-height 200ms ease, padding 200ms ease, opacity 150ms ease, transform 200ms ease; }
 .sidebar .files-search > span { flex: 1; min-width: 0; width: 0; }
 .sidebar .files-search.is-collapsed { min-height: 0; max-height: 0; padding-top: 0; padding-bottom: 0; border-bottom: 0; opacity: 0; transform: translateY(18px) scale(.92); pointer-events: none; }
@@ -52,40 +32,27 @@
   .sidebar .files-search { transition: none; }
 }
 
-/* Shared navigation state. Primer's ActionList uses ::after on the item;
-   TreeView uses ::after on its row container (not the nested subtree).
-   Keep this small TreeView adapter together when upgrading Primer. */
+/* Shared navigation state and Primer's row adapters. */
 .sidebar .sidebar-list-item,
 .sidebar .file-tree-item > .PRIVATE_TreeView-item-container {
-  position: relative;
-  box-sizing: border-box;
-  min-width: 0;
-  min-height: var(--sidebar-row-height);
-  border-radius: var(--sidebar-row-radius);
+  @apply relative box-border min-w-0 min-h-row rounded-ui;
 }
 .sidebar .sidebar-list-item:not([data-is-disabled]):hover {
   background: var(--control-transparent-bgColor-hover);
 }
 .sidebar .sidebar-list-item:not([data-is-disabled]):is([data-active="true"], [aria-current="page"], [aria-current="location"]),
 .sidebar .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container {
-  background: var(--sidebar-selection-background);
+  background: var(--bgColor-accent-muted);
 }
-.sidebar .sidebar-list-item:not([data-is-disabled]):is([data-active="true"], [aria-current="page"], [aria-current="location"])::after,
-.sidebar .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container::after {
-  content: "";
-  position: absolute;
-  left: var(--sidebar-selection-offset);
-  top: var(--sidebar-selection-inset);
-  bottom: var(--sidebar-selection-inset);
-  width: var(--sidebar-selection-width);
-  height: auto;
-  border-radius: 2px;
-  background: var(--sidebar-selection-color);
-  pointer-events: none;
+/* Primer supplies its own markers too; suppress them while keeping focus rings. */
+.sidebar .sidebar-list-item::after,
+.sidebar .sidebar-list-item [aria-expanded]::after,
+.sidebar .file-tree-item > .PRIVATE_TreeView-item-container::after {
+  content: none !important;
 }
 .sidebar .bookmark-link[aria-current="page"] .sidebar-path,
 .sidebar .sidebar-list-item[data-active="true"] .git-change-path {
-  font-weight: var(--sidebar-emphasis-weight);
+  @apply font-semibold;
 }
 .sidebar .sidebar-list-item:focus-visible,
 .sidebar .sidebar-list-item :focus-visible,
@@ -94,17 +61,18 @@
   outline-offset: -2px;
 }
 .sidebar .file-tree-item > .PRIVATE_TreeView-item-container {
-  --custom-line-height: 20px;
-  --min-item-height: var(--sidebar-row-height);
+  font-size: var(--text-ui);
+  line-height: var(--text-ui--line-height);
+  --custom-line-height: var(--text-ui--line-height);
+  --min-item-height: var(--spacing-row);
   grid-template-columns: var(--spacer-width) var(--leading-action-width) var(--toggle-width) minmax(0, 1fr) auto;
 }
 .sidebar .PRIVATE_TreeView-item-content { min-width: 0; }
 .sidebar .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container > .PRIVATE_TreeView-item-toggle:hover {
   background-color: transparent;
 }
-.sidebar .file-tree-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Only the outer box is RTL: bdi keeps the actual path in logical order. */
-.sidebar .sidebar-path { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.sidebar .sidebar-path { @apply path-label; }
 @media (forced-colors: active) {
   .sidebar, .sidebar-rail { --sidebar-selection-color: Highlight; }
 }

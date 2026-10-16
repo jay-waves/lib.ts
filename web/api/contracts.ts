@@ -39,7 +39,8 @@ export const directoryListingSchema = z.object({
   name: z.string(),
   parent: z.string().nullable(),
   directories: z.array(directoryEntrySchema),
-  drives: z.array(directoryEntrySchema),
+  hostname: z.string().min(1),
+  rootPath: z.string(),
 });
 export type DirectoryListing = z.infer<typeof directoryListingSchema>;
 

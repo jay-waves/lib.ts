@@ -1,6 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { repositoryUrl, documentUrl, repositoryApiUrl, searchUrl, gitUrl, parseRepositoryLocation } from '../web/paths.ts';
+import { repositoryUrl, documentUrl, repositoryApiUrl, searchUrl, gitUrl, parseRepositoryLocation, directoryPathSegments } from '../web/paths.ts';
+
+test('directory breadcrumbs use the server hostname and keep drive/share roots navigable', () => {
+  const windows = { hostname: 'jay-pc', rootPath: '' };
+  const linux = { hostname: 'jay-server', rootPath: '/' };
+  assert.deepEqual(directoryPathSegments('E:\\notes\\中文 project', windows), [
+    { label: 'jay-pc', path: '' }, { label: 'E:', path: 'E:\\' },
+    { label: 'notes', path: 'E:\\notes' },
+    { label: '中文 project', path: 'E:\\notes\\中文 project' },
+  ]);
+  assert.deepEqual(directoryPathSegments('E:/notes/', windows), [
+    { label: 'jay-pc', path: '' }, { label: 'E:', path: 'E:/' },
+    { label: 'notes', path: 'E:/notes' },
+  ]);
+  assert.deepEqual(directoryPathSegments('\\\\server\\share\\notes', windows), [
+    { label: 'server' }, { label: 'share', path: '\\\\server\\share' },
+    { label: 'notes', path: '\\\\server\\share\\notes' },
+  ]);
+  assert.deepEqual(directoryPathSegments('//server/share/xx/yy', windows), [
+    { label: 'server' }, { label: 'share', path: '//server/share' },
+    { label: 'xx', path: '//server/share/xx' }, { label: 'yy', path: '//server/share/xx/yy' },
+  ]);
+  assert.deepEqual(directoryPathSegments('/home/a\\b', linux), [
+    { label: 'jay-server', path: '/' }, { label: 'home', path: '/home' },
+    { label: 'a\\b', path: '/home/a\\b' },
+  ]);
+  assert.deepEqual(directoryPathSegments('/', linux), [{ label: 'jay-server', path: '/' }]);
+  assert.deepEqual(directoryPathSegments('', windows), [{ label: 'jay-pc', path: '' }]);
+  assert.deepEqual(directoryPathSegments('C:\\', windows), [
+    { label: 'jay-pc', path: '' }, { label: 'C:', path: 'C:\\' },
+  ]);
+  assert.deepEqual(directoryPathSegments('\\\\server\\share', windows), [
+    { label: 'server' }, { label: 'share', path: '\\\\server\\share' },
+  ]);
+});
 
 test('repository URLs encode each path segment and round-trip through the page parser', () => {
   const repo = '中文 notes #%';

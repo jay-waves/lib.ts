@@ -10,10 +10,11 @@ type SearchInputProps = Omit<React.ComponentProps<typeof TextInput>, 'trailingAc
 };
 
 export function SearchInput({ ref, value, onClear, clearable = Boolean(value),
-  clearLabel = 'Clear search', disabled, ...props }: SearchInputProps) {
+  clearLabel = 'Clear search', disabled, className, ...props }: SearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const mergedRef = useMergedRefs(ref, inputRef);
-  return <TextInput {...props} ref={mergedRef} value={value} disabled={disabled} leadingVisual={SearchIcon}
+  return <TextInput {...props} className={`box-border! h-row! min-h-row! rounded-ui! ${className || ''}`}
+    ref={mergedRef} value={value} disabled={disabled} leadingVisual={SearchIcon}
     trailingAction={clearable ? <TextInput.Action type="button" icon={XIcon} aria-label={clearLabel}
       disabled={disabled} onClick={() => { onClear(); inputRef.current?.focus(); }} /> : undefined} />;
 }

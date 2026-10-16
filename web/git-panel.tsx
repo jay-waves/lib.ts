@@ -1,7 +1,6 @@
 import { ActionList, Banner, CounterLabel, Spinner } from '@primer/react';
-import { ChevronRightIcon, GitBranchIcon, FileDiffIcon } from '@primer/octicons-react';
+import { ChevronRightIcon, FileDiffIcon } from '@primer/octicons-react';
 import { groupGitChanges } from './git-changes.ts';
-import './git-panel.css';
 import type { GitState } from './git-resource';
 
 interface GitPanelProps {
@@ -25,17 +24,13 @@ export default function GitPanel({ onSelect, selected, scope, state: { status, l
   const groups = groupGitChanges(status?.changes ?? []);
   const empty = status && (!status.repository ? 'This directory is not a Git repository.'
     : !groups.length ? 'Working tree clean' : '');
-  return <div className="git-panel">
-    <div className="git-panel-heading">
-      <GitBranchIcon />
-      <span className="git-panel-branch" title={status?.branch}>{status?.repository ? status.branch : 'Git'}</span>
-    </div>
-    {loading && !status && <div className="tree-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading Git status</span></div>}
+  return <div className="flex min-h-0 flex-1 flex-col pt-1">
+    {loading && !status && <div className="sidebar-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading Git status</span></div>}
     {error && <Banner variant="critical" layout="compact" title="Git refresh failed" description={error} />}
-    {empty && <div className="tree-empty">{empty}</div>}
-    {groups.length > 0 && <div className="tree-scroll">
-      {groups.map(group => <details key={group.id} className="git-change-group" open>
-        <summary className="git-group-summary">
+    {empty && <div className="sidebar-empty">{empty}</div>}
+    {groups.length > 0 && <div className="sidebar-scroll">
+      {groups.map(group => <details key={group.id} className="group" open>
+        <summary className="ui-focus mt-1.5 flex cursor-pointer list-none items-center gap-2 rounded-ui px-2 py-1.5 text-ui hover:bg-hover group-first:mt-0 group-open:[&>svg]:rotate-90">
           <ChevronRightIcon /> {group.label} <CounterLabel>{group.changes.length}</CounterLabel>
         </summary>
         <ActionList variant="full" aria-label={group.label}>{group.changes.map(change => {
@@ -43,9 +38,9 @@ export default function GitPanel({ onSelect, selected, scope, state: { status, l
           return <ActionList.Item className="sidebar-list-item" key={change.path} active={selected === change.path && scope === group.id}
             onSelect={() => onSelect(change.path, group.id)}>
             <ActionList.LeadingVisual><FileDiffIcon /></ActionList.LeadingVisual>
-            <span className="sidebar-path git-change-path" title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path}><bdi dir="ltr">{change.path}</bdi></span>
+            <span className="sidebar-path git-change-path text-ui text-fg"><bdi dir="ltr">{change.path}</bdi></span>
             <ActionList.TrailingVisual>
-              <span className="git-change-status" data-kind={label} title={label} aria-label={label}>{change.code}</span>
+              <span className="text-meta font-semibold text-attention data-[kind=Added]:text-success data-[kind=Untracked]:text-success data-[kind=Deleted]:text-danger data-[kind=Conflict]:text-danger" data-kind={label} aria-label={label}>{change.code}</span>
             </ActionList.TrailingVisual>
           </ActionList.Item>;
         })}</ActionList>

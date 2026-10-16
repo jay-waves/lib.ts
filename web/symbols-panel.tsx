@@ -2,7 +2,6 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActionList } from '@primer/react';
 import { SearchInput } from './search-input.tsx';
 import { activeSymbolId, revealSymbolVertically } from './active-symbol.mjs';
-import styles from './symbols-panel.module.css';
 
 interface OutlineItem {
   name: string;
@@ -56,17 +55,17 @@ export function SymbolsPanel({ symbols, status, onSelect, hidden, visible }: Sym
     revealSymbolVertically(panel, panel?.querySelector('[aria-current="location"]'));
   }, [currentSymbol, hidden, visible, symbolSearch]);
 
-  return <div className={styles.panel} hidden={hidden}>
-    <div className={styles.filter}>
+  return <div className="flex min-h-0 flex-1 flex-col [&[hidden]]:hidden" hidden={hidden}>
+    <div className="sidebar-search">
       <SearchInput size="small" block onClear={() => setSymbolSearch('')} aria-label="Search symbols" placeholder="Search symbols…"
         value={symbolSearch} onChange={event => setSymbolSearch(event.target.value)} />
     </div>
-    <nav ref={scrollRef} className={styles.list} aria-label="Document symbols">
+    <nav ref={scrollRef} className="sidebar-scroll" aria-label="Document symbols">
       {filteredSymbols.length ? <ActionList variant="full">
-        {filteredSymbols.map(symbol => <ActionList.Item className={`sidebar-list-item ${styles.item}`} key={symbol.id} disabled={symbol.group}
+        {filteredSymbols.map(symbol => <ActionList.Item className="sidebar-list-item group" key={symbol.id} disabled={symbol.group}
           active={symbol.id === currentSymbol} aria-current={symbol.id === currentSymbol ? 'location' : undefined}
-          onSelect={() => onSelect(symbol)}><span className={styles.name} title={symbol.name} style={{ paddingInlineStart: `${Math.max(0, (symbol.level || 1) - 1) * 20}px` }}>{symbol.name}</span></ActionList.Item>)}
-      </ActionList> : <div className="tree-empty">{symbols.length ? 'No matching symbols' : 'No symbols found'}</div>}
+          onSelect={() => onSelect(symbol)}><span className="block min-w-0 box-border truncate text-ui font-normal text-fg group-aria-[current=page]:font-semibold group-aria-[current=location]:font-semibold" style={{ paddingInlineStart: `${Math.max(0, (symbol.level || 1) - 1) * 20}px` }}>{symbol.name}</span></ActionList.Item>)}
+      </ActionList> : <div className="sidebar-empty">{symbols.length ? 'No matching symbols' : 'No symbols found'}</div>}
     </nav>
   </div>;
 }

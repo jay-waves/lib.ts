@@ -1,3 +1,4 @@
+import { IconButton } from '@primer/react';
 import { useDocumentLease } from './use-document-lease';
 import { BrowserSession, SessionActivity } from './session-activity';
 import { HISTORY_GROUPS } from './time-labels.mjs';
@@ -9,13 +10,14 @@ import { apiBase, pageBase, repoId, routeKind, fileUrl } from './urls.mjs';
 import { searchUrl, gitUrl, parseRepositoryLocation } from './paths.ts';
 import React, { useContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BaseStyles, Breadcrumbs, Button, IconButton, Spinner } from '@primer/react';
+import { BaseStyles, Button, Spinner } from '@primer/react';
 import { Dialog as SideSheet } from '@primer/react/experimental';
 import { SearchInput } from './search-input.tsx';
 import { FocusCenterIcon, SortDescIcon, FoldIcon, FileDirectoryIcon, SearchIcon, SidebarExpandIcon, ListUnorderedIcon, RepoIcon, GitBranchIcon, BookmarkIcon, HistoryIcon } from '@primer/octicons-react';
 import { useBookmarks } from './bookmarks';
 import { RecentFiles, useRecentFiles } from './recent-files';
 import { RepoPicker } from './repo-picker';
+import { PathBar } from './path-bar';
 import { useWorkspaceSearch } from './workspace-search.tsx';
 import { useGitStatus } from './use-git-status.tsx';
 import { readSidebarState, saveSidebarState } from './sidebar-state.mjs';
@@ -43,6 +45,7 @@ import './image-theme.css';
 import { ThemeProvider, useTheme } from '@primer/react/next';
 import './style.css';
 import './sidebar.css';
+import './tailwind.css';
 
 const GitPanel = lazy(() => import('./git-panel.tsx'));
 const GitDiffView = lazy(() => import('./git-diff-view'));
@@ -56,6 +59,16 @@ const sidebarViews = [
   { id: 'repos', label: 'Repos', icon: RepoIcon },
 ];
 
+
+function SidebarRail({ visible, selected, onSelect, drawer = false }) {
+  return <nav className="sidebar-rail col-start-1 row-start-1 flex w-sidebar-rail flex-none box-border flex-col items-center gap-2 border-0 border-e border-solid border-divider bg-subtle px-1 py-1.5" aria-label="Sidebar views">
+    {sidebarViews.map(view => <IconButton unsafeDisableTooltip key={view.id} size="large" variant="invisible"
+      className={`relative size-toolbar! text-muted! [&_svg]:size-5! aria-pressed:bg-selected! aria-pressed:text-fg!${view.id === 'repos' ? ' mt-auto' : ''}`}
+      icon={view.icon} aria-label={view.label}
+      aria-pressed={visible && selected === view.id} aria-controls="sidebar-content"
+      onClick={() => onSelect(view.id, !drawer)} />)}
+  </nav>;
+}
 
 function currentRouteKind() { return parseRepositoryLocation(location.pathname)?.kind || null; }
 function currentPath() {
@@ -305,7 +318,7 @@ function App() {
     setSidebarTab(id);
   }
   const sidebarContent = <>
-          {sidebarTab === 'git' && filesVisible && active && <Suspense fallback={<div className="tree-loading"><Spinner size="small" /></div>}>
+          {sidebarTab === 'git' && filesVisible && active && <Suspense fallback={<div className="sidebar-loading"><Spinner size="small" /></div>}>
             <GitPanel state={gitState} selected={gitPath} scope={gitScope} onSelect={(path, scope) => {
               readerRef.current?.capture();
               history.pushState(null, '', gitUrl(repoId, path, scope));
@@ -317,13 +330,13 @@ function App() {
           </Suspense>}
           {active && <RepoPicker hidden={sidebarTab !== 'repos'} beforeNavigate={syncReadingPositions} />}
           {sidebarTab === 'search' ? codeSearch.sidebar : sidebarTab === 'files' || bookmarksOnly ? <>
-          {bookmarksOnly && <div className="file-search bookmarks-search">
+          {bookmarksOnly && <div className="sidebar-search">
             <SearchInput size="small" onClear={() => setBookmarkSearch('')}
               aria-label="Search bookmarks" placeholder="Search bookmarks…"
               value={bookmarkSearch} onChange={event => setBookmarkSearch(event.target.value)} />
           </div>}
           {!bookmarksOnly && !recentOnly && <div
-            className={`file-search files-search ${fileSearchCollapsed ? 'is-collapsed' : ''}`}
+            className={`sidebar-search files-search ${fileSearchCollapsed ? 'is-collapsed' : ''}`}
             aria-hidden={fileSearchCollapsed} inert={fileSearchCollapsed ? true : undefined}>
             <SearchInput ref={fileSearchRef} size="small" clearable clearLabel="Close file search"
               onClear={() => { setSearch(''); setFileSearchCollapsed(true); }}
@@ -331,29 +344,26 @@ function App() {
               id="files-search-input" aria-label="Search files" placeholder="Go to file"
               value={search} onChange={event => setSearch(event.target.value)} />
           </div>}
-          {!bookmarksOnly && (fileSearchCollapsed || recentOnly) && <div className="files-toolbar" role="toolbar" aria-label="File tree actions">
-            <div className="files-toolbar-actions">
-            <IconButton size="small" variant="invisible" icon={HistoryIcon}
-              aria-label="Show Recent Files" title={recentOnly ? 'Show all files' : 'Recent Files'}
+          {!bookmarksOnly && (fileSearchCollapsed || recentOnly) && <div className="relative flex min-h-toolbar flex-none box-border items-center justify-center border-0 border-b border-solid border-divider px-2 py-1 [&_button]:flex-none [&_button]:text-muted! [&_button[aria-pressed=true]]:bg-selected! [&_button[aria-pressed=true]]:text-accent!" role="toolbar" aria-label="File tree actions">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+            <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={HistoryIcon}
+              aria-label={recentOnly ? 'Show all files' : 'Recent Files'}
               aria-pressed={recentOnly} onClick={() => setRecentOnly(value => !value)} />
-            <IconButton size="small" variant="invisible" icon={FoldIcon} aria-label="Collapse all folders"
-              title={!recentOnly && search.trim() ? 'Clear file search to collapse folders' : 'Collapse all folders'}
+            <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={FoldIcon} aria-label={!recentOnly && search.trim() ? 'Clear file search to collapse folders' : 'Collapse all folders'}
               disabled={recentOnly ? !HISTORY_GROUPS.some(group => expandedPaths[`history:${group.id}`] !== false)
                 : Boolean(search.trim()) || !Object.values(expandedPaths).some(Boolean)}
               onClick={() => setExpandedPaths(recentOnly ? Object.fromEntries(HISTORY_GROUPS.map(group => [`history:${group.id}`, false])) : {})} />
-            <IconButton size="small" variant="invisible" icon={FocusCenterIcon} aria-label="Locate current file"
-              title="Locate current file" disabled={!selectedNode}
+            <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={FocusCenterIcon} aria-label="Locate current file" disabled={!selectedNode}
               onClick={() => {
                 setSearch(''); setRecentOnly(false);
                 setExpandedPaths(paths => ({ ...paths, ...expandedPathEntries(selected) }));
                 setLocateRequest(value => value + 1);
               }} />
-            <IconButton size="small" variant="invisible" icon={SortDescIcon} aria-label={sortTitle}
-              tooltipDirection="s" disabled={recentOnly}
+            <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={SortDescIcon} aria-label={sortTitle}
+              disabled={recentOnly}
               onClick={() => setSortMode(nextSortMode)} />
-            <IconButton
-              size="small" variant="invisible" icon={SearchIcon} aria-label="Expand file search"
-              title={search.trim() ? `Search files: ${search}` : 'Search files'}
+            <IconButton unsafeDisableTooltip
+              size="small" variant="invisible" icon={SearchIcon} aria-label={search.trim() ? `Search files: ${search}` : 'Search files'}
               aria-expanded={!fileSearchCollapsed} aria-controls="files-search-input"
               onClick={() => {
                 setRecentOnly(false); setFileSearchCollapsed(false);
@@ -363,42 +373,35 @@ function App() {
           </div>}
           {bookmarksOnly && bookmarkState.error && <div className="action-error" role="alert">{bookmarkState.error}</div>}
           {treeError && <div className="action-error" role="alert">{treeError}</div>}
-          <div className="tree-scroll" ref={restoreFilesScroll}
+          <div className="sidebar-scroll files-scroll" ref={restoreFilesScroll}
             onScroll={event => { filesScrollTop.current = event.currentTarget.scrollTop; }}>{!bookmarksOnly && recentOnly ? <RecentFiles state={recentState} renderTree={nodes => <FileTree nodes={nodes} label="Browsing history"
-              selected={selected} navigate={navigate} expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />} /> : bookmarksOnly && bookmarkState.loading ? <div className="tree-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading bookmarks</span></div> : tree ? filteredTree.length ? bookmarksOnly
+              selected={selected} navigate={navigate} expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />} /> : bookmarksOnly && bookmarkState.loading ? <div className="sidebar-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading bookmarks</span></div> : tree ? filteredTree.length ? bookmarksOnly
             ? <BookmarkList files={filteredTree} selected={selected} navigate={navigate} />
             : <FileTree nodes={filteredTree} label="Notes tree" selected={selected} navigate={navigate} searching={Boolean(search.trim())}
               expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />
-            : <div className="tree-empty">{bookmarksOnly ? bookmarkSearch.trim() ? 'No matching bookmarks' : bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="tree-loading"><Spinner size="small" /></div> : null}</div>
+            : <div className="sidebar-empty">{bookmarksOnly ? bookmarkSearch.trim() ? 'No matching bookmarks' : bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="sidebar-loading"><Spinner size="small" /></div> : null}</div>
           </> : null}
     <SymbolsPanel symbols={symbols} status={readerStatus} onSelect={jumpToSymbol}
       hidden={sidebarTab !== 'symbols'} visible={filesVisible} />
   </>;
   return <BaseStyles>
-    <div className={`app-shell ${filesVisible ? '' : 'files-hidden'}`}>
-      <div className="workspace" style={{ '--sidebar-width': `${sidebarWidth}px` }}>
-        {!narrow && <nav className="sidebar-rail" aria-label="Sidebar views">
-          {sidebarViews.map(view => <IconButton key={view.id} size="medium" variant="invisible"
-            className={`sidebar-rail-button${view.id === 'repos' ? ' sidebar-rail-repos' : ''}`} icon={view.icon} aria-label={view.label} tooltipDirection="e"
-            aria-pressed={filesVisible && sidebarTab === view.id} aria-controls="sidebar-content"
-            onClick={() => selectSidebarView(view.id)} />)}
-        </nav>}
-        {!narrow && <aside className="sidebar" id="sidebar-content" aria-label="Sidebar">
+    <div className={`app-shell h-dvh min-h-0 w-full overflow-hidden ${filesVisible ? '' : 'files-hidden'}`}>
+      <div className="workspace grid size-full min-h-0 grid-cols-[var(--spacing-sidebar-rail)_var(--sidebar-width,245px)_6px_minmax(0,1fr)] overflow-hidden" style={{ '--sidebar-width': `${sidebarWidth}px` }}>
+        {!narrow && <SidebarRail visible={filesVisible} selected={sidebarTab} onSelect={selectSidebarView} />}
+        {!narrow && <aside className="sidebar sidebar-panel" id="sidebar-content" aria-label="Sidebar">
           {sidebarContent}
         </aside>}
         {narrow && filesVisible && <SideSheet title="Sidebar" className="sidebar-drawer"
-          position="left" width={`min(calc(44px + ${sidebarWidth + 80}px + 6px), calc(100vw - 32px))`} returnFocusRef={sidebarToggleRef}
+          position="left" width={`min(calc(var(--spacing-sidebar-rail) + ${sidebarWidth + 80}px + 6px), calc(100vw - 32px))`} returnFocusRef={sidebarToggleRef}
           onClose={() => setFilesVisible(false)}
-          renderHeader={({ dialogLabelId }) => <div className="sidebar-drawer-header">
+          renderHeader={({ dialogLabelId }) => <div className="sidebar-drawer-header flex-none">
             <span className="visually-hidden" id={dialogLabelId}>Sidebar</span>
             </div>}
-          renderBody={() => <><nav className="sidebar-rail" aria-label="Sidebar views">
-            {sidebarViews.map(view => <IconButton key={view.id} size="medium" variant="invisible"
-              className={`sidebar-rail-button${view.id === 'repos' ? ' sidebar-rail-repos' : ''}`} icon={view.icon} aria-label={view.label}
-              title={view.label} tooltipDirection="e" aria-pressed={filesVisible && sidebarTab === view.id}
-              aria-controls="sidebar-content" onClick={() => selectSidebarView(view.id, false)} />)}
-          </nav><div className="sidebar sidebar-drawer-content" id="sidebar-content">{sidebarContent}</div></>} />}
-        <div className="sidebar-resize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar"
+          renderBody={() => <>
+            <SidebarRail visible={filesVisible} selected={sidebarTab} onSelect={selectSidebarView} drawer />
+            <div className="sidebar sidebar-panel w-auto flex-1" id="sidebar-content">{sidebarContent}</div>
+          </>} />}
+        <div className="sidebar-resize relative col-start-3 row-start-1 z-2 cursor-col-resize touch-none bg-surface outline-none" role="separator" aria-orientation="vertical" aria-label="Resize sidebar"
           aria-valuemin={180} aria-valuemax={480} aria-valuenow={Math.round(sidebarWidth)} tabIndex={0}
           onPointerDown={startSidebarResize} onPointerMove={event => { if (event.buttons === 1) resizeSidebar(event); }}
           onKeyDown={event => {
@@ -407,30 +410,31 @@ function App() {
             const width = Math.max(180, Math.min(480, sidebarWidth + (event.key === 'ArrowRight' ? 10 : -10)));
             setSidebarWidth(width);
           }} />
-        <main className={`main-panel${gitPath === null && !searchMode && !error && activeView === 'preview' && hasDocumentViewport(document) ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}>
-          <div className="page-header">
-            <div className="path-row">
-              <Breadcrumbs>
-                <Breadcrumbs.Item href={`${pageBase}/`} onClick={event => { event.preventDefault(); navigate(''); }}>{tree?.name || 'Notes'}</Breadcrumbs.Item>
-                {searchMode ? <Breadcrumbs.Item selected>Search</Breadcrumbs.Item> : parts.map((part, index) => <Breadcrumbs.Item key={index} href={fileUrl(parts.slice(0, index + 1).join('/'))}
-                  selected={index === parts.length - 1} onClick={event => { event.preventDefault(); navigate(parts.slice(0, index + 1).join('/')); }}>
-                  {part}</Breadcrumbs.Item>)}
-              </Breadcrumbs>
-              <div className="path-actions">
-                {narrow && (gitPath !== null || searchMode || !document || error) && <IconButton ref={sidebarToggleRef} hidden={filesVisible}
+        <main className={`main-panel col-start-4 row-start-1 h-dvh max-h-dvh min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-none bg-surface${gitPath === null && !searchMode && !error && activeView === 'preview' && hasDocumentViewport(document) ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}>
+          {(!searchMode || narrow) && <div className="page-header mx-auto flex h-toolbar min-h-0 w-[var(--content-width)] flex-none box-border items-center gap-2 p-0 text-ui">
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-2.5 [&>nav]:min-w-0 [&>nav]:flex-auto [&>nav]:overflow-hidden">
+              {!searchMode && <PathBar items={[
+                { label: tree?.name || 'Notes', path: '', href: `${pageBase}/` },
+                ...parts.map((label, index) => {
+                  const path = parts.slice(0, index + 1).join('/');
+                  return { label, path, href: fileUrl(path) };
+                }),
+              ]} onNavigate={path => navigate(path)} />}
+              <div className="ms-auto flex flex-none items-center gap-1">
+                {narrow && (gitPath !== null || searchMode || !document || error) && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible}
                   size="small" variant="invisible" className="sidebar-toggle" icon={SidebarExpandIcon}
-                  aria-label="Show sidebar" title="Show sidebar" aria-expanded={filesVisible}
+                  aria-label="Show sidebar" aria-expanded={filesVisible}
                   aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />}
               </div>
             </div>
-          </div>
+          </div>}
           {searchMode && codeSearch.results}
           {!searchMode && gitPath !== null && <Suspense fallback={<div className="status"><Spinner /> Loading diff…</div>}>
             <GitDiffView key={`${gitScope}:${gitPath}`} path={gitPath} scope={gitScope} active={active} revision={gitState.updatedAt}
               onOpen={treeIndex.has(gitPath) ? () => navigate(gitPath) : undefined}
               onClose={() => { history.pushState(null, '', fileUrl(selected)); setGitPath(null); }} />
           </Suspense>}
-          <div className="content-panel" hidden={searchMode || gitPath !== null}>
+          <div className="content-panel ui-panel" hidden={searchMode || gitPath !== null}>
             {!repoId && <div className="status empty-repository" role="status">
               <p>No repository is open.</p>
               <Button size="small" onClick={() => { setSidebarTab('repos'); setFilesVisible(true); }}>Add a repository</Button>
@@ -443,8 +447,8 @@ function App() {
             {!error && document && <>
               <DocumentToolbar key={document.path} document={document} status={{ ...readerStatus, view: activeView }}
                 stuck={toolbarStuck} readerRef={readerRef} sentinelRef={toolbarSentinelRef} bookmarkState={bookmarkState}
-                sidebarToggle={narrow && <IconButton ref={sidebarToggleRef} hidden={filesVisible} size="small" variant="invisible"
-                  className="sidebar-toggle" icon={SidebarExpandIcon} aria-label="Show sidebar" title="Show sidebar"
+                sidebarToggle={narrow && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible} size="small" variant="invisible"
+                  className="sidebar-toggle" icon={SidebarExpandIcon} aria-label="Show sidebar"
                   aria-expanded={filesVisible} aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />} />
               <Reader ref={readerRef} key={document.path} document={document} request={readerRequest}
                 navigate={navigate} onReload={reloadDocument} onActivity={readerActivity} />

@@ -14,9 +14,9 @@
 
 当前文档和引用资源另行监听。目录树更新不等于所有 Typst 依赖都重新编译；只修改 import/include 时的失效机制仍需完善。
 
-Files 顶部工具栏的 Recent Files（历史图标）切换最近浏览列表，与 Bookmarks 过滤互斥，不改变原来的搜索词或修改时间排序。Bookmarks 恢复普通 Files 目录层级。History 按最后浏览时间显示可展开的 `Past Week`（不足 7 天）、`Past Month`（7–30 天）、`Past 6 Months`（30–183 天）、`Older` 分组；无浏览时间的旧历史不保留，不提供 Unknown Date 分组。每个文件只出现在一个分组内，组内按最近浏览顺序排列，空分组不显示；文件路径使用下方 Primer Tooltip 展示；点击复用已有阅读位置与浏览器导航。重复浏览置顶，超过 100 条移除最旧路径，按仓库隔离；只有成功打开的前台文档记录浏览，后台重载不更新顺序。不提供删除或清空按钮。Files 默认显示工具栏，只有点击搜索按钮才展开搜索框，滚动不切换；按 Escape 或点击关闭按钮退出搜索并恢复工具栏；Recent / Bookmarks 过滤时保持工具栏，按钮排列一致，暂不适用的操作禁用；搜索按钮退出过滤并展开搜索框。旧阅读数据保持兼容，从功能启用后开始积累浏览顺序。
+Files 顶部工具栏的 Recent Files（历史图标）切换最近浏览列表，与 Bookmarks 过滤互斥，不改变原来的搜索词或修改时间排序。Bookmarks 恢复普通 Files 目录层级。History 按最后浏览时间显示可展开的 `Past Week`（不足 7 天）、`Past Month`（7–30 天）、`Past 6 Months`（30–183 天）、`Older` 分组；无浏览时间的旧历史不保留，不提供 Unknown Date 分组。每个文件只出现在一个分组内，组内按最近浏览顺序排列，空分组不显示；文件路径不显示悬停提示；点击复用已有阅读位置与浏览器导航。重复浏览置顶，超过 100 条移除最旧路径，按仓库隔离；只有成功打开的前台文档记录浏览，后台重载不更新顺序。不提供删除或清空按钮。Files 默认显示工具栏，只有点击搜索按钮才展开搜索框，滚动不切换；按 Escape 或点击关闭按钮退出搜索并恢复工具栏；Recent / Bookmarks 过滤时保持工具栏，按钮排列一致，暂不适用的操作禁用；搜索按钮退出过滤并展开搜索框。旧阅读数据保持兼容，从功能启用后开始积累浏览顺序。
 
-Bookmarks 以单行相对路径（如 `xxx/yyy/xxx.md`）显示文件，前面显示文件类型图标，当前选中项显示左侧竖线，不提供删除按钮；长路径从前面省略以优先显示文件名，悬停可查看完整路径，点击打开文件，添加和删除书签使用文件菜单。History 的时间文件夹只是显示分组，不导航到实际目录；默认展开，可单独折叠或使用工具栏折叠全部。
+Bookmarks 以单行相对路径（如 `xxx/yyy/xxx.md`）显示文件，前面显示文件类型图标，当前选中项显示选中背景，不提供删除按钮；长路径从前面省略以优先显示文件名，点击打开文件，添加和删除书签使用文件菜单。History 的时间文件夹只是显示分组，不导航到实际目录；默认展开，可单独折叠或使用工具栏折叠全部。
 
 ## 数据与链接
 
@@ -37,13 +37,15 @@ Search 的 Current File 范围只搜索当前文件的正文，支持正则及�
 
 前端面向现代浏览器，使用 React 19 的 ref 属性、`use` / `Suspense`、`useSyncExternalStore` 和 CSS `light-dark()`，不维护旧浏览器兼容分支。
 
-目录、文件工具栏、仓库选择器、符号面板和图片使用组件自己的 CSS Modules；Markdown、源码、搜索、Git 和分页预览用原生 `@scope` 限制规则范围。组件直接导入自己的样式。`style.css` 负责页面外壳、布局和少量通用状态样式，`sidebar.css` 只负责侧栏排版与文件树控件，不覆盖功能组件内部。
+应用界面使用 Tailwind CSS 4 和官方 Vite 插件，组件直接组合工具类，不再使用 CSS Modules。`tailwind.css` 集中定义 UI 主题和共享工具类：`text-ui` 为 12px，`text-meta` 为 12px，应用默认文字及 Primer 的正文/菜单字号统一引用这两个变量（文档渲染保留独立字号）；`rounded-ui` 为 6px，`min-h-row` 为 32px；颜色直接使用 Primer 的主题变量。重复的侧栏布局使用 `sidebar-scroll`、`sidebar-search`、`sidebar-empty`、`sidebar-loading`，文档和 Git diff 工具栏复用 `ui-toolbar`。面板外观复用 `ui-panel` / `sidebar-panel`，预览 Tab 复用 `ui-tab`，搜索筛选复用 `search-facet`、`search-facet-title` 和 `search-facet-label`。桌面与移动抽屉共用 `SidebarRail`。新样式优先使用这些公共规则，避免另写近似字号和间距；侧栏排版直接引用 Tailwind 主题，不额外建立同值变量别名。
+
+只加载 Tailwind 的 theme 和 utilities，不启用 Preflight，以保留 Primer 和文档内容的默认样式。Primer 控件自身的外观优先沿用组件；确需覆盖时局部使用 `!` 工具类，不全局启用 important。工具类必须以完整字符串出现在源码中，动态值继续通过内联样式传入。`style.css` 保留页面响应式结构、通用状态、动画和阅读布局接口；`sidebar.css` 集中维护 Primer TreeView / ActionList 的选中、焦点和折叠适配。Markdown、源码和分页预览保留各自渲染 CSS，搜索 CSS 仅处理生成的代码高亮内容。
 
 阅读区域通过 `--content-width` 提供公共内容宽度，工具栏用容器查询适配实际可用宽度。新样式使用原生 CSS 嵌套和逻辑属性，构建目标为 `esnext`。`.file-toolbar`、`.document-page[data-page]` 和源码行号等少数标记是阅读定位接口；视觉样式类可以独立修改。PDF 自行定义加载提示，不依赖 Typst 样式；三种分页预览只共用视口和页面基础外观。
 
 `@primer/react/next` 的 `ThemeProvider colorMode="auto" contextOnly` 负责系统主题状态，文档请求从官方 `useTheme()` 读取 `colorScheme`。Primer 的主题属性放在 `<html>`，页面、菜单和弹层直接继承官方 CSS 变量。`theme.css` 只保留必要的配色定制；Markdown 和代码高亮在各自样式文件中用 `light-dark()` 定义颜色，不再维护应用变量到 Primer 的映射。
 
-HTML head 内联一条画布背景规则，在脚本及样式加载前提供正确底色，无构建插件或主题启动脚本。文件树使用公开属性、应用自己的类名和 `aria-current` 标记，新 Tooltip 和加载指示器采用官方实现。
+HTML head 内联一条画布背景规则，在脚本及样式加载前提供正确底色，无构建插件或主题启动脚本。文件树使用公开属性、应用自己的类名和 `aria-current` 标记，加载指示器采用官方实现。
 
 `web/image-theme.css` 定义暗色图片亮度策略，通过预览容器的 `data-dim-images` 显式启用。图片和 Markdown 共用该文件，悬停恢复原始滤镜；PDF、Typst 不启用。Rust HTML 响应通过 `include_str!` 内联同一份样式，浏览器入口直接导入。
 
@@ -102,8 +104,8 @@ URL、查询语法、Git 变更分组和浏览器字节缓存分别放在 `web/p
 
 Bookmarks 和 Git 文件列表的长路径均从前面省略（如 `…/docs/note.md`），短路径保持左对齐；Git 重命名项悬停显示原路径和新路径。
 
-侧栏导航的视觉规则集中在 `sidebar.css`：Search、Files/History、Bookmarks、Git、Symbols、Repos 使用相同的 8px 外边距、至少 32px 行高、6px 圆角和选中背景；选中条统一为 3px 宽、距行左侧 -4px、上下各留 4px。ActionList 使用 full 布局，避免组件默认边距叠加；Symbols 只缩进文字，选中条不随层级移动。Primer TreeView 的行容器适配集中维护，升级组件库时检查行容器结构。长路径的前面省略共用 `sidebar-path`，文字使用 `bdi` 保持路径顺序。浅色主题的输入焦点边框和焦点环与强调色一致。
+侧栏导航的视觉规则集中在 `sidebar.css`：Search、Files/History、Bookmarks、Git、Symbols、Repos 使用相同的 8px 外边距、至少 32px 行高、6px 圆角和选中背景；所有侧栏选中项使用背景与文字强调，不显示左侧竖线。ActionList 使用 full 布局，避免组件默认边距叠加；Symbols 只缩进文字，选中背景不随层级移动。Primer TreeView 的行容器适配集中维护，升级组件库时检查行容器结构。长路径的前面省略共用 `sidebar-path`，文字使用 `bdi` 保持路径顺序。浅色主题的输入焦点边框和焦点环与强调色一致。
 
-Repos 使用 16px 图标列、13px 名称和 12px 路径，两行文字左对齐；添加仓库按钮使用相同图标列和行内间距。目录选择对话框支持长名称省略、完整路径提示及窄屏底栏换行。UI 验证需覆盖浅色/深色、键盘焦点、窄侧栏/移动抽屉、深层目录/大纲、长仓库名和路径，以及选中项悬停时竖线和背景的稳定性。
+左侧导航按钮及其悬停、选中背景统一为 40px × 40px，图标栏宽度包含左右各 4px 内边距及 1px 分隔线，桌面与窄屏抽屉共用此规格。Repos 的仓库列表按添加时间从底部向上固定排列，最早添加的仓库显示在最下方，切换仓库不会因最近使用时间更新而移动列表项；Add repository 紧接在整组仓库上方，随列表一起靠底部堆叠。内容过长时整组可滚动。Repos 使用 16px 图标列和 12px 单行绝对路径，不另外显示仓库名；添加仓库按钮使用相同图标列和行内间距。目录选择对话框使用平铺目录行与轻量分隔线；路径导航与主页面共用 `PathBar`，支持点击各级目录及长路径折叠菜单，不单独提供返回上级按钮。`directoryPathSegments` 使用服务端 hostname 标识本机：Linux 对应 `/`，Windows 对应列举盘符的虚拟根目录（此时不能添加仓库）；UNC 路径显示 `server / share / …`，服务器名仅展示，共享根及后续目录可点击。目录接口返回 `hostname` 和 `rootPath`，请求 `root=true` 进入本机根入口。应用不显示 Tooltip 或原生 title 悬停提示；图标按钮保留 aria-label，并关闭 Primer 默认 Tooltip。对话框支持长名称省略、窄屏底栏换行。UI 验证需覆盖浅色/深色、键盘焦点、窄侧栏/移动抽屉、深层目录/大纲、长仓库名和路径，以及选中项悬停时背景的稳定性。
 
-侧栏顶部搜索框、Files 工具栏、Git 与 Repos 标题统一为至少 44px 高；搜索区内边距为 8px 12px。文档、目录和 Git diff 工具栏统一按钮间距与窄屏左右留白；极窄阅读区域允许工具栏和目录修改时间换行，长文件名提供省略与悬停提示。
+侧栏搜索框与列表选中项统一为 32px 高、6px 圆角，左右均留 8px；搜索区上下留 8px，使输入框中心与左侧首个导航按钮对齐。Files、Preview/Raw、Git diff 和目录工具栏统一至少 40px 高；输入文字与占位提示均为 12px。搜索筛选标题和子项均为 12px。Git 与 Repos 不显示顶部标题栏，第一项中心距侧栏顶部 24px，与左侧首个导航按钮对齐；Repos 使用 `pt-sidebar-top`（8px），Git 在滚动区默认 4px 顶部间距外补 4px。文档、目录和 Git diff 工具栏统一按钮间距与窄屏左右留白；极窄阅读区域允许工具栏和目录修改时间换行，长文件名提供省略与悬停提示。

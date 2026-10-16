@@ -8,7 +8,7 @@ import {
 } from './contracts';
 
 export function browseDirectories(path: string, signal?: AbortSignal): Promise<DirectoryListing> {
-  const query = new URLSearchParams({ path });
+  const query = new URLSearchParams(path ? { path } : { root: 'true' });
   return requestJson(`/api/directories?${query}`, directoryListingSchema, { signal });
 }
 

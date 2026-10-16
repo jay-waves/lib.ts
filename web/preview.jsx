@@ -57,7 +57,7 @@ export function Preview() {
       scale={viewport.scale} modified={document.modified} revision={document.revision || document.modified} />
   </DocumentPreview>;
   if (document.type === 'image') return <ImagePreview />;
-  if (document.type === 'html') return <iframe className="html-preview" title={document.name}
+  if (document.type === 'html') return <iframe className="html-preview" aria-label={document.name}
     sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer"
     src={`${document.url}&v=${encodeURIComponent(document.modified)}`} />;
   if (document.type === 'binary') return <div className="status"><p>{document.format?.toUpperCase() || 'Binary file'} · {document.mime}</p><p>Preview is unavailable for this format.</p><a href={document.url} download={document.name}>Download file</a></div>;

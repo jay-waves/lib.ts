@@ -1,5 +1,25 @@
 type Repository = string | { slug: string };
 
+/** Absolute filesystem breadcrumbs with a machine or network-server entry. */
+export function directoryPathSegments(path: string, machine: { hostname: string; rootPath: string }): { label: string; path?: string }[] {
+  const drive = path.match(/^[a-z]:[\\/]/i)?.[0];
+  const share = path.match(/^(?:\\\\|\/\/)([^\\/]+)[\\/]([^\\/]+)/);
+  const root = drive || share?.[0] || (path.startsWith('/') ? '/' : '');
+  const windows = Boolean(drive || share);
+  const separator = drive ? drive[2] : share ? share[0][0] : '/';
+  const parts = path.slice(root.length).split(windows ? /[\\/]+/ : /\/+/);
+  const items: { label: string; path?: string }[] = share
+    ? [{ label: share[1] }, { label: share[2], path: root }]
+    : [{ label: machine.hostname, path: machine.rootPath }];
+  if (drive) items.push({ label: drive.slice(0, 2), path: drive });
+  let current = root;
+  for (const label of parts.filter(Boolean)) {
+    current += (current && !current.endsWith(separator) ? separator : '') + label;
+    items.push({ label, path: current });
+  }
+  return items;
+}
+
 const nameOf = (repo: Repository) => typeof repo === 'string' ? repo : repo.slug;
 const encodedSegments = (path: string) => path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
 const repoPath = (repo: Repository) => `/${encodeURIComponent(nameOf(repo))}`;

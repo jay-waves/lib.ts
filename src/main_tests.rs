@@ -65,7 +65,11 @@ async fn request(
     uri: &str,
     body: Option<serde_json::Value>,
 ) -> Response {
-    let mut builder = HttpRequest::builder().method(method).uri(uri);
+    let mut builder = HttpRequest::builder()
+        .method(method)
+        .uri(uri)
+        .header("host", "localhost")
+        .header("origin", "http://localhost");
     let body = match body {
         Some(value) => {
             builder = builder.header("content-type", "application/json");
@@ -118,6 +122,9 @@ fn test_state(temporary: &tempfile::TempDir) -> (AppState, String) {
             html: html::Service::new().unwrap(),
             search: Arc::new(search::SearchService::default()),
             data_directory: Arc::new(data.clone()),
+            access: Arc::new(
+                access::AccessPolicy::load(&data, "test-host", "http://localhost").unwrap(),
+            ),
             trees: tree::Service::default(),
             repositories,
             reading: Arc::new(reading::ReadingStore::new(data)),
@@ -526,6 +533,7 @@ async fn migrated_http_routes_match_frontend_repository_flows() {
     assert_eq!(json(recent).await["recent"][0], "note.md");
 
     let cross_origin = HttpRequest::builder()
+        .header("host", "localhost")
         .method("PUT")
         .uri(format!("/{slug}/api/bookmarks"))
         .header("content-type", "application/json")
@@ -888,4 +896,35 @@ async fn text_document_variants_serialize_camel_case_line_counts() {
     drop(stream);
     state.document_workers.shutdown().await;
     state.rendering.close().await;
+}
+
+#[test]
+fn directory_browser_includes_server_metadata_and_hides_private_data() {
+    let temporary = tempfile::tempdir().unwrap();
+    let private = temporary.path().join("data");
+    std::fs::create_dir(&private).unwrap();
+    std::fs::create_dir(temporary.path().join("notes")).unwrap();
+    let listing = browse_directories(None, temporary.path(), &private).unwrap();
+    assert!(!listing.hostname.is_empty());
+    assert_eq!(listing.hostname, server_hostname());
+    assert_eq!(listing.root_path, machine_root_path());
+    assert_eq!(listing.directories.len(), 1);
+    assert_eq!(listing.directories[0].name, "notes");
+    assert!(!listing.path.is_empty());
+}
+
+#[cfg(windows)]
+#[test]
+fn directory_browser_machine_root_lists_drives_without_a_registerable_path() {
+    let temporary = tempfile::tempdir().unwrap();
+    let listing = browse_machine_root(temporary.path()).unwrap();
+    assert!(listing.path.is_empty());
+    assert!(listing.root_path.is_empty());
+    assert!(listing.parent.is_none());
+    assert_eq!(listing.name, server_hostname());
+    assert!(!listing.directories.is_empty());
+    for drive in listing.directories {
+        assert!(Path::new(&drive.path).is_absolute());
+        assert!(drive.name.ends_with(':'));
+    }
 }

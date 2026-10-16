@@ -1,0 +1,114 @@
+/* Keep Primer and document defaults; deliberately omit Preflight. */
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "./";
+
+/* UI tokens reuse Primer's live light/dark palette. */
+@theme inline {
+  --color-fg: var(--fgColor-default);
+  --color-muted: var(--fgColor-muted);
+  --color-accent: var(--fgColor-accent);
+  --color-danger: var(--fgColor-danger);
+  --color-success: var(--fgColor-success);
+  --color-attention: var(--fgColor-attention);
+  --color-surface: var(--bgColor-default);
+  --color-subtle: var(--bgColor-muted);
+  --color-selected: var(--bgColor-accent-muted);
+  --color-hover: var(--control-transparent-bgColor-hover);
+  --color-border: var(--borderColor-default);
+  --color-divider: var(--borderColor-muted);
+  --color-accent-border: var(--borderColor-accent-emphasis);
+  --font-ui: var(--BaseStyles-fontFamily);
+  --font-code: var(--md-font-mono, ui-monospace, monospace);
+}
+
+@theme {
+  --text-ui: 12px;
+  --text-ui--line-height: 20px;
+  --text-meta: 12px;
+  --text-meta--line-height: 18px;
+  --radius-ui: 6px;
+  --spacing-row: 32px;
+  --spacing-toolbar: 40px;
+  --spacing-sidebar-rail: calc(var(--spacing-toolbar) + 8px + 1px);
+  /* The search field's bottom shares the toolbar's 40px alignment baseline. */
+  --spacing-sidebar-top: calc(var(--spacing-toolbar) - var(--spacing-row));
+  --container-reader-sm: 360px;
+  --container-reader-md: 600px;
+}
+
+@utility ui-focus {
+  &:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
+}
+
+/* Logical path order stays inside bdi; clip the start of long paths. */
+@utility path-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+@utility ui-icon-button {
+  @apply ui-focus grid size-8 flex-none cursor-pointer place-items-center rounded-ui border-0 bg-transparent p-0 font-ui text-ui text-muted hover:bg-hover hover:text-fg disabled:cursor-default disabled:opacity-55;
+}
+
+@utility ui-button {
+  @apply ui-focus box-border h-7 flex-none cursor-pointer rounded-ui border border-solid border-border bg-subtle px-2.5 py-0 font-ui text-[11px]! leading-4 text-fg hover:bg-hover disabled:cursor-default disabled:opacity-55;
+}
+
+@utility sidebar-scroll {
+  @apply min-h-0 flex-1 overflow-auto overscroll-y-none px-2 pt-1 pb-4;
+}
+
+@utility sidebar-search {
+  @apply box-border min-h-[calc(var(--spacing-row)+var(--spacing-sidebar-top)*2)] flex-none px-2 py-sidebar-top;
+  & > span, & input { width: 100%; }
+}
+
+@utility sidebar-empty {
+  @apply px-[7px] py-3.5 text-center text-meta text-muted;
+}
+
+@utility sidebar-loading {
+  @apply flex justify-center p-[29px];
+}
+
+@utility ui-toolbar {
+  @apply sticky top-0 z-5 flex min-h-toolbar box-border border-0 border-b border-solid border-border bg-subtle px-3.5 text-meta;
+  @container reader (inline-size <= 600px) { padding-inline: 12px 8px; }
+  @container reader (inline-size <= 360px) { flex-wrap: wrap; padding-block: 4px; }
+}
+
+@utility ui-panel {
+  /* Share the boundary with the path bar instead of adding a pixel above the toolbar. */
+  @apply -mt-px mx-auto mb-9 w-[var(--content-width)] box-border overflow-clip rounded border border-solid border-border bg-surface max-[960px]:mb-4;
+}
+
+@utility sidebar-panel {
+  @apply col-start-2 row-start-1 flex min-h-0 min-w-0 flex-col overflow-hidden bg-surface;
+}
+
+@utility search-facet {
+  @apply border-0 pb-2.5 [&+section]:border-t [&+section]:border-solid [&+section]:border-divider [&>button]:text-meta! [&>button]:text-muted! [&>button:hover]:text-accent!;
+}
+
+@utility search-facet-title {
+  @apply mx-2 mt-3 mb-1.5 text-meta font-semibold text-muted;
+}
+
+@utility search-facet-label {
+  @apply block truncate text-meta leading-5 font-normal text-fg group-aria-selected:font-semibold;
+}
+
+@utility ui-tab {
+  @apply ui-focus flex cursor-pointer items-center border-0 border-b-2 border-solid border-transparent bg-transparent px-2 font-ui text-ui text-muted hover:text-fg aria-selected:border-b-[var(--bgColor-accent-emphasis)] aria-selected:font-semibold aria-selected:text-fg;
+}
+
+@utility sidebar-toggle {
+  @apply flex-none text-muted! [&[hidden]]:hidden [&_svg]:size-4!;
+}

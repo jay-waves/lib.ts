@@ -19,16 +19,33 @@ npm run serve -- E:/notes
 ```bash
 curl -X POST http://127.0.0.1:49191/api/library/open \
   -H 'Content-Type: application/json' \
+  -H 'Origin: http://127.0.0.1:49191' \
   -d '{"file":"E:/notes/docs/guide.md"}'
 ```
 
 服务仅接受已注册 repo 内存在的普通文件，解析真实路径后匹配仓库，嵌套仓库优先选择最深的根目录；不会自动注册仓库。已连接的 lib 页面会切换到文件（优先复用同仓库页面），否则在服务所在机器上启动默认浏览器打开 lib 文件页。返回 `{"reused":true,"url":"/仓库/tree/docs/guide.md"}` 或 `{"reused":false,"url":"/仓库/tree/docs/guide.md"}`，其中 URL 会按实际路径编码。启动浏览器失败返回 500，同时保留 URL 供调用者处理。
 
-可选参数 `line` 为正整数，`view` 为 `"preview"` 或 `"raw"`，例如 `{"file":"E:/notes/docs/guide.md","line":20,"view":"raw"}`。无效参数或目录返回 400，文件不存在或不属于已注册 repo 返回 404，跨源 Origin 返回 403，非 JSON 请求返回 415。服务默认仅监听 `127.0.0.1`。绑定到 `0.0.0.0` 会让仓库浏览和 API 对局域网开放；远程使用时应设置 `PREVIEW_PUBLIC_URL`，并只在可信网络中运行。
+可选参数 `line` 为正整数，`view` 为 `"preview"` 或 `"raw"`，例如 `{"file":"E:/notes/docs/guide.md","line":20,"view":"raw"}`。无效参数或目录返回 400，文件不存在或不属于已注册 repo 返回 404，缺失或不匹配的 Origin 返回 403，非 JSON 请求返回 415。服务默认仅监听 `127.0.0.1`。绑定到 `0.0.0.0` 会让仓库浏览和 API 对局域网开放；远程使用时应设置 `PREVIEW_PUBLIC_URL`，并只在可信网络中运行。
 
 修改前端后重新构建；修改后端后重启服务。Rust 服务构建入口为 `cargo build --release`。
 
 Windows CI 会在每次推送到 `main` 时并行构建前端和 Rust 后端，组装产物并保留 90 天。tag 发布流程按提交 SHA 等待对应的 `main` 构建完成，再复用该构建产物创建 Release，不会为 tag 重复编译。若某提交没有成功的 `main` 构建，先修复或重跑该构建再发布 tag。PR 只运行格式检查、Rust 检查和前端构建。工作流固定 Rust 为 1.99.0，编译耗时报告保存在 `rust-build-timings` artifact 中。
+
+## 访问来源限制
+
+所有页面、静态资源和 API 都校验请求 Host，默认允许 `localhost`、IPv4/IPv6 loopback 地址及服务端 hostname。局域网 IP、其他域名和反向代理域名必须由用户离线加入数据目录的 `access.json`：
+
+```json
+{
+  "allowedHosts": ["192.168.0.163", "notes.lan"]
+}
+```
+
+条目只写主机名或 IP，不包含协议、端口、路径或通配符；不会自动允许子域名。IPv6 可写裸地址或方括号形式。配置不存在时仅允许默认本机 Host；配置损坏或条目无效时启动失败。配置只在启动时读取，修改后重启生效，没有在线修改接口。`PREVIEW_PUBLIC_URL` 不会自动加入白名单。
+
+非 GET/HEAD 请求必须携带单个有效的 Origin，且协议、Host 和端口与当前访问地址一致；GET/HEAD 可以不携带 Origin，但携带时同样校验。`null`、重复头、无效端口以及不匹配来源均返回 403。协议由启动配置 `PREVIEW_PUBLIC_URL` 确定（默认 HTTP），不信任请求里的 `X-Forwarded-Proto`；HTTPS 反向代理需显式配置 HTTPS 公共地址和允许的 Host，并保留原始 Host。
+
+这是请求 Host/Origin 校验，不是用户认证，也不校验客户端源 IP。脚本仍能伪造这些请求头，本次没有引入口令或真实用户确认机制。
 
 ## 配置与数据
 

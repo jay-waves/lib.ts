@@ -1,5 +1,9 @@
 # TODO
 
+## 代码文件 Symbols
+
+- [ ] 使用 Tree-sitter 解析代码文件，为 Symbols 面板提供符号列表与定位导航。
+
 ## PDF 渲染兼容性
 
 - [ ] 修复 PDF 高亮注释遮挡文字的问题；当前临时关闭了 Hayro 注释渲染（`render_annotations: false`），目标是在保留注释的同时正确处理透明度和混合模式。

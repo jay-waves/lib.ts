@@ -20,17 +20,17 @@ const scopes = [
 export function useWorkspaceSearch({ config, onConfig, navigate, active, currentFile, scrollRef, treeIndex, bookmarks, symbols, onSelectSymbol }: WorkspaceSearchOptions) {
   const scope = config.scope || '';
   const scopeFilter = <>
-      <section className="search-facet search-scope-picker">
-        <h2>Scope</h2>
+      <section className="search-facet">
+        <h2 className="search-facet-title">Scope</h2>
         <ActionList variant="full" role="listbox" aria-label="Search scope" aria-multiselectable={false}>
-          {scopes.map(item => <ActionList.Item className="sidebar-list-item" key={item.value} role="option"
+          {scopes.map(item => <ActionList.Item className="sidebar-list-item group" key={item.value} role="option"
             disabled={item.value === 'current-file' && treeIndex.get(currentFile)?.type !== 'file'}
             active={scope === item.value} aria-selected={scope === item.value}
             onSelect={() => onConfig({ ...config, scope: scope === item.value ? '' : item.value })}>
             <ActionList.LeadingVisual>
-              <span className="search-scope-icon">{React.createElement(item.icon, { size: 16 })}</span>
+              <span className="flex size-4 items-center justify-center [&>svg]:block [&>svg]:shrink-0">{React.createElement(item.icon, { size: 16 })}</span>
             </ActionList.LeadingVisual>
-            <span className="search-facet-value">{item.label}</span>
+            <span className="search-facet-label">{item.label}</span>
             {scope === item.value && <ActionList.TrailingVisual><CheckIcon /></ActionList.TrailingVisual>}
           </ActionList.Item>)}
         </ActionList>

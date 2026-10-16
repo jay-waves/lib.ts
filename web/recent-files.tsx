@@ -38,7 +38,7 @@ export function RecentFiles({ state, renderTree }: {
   const nodes = useMemo(() => historyFileGroups(state.items, state.visitedAt, now), [state.items, state.visitedAt, now]);
   return <nav className="recent-files" aria-label="Recent Files">
     {state.error && <div className="action-error" role="alert">{state.error}</div>}
-    {!nodes.length && <div className="tree-empty">{state.loading ? 'Loading recent files…' : 'No recent files. Open a document to get started.'}</div>}
+    {!nodes.length && <div className="sidebar-empty">{state.loading ? 'Loading recent files…' : 'No recent files. Open a document to get started.'}</div>}
     {nodes.length > 0 && renderTree(nodes)}
   </nav>;
 }

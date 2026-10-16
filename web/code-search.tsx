@@ -45,8 +45,10 @@ const languageColors: Record<string, string> = {
 };
 
 function LanguageSwatch({ language }: { language: string }) {
-  return <span className="search-language-swatch" aria-hidden="true"
-    style={{ backgroundColor: languageColors[normalizeLanguage(language)] || '#858585' }} />;
+  return <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+    <span className="size-2.5 rounded-full shadow-[inset_0_0_0_1px_rgb(128_128_128/25%)]"
+      style={{ backgroundColor: languageColors[normalizeLanguage(language)] || '#858585' }} />
+  </span>;
 }
 
 const searchTips = [
@@ -66,9 +68,8 @@ function SearchTips({ active }: { active: boolean }) {
     if (active && !wasActive.current) setIndex(Math.floor(Math.random() * searchTips.length));
     wasActive.current = active;
   }, [active]);
-  return <div className="search-message search-tips" aria-label="Search tips">
-    <p className="search-tip-label">Search tip</p>
-    <p className="search-tip-text">{searchTips[index]}</p>
+  return <div className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui flex min-h-[clamp(200px,45dvh,420px)] box-border flex-col justify-center px-5! py-8!" aria-label="Search tips">
+    <p className="mx-auto! my-0! min-h-[3em] max-w-[560px] leading-relaxed [overflow-wrap:anywhere] [&_code]:rounded [&_code]:border [&_code]:border-solid [&_code]:border-divider [&_code]:bg-subtle [&_code]:px-[5px] [&_code]:py-0.5 [&_code]:text-meta [&_code]:text-fg [&_kbd]:rounded [&_kbd]:border [&_kbd]:border-solid [&_kbd]:border-divider [&_kbd]:bg-subtle [&_kbd]:px-[5px] [&_kbd]:py-0.5 [&_kbd]:text-meta [&_kbd]:text-fg">{searchTips[index]}</p>
   </div>;
 }
 
@@ -113,8 +114,8 @@ function SnippetLines({ lines: sourceLines, path, navigate, highlightRaw }: Snip
       <a className="search-line-number" href={fileUrl(path, line.number)} aria-label={`Open ${path} at line ${line.number}`}
         onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
           event.preventDefault(); navigate(path, false, line.number); }}>{line.number}</a>
-      <code className="hljs" title={line.text} dangerouslySetInnerHTML={{ __html: line.html }} />
-      {line.clipped && <span className="search-line-clipped" title="Long line excerpt">…</span>}
+      <code className="hljs" dangerouslySetInnerHTML={{ __html: line.html }} />
+      {line.clipped && <span className="search-line-clipped">…</span>}
     </div>)}
   </div>;
 }
@@ -134,27 +135,27 @@ function ResultCard({ file, navigate, selected = false, onFocus }: { file: Searc
   const firstLine = file.snippets.flatMap(snippet => snippet.lines).find(line => line.ranges.length)?.number || 1;
   const allLines = useMemo(() => cardMatchLines(file, true), [file]);
   const lines = useMemo(() => cardMatchLines(file, expanded), [file, expanded]);
-  return <article className={`search-result-card${selected ? ' is-keyboard-active' : ''}`} aria-label={file.path}
+  return <article className={`min-w-0 overflow-hidden rounded-lg border border-solid border-border bg-surface${selected ? ' outline-2 outline-solid outline-accent outline-offset-2' : ''}`} aria-label={file.path}
     tabIndex={selected ? 0 : -1} data-search-result onFocus={onFocus}>
-    <header className="search-card-header">
+    <header className="flex items-center gap-2 border-0 border-b border-solid border-divider bg-surface px-3 py-2 text-ui [&>svg]:shrink-0 [&>svg]:text-muted [&>a]:flex [&>a]:min-w-0 [&>a]:flex-wrap [&>a]:items-baseline [&>a]:gap-x-2 [&>a]:font-semibold [&>a]:[overflow-wrap:anywhere] max-[960px]:flex-wrap max-[960px]:px-2.5 max-[960px]:[&>a]:flex-1">
       <FileCodeIcon />
       <Link href={fileUrl(file.path, firstLine)} onClick={event => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault(); navigate(file.path, false, firstLine);
-      }}><span className="search-card-path">{file.path.replace(/\\/g, '/').replace(/\/+/g, '/')}</span></Link>
-      <span className="search-match-count">{file.language} · {file.matchCount.toLocaleString()} {file.matchCount === 1 ? 'match' : 'matches'}</span>
+      }}><span className="text-accent">{file.path.replace(/\\/g, '/').replace(/\/+/g, '/')}</span></Link>
+      <span className="ms-auto whitespace-nowrap text-meta text-muted max-[960px]:ms-[26px] max-[960px]:w-full">{file.language} · {file.matchCount.toLocaleString()} {file.matchCount === 1 ? 'match' : 'matches'}</span>
     </header>
-    <div id={snippetId} className={`search-card-code ${expanded ? 'is-expanded' : ''}`}>
+    <div id={snippetId} className="overflow-clip bg-subtle">
       <Snippet lines={lines} path={file.path} navigate={navigate} />
     </div>
-    <footer className="search-card-footer">
+    <footer className="bg-subtle text-meta empty:hidden">
       {allLines.length > 5 &&
-        <button type="button" className="search-fold-row" aria-expanded={expanded} aria-controls={snippetId}
+        <button type="button" className="ui-focus flex min-h-row w-full box-border cursor-pointer items-center border-0 border-t border-solid border-divider bg-transparent py-0 ps-0 pe-4 text-start font-ui text-meta leading-5 text-muted hover:bg-selected hover:text-accent focus-visible:bg-selected focus-visible:text-accent" aria-expanded={expanded} aria-controls={snippetId}
           onClick={() => setExpanded(value => !value)}>
-          <span className="search-fold-gutter" aria-hidden="true">{expanded ? <FoldIcon size={16} /> : <UnfoldIcon size={16} />}</span>
+          <span className="flex w-14 flex-none items-center justify-end pe-3.5" aria-hidden="true">{expanded ? <FoldIcon size={16} /> : <UnfoldIcon size={16} />}</span>
           <span>{expanded ? 'Show less' : `Show ${allLines.length - 5} more ${allLines.length - 5 === 1 ? 'line' : 'lines'}`}</span>
         </button>}
-      {file.snippetsTruncated && <Link className="search-more-matches" href={fileUrl(file.path, firstLine)} onClick={event => {
+      {file.snippetsTruncated && <Link className="block border-0 py-2 ps-14 pe-4 text-meta! text-muted! hover:text-accent! [&:not(:first-child)]:border-t [&:not(:first-child)]:border-solid [&:not(:first-child)]:border-divider" href={fileUrl(file.path, firstLine)} onClick={event => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault(); navigate(file.path, false, firstLine);
       }}>View all matches</Link>}
@@ -170,16 +171,16 @@ function Facet({ title, items, selected, onSelect, icon, languages = false }: { 
   const selectedItem = options.find(item => item.value === selected);
   if (selectedItem && !visible.includes(selectedItem)) visible.push(selectedItem);
   return <section className="search-facet">
-    <h2>{title}</h2>
+    <h2 className="search-facet-title">{title}</h2>
     <ActionList variant="full" role="listbox" aria-label={title}>
-      <ActionList.Item className="sidebar-list-item" active={!selected} aria-selected={!selected} onSelect={() => onSelect('')} role="option">
+      <ActionList.Item className="sidebar-list-item group" active={!selected} aria-selected={!selected} onSelect={() => onSelect('')} role="option">
         <ActionList.LeadingVisual>{React.createElement(icon)}</ActionList.LeadingVisual>
-        All {title.toLowerCase()}
+        <span className="text-meta leading-5">All {title.toLowerCase()}</span>
       </ActionList.Item>
-      {visible.map(item => <ActionList.Item className="sidebar-list-item" key={item.value} active={selected === item.value} aria-selected={selected === item.value} role="option"
+      {visible.map(item => <ActionList.Item className="sidebar-list-item group" key={item.value} active={selected === item.value} aria-selected={selected === item.value} role="option"
         onSelect={() => onSelect(selected === item.value ? '' : item.value)}>
         <ActionList.LeadingVisual>{languages ? <LanguageSwatch language={item.value} /> : React.createElement(icon)}</ActionList.LeadingVisual>
-        <span className="search-facet-value" title={item.value}>{item.value}</span>
+        <span className="search-facet-label">{item.value}</span>
         {item.count != null && <ActionList.TrailingVisual><CounterLabel>{item.count}</CounterLabel></ActionList.TrailingVisual>}
       </ActionList.Item>)}
     </ActionList>
@@ -330,16 +331,16 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
     } catch (cause) { dispatch({ type: 'search-error', error: errorMessage(cause) }); }
   }
   const sidebar = <>
-    <form className="file-search code-search-form" onSubmit={submit}>
+    <form className="sidebar-search block" onSubmit={submit}>
       <SearchInput size="small" block autoFocus aria-label={pathSearch ? 'Filter file names and paths' : 'Search text and code'}
-        placeholder={pathSearch ? 'Filter files…' : scope === 'current-file' ? 'Search current file…' : 'Search code…'} title="Enter to search · /pattern/i · case:yes gitignore:no lang:js path:src/"
+        placeholder={pathSearch ? 'Filter files…' : scope === 'current-file' ? 'Search current file…' : 'Search code…'}
         clearable={Boolean(draft || query)} onClear={clearSearch}
         value={draft} maxLength={256} onChange={event => setDraft(event.target.value)} />
-      {(language || path) && <div className="search-options">
+      {(language || path) && <div className="mt-2.5 flex items-center justify-end gap-1 [&_button]:text-meta! [&_button]:text-muted! [&_button:hover]:text-accent!">
         <Button variant="invisible" size="small" onClick={clearFilters}>Clear filters</Button>
       </div>}
     </form>
-    <div className="tree-scroll code-search-filters" aria-label="Search filters">
+    <div className="sidebar-scroll" aria-label="Search filters">
       {scopeFilter}
       <Facet title="Languages" items={result ? result.facets.languages : defaultLanguages}
         selected={result?.facets.languages.find(item => normalizeLanguage(item.value) === normalizeLanguage(language))?.value || language}
@@ -348,42 +349,42 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
         onSelect={value => filter('path', value)} />
     </div>
   </>;
-  const results = <section className="code-search-results" aria-label="Search results" aria-busy={loading}>
-    <div className="search-results-heading" role="status" aria-live="polite">
+  const results = <section className="code-search-results mx-auto mb-9 pt-sidebar-top w-[var(--content-width)] box-border" aria-label="Search results" aria-busy={loading}>
+    {(loading || result) && <div className="mb-3.5 flex min-h-row items-center gap-2 text-ui [&>span]:text-muted" role="status" aria-live="polite">
       {loading ? <><Spinner size="small" /> Searching…</> : result ?
         <><strong>{result.total.toLocaleString()}{result.truncated ? '+' : ''} files</strong><span>· {result.matchCount.toLocaleString()}{result.truncated ? '+' : ''} matches</span></>
-        : <span>{scope === 'current-file' ? `Search in ${currentFile || 'the current file'}` : !scope || scope === 'files' ? 'Search in your repository' : `Search in ${scope}`}</span>}
-    </div>
-    {error && <div className="search-message error" role="alert"><h2>Could not search</h2><p>{error}</p>
+        : null}
+    </div>}
+    {error && <div className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert"><h2>Could not search</h2><p>{error}</p>
       <Button onClick={() => { snapshot.current = null; setRevision(value => value + 1); }}>Retry search</Button></div>}
-    {result?.truncated && <p className="search-limit-notice" role="status">Results are limited. Counts cover the files found so far. Use a more specific query to find more.</p>}
+    {result?.truncated && <p className="mx-auto mb-4 max-w-[1100px] rounded-md border border-solid border-[var(--borderColor-attention-muted)] bg-[var(--bgColor-attention-muted)] p-3 text-ui" role="status">Results are limited. Counts cover the files found so far. Use a more specific query to find more.</p>}
     {!symbolSearch && !textQuery.trim() && !syntax.error && <SearchTips active={active} />}
-    {result?.total === 0 && <div className="search-message"><p>No matching code. Try another term or clear the filters.</p></div>}
-    <div className="search-result-list" ref={resultListRef} role="group" tabIndex={0} aria-label="Search results. Use the up and down arrow keys to select a file."
+    {result?.total === 0 && <div className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui"><p>No matching code. Try another term or clear the filters.</p></div>}
+    <div className="flex flex-col gap-3" ref={resultListRef} role="group" tabIndex={0} aria-label="Search results. Use the up and down arrow keys to select a file."
       onKeyDown={navigateResults}>
       {result?.files.map((file, index) => <ResultCard key={`${result.searchId}:${file.path}`} file={file} navigate={navigate}
         selected={activeResult === index} onFocus={() => setActiveResult(index)} />)}
     </div>
-    {result?.nextOffset != null && <div className="search-load-more" ref={sentinelRef}>
+    {result?.nextOffset != null && <div className="flex min-h-[100px] flex-col items-center justify-center gap-2" ref={sentinelRef}>
       {pageError && <p role="alert">{pageError}</p>}
       {loadingMore ? <Spinner size="small" /> : <Button onClick={loadMore}>{pageError ? 'Retry loading' : 'Load more results'}</Button>}
     </div>}
   </section>;
-  const filteredResults = <section className="code-search-results" aria-label="Filtered files">
-    <div className="search-results-heading" role="status" aria-live="polite"><strong>{pathResults.length} files</strong></div>
-    {syntax.error && <p className="search-message error" role="alert">{syntax.error}</p>}
-    {!syntax.error && !pathResults.length && <p className="search-message">No matching files.</p>}
+  const filteredResults = <section className="code-search-results mx-auto mb-9 pt-sidebar-top w-[var(--content-width)] box-border" aria-label="Filtered files">
+    <div className="mb-3.5 flex min-h-row items-center gap-2 text-ui [&>span]:text-muted" role="status" aria-live="polite"><strong>{pathResults.length} files</strong></div>
+    {syntax.error && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{syntax.error}</p>}
+    {!syntax.error && !pathResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">No matching files.</p>}
     <ActionList>{pathResults.map(file => <ActionList.Item key={file.path} onSelect={() => navigate(file.path)}>
       <ActionList.LeadingVisual>{scope === 'bookmarks' ? <BookmarkIcon /> : <FileCodeIcon />}</ActionList.LeadingVisual>
       {file.path}
     </ActionList.Item>)}</ActionList>
   </section>;
-  const filteredSymbols = <section className="code-search-results" aria-label="Filtered symbols">
-    <div className="search-results-heading" role="status" aria-live="polite"><strong>{symbolResults.length} symbols</strong></div>
-    {syntax.error && <p className="search-message error" role="alert">{syntax.error}</p>}
-    {!syntax.error && !symbolResults.length && <p className="search-message">{symbols.length ? 'No matching symbols.' : 'No symbols in the current document.'}</p>}
+  const filteredSymbols = <section className="code-search-results mx-auto mb-9 pt-sidebar-top w-[var(--content-width)] box-border" aria-label="Filtered symbols">
+    <div className="mb-3.5 flex min-h-row items-center gap-2 text-ui [&>span]:text-muted" role="status" aria-live="polite"><strong>{symbolResults.length} symbols</strong></div>
+    {syntax.error && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{syntax.error}</p>}
+    {!syntax.error && !symbolResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">{symbols.length ? 'No matching symbols.' : 'No symbols in the current document.'}</p>}
     <ActionList>{symbolResults.map(symbol => <ActionList.Item key={symbol.id} onSelect={() => onSelectSymbol?.(symbol)}>
-      <ActionList.LeadingVisual><span className="search-symbol-level-icon" aria-hidden="true">H{Math.max(1, Number(symbol.level) || 1)}</span></ActionList.LeadingVisual>
+      <ActionList.LeadingVisual><span className="inline-flex size-4 shrink-0 items-center justify-center text-[10px] leading-none font-semibold tracking-[-.04em] text-muted" aria-hidden="true">H{Math.max(1, Number(symbol.level) || 1)}</span></ActionList.LeadingVisual>
       <span>{symbol.name}</span>
       <ActionList.Description>{symbol.page ? `Page ${symbol.page}` : `Line ${symbol.line}`}</ActionList.Description>
     </ActionList.Item>)}</ActionList>

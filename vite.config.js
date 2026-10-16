@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+  plugins: [tailwindcss()],
   root: here,
   base: '/',
   esbuild: { legalComments: 'eof' },
