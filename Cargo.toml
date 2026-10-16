@@ -1,6 +1,6 @@
 [package]
-name = "saved-notes-library"
-version = "0.2.1"
+name = "lib-ts"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.92"
 

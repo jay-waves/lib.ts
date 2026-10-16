@@ -94,7 +94,7 @@ HTML（`.html` / `.htm`）支持 Preview 和 Raw。预览默认允许脚本，�
 `npm run package` 构建前端和 Rust 服务，并生成 `release/` 下的目标平台部署目录。复制整个目录后执行：
 
 ```sh
-saved-notes-library E:/notes
+lib-ts E:/notes
 ```
 
 部署包包含 `fonts/` 的字体和许可证；Typst 包缓存和现有用户数据不随部署包复制。

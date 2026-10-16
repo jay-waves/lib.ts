@@ -49,19 +49,32 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # Only restore the executable when all Rust build inputs match exactly.
+      # Keep embedded assets here in sync with include_str!/include_bytes! in src/.
+      - name: Restore Windows executable
+        id: executable-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/windows-executable
+          key: windows-executable-v1-rust-1.99.0-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock', 'build.rs', '.cargo/**', 'rust-toolchain*', 'web/image-theme.css', 'fonts/manifest.json', '.github/workflows/windows-build.yml') }}
+
       - name: Install Rust
+        if: steps.executable-cache.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.99.0'
           components: rustfmt
 
       - name: Cache Cargo dependencies and build artifacts
+        if: steps.executable-cache.outputs.cache-hit != 'true'
         id: rust-cache
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Report Rust cache match
+        if: steps.executable-cache.outputs.cache-hit != 'true'
         shell: pwsh
         env:
           RUST_CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
@@ -71,18 +84,28 @@ jobs:
           Write-Output "Exact Rust cache match: $env:RUST_CACHE_HIT (partial matches may also restore dependencies)"
 
       - name: Check Rust formatting
+        if: steps.executable-cache.outputs.cache-hit != 'true'
         run: cargo fmt --check
 
       - name: Check Windows Rust targets
-        if: github.event_name == 'pull_request'
-        run: cargo check --locked --all-targets
+        if: github.event_name == 'pull_request' && steps.executable-cache.outputs.cache-hit != 'true'
+        run: cargo check --release --locked --all-targets
 
       - name: Build Windows release
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.executable-cache.outputs.cache-hit != 'true'
         run: cargo build --release --locked --timings
 
+      # Stage outside target/ so rust-cache post-job cleanup cannot remove it.
+      - name: Stage Windows executable for reuse
+        if: github.event_name != 'pull_request' && steps.executable-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'windows-executable'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item 'target/release/lib-ts.exe' $stage
+
       - name: Upload Rust build timings
-        if: always() && github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request' && steps.executable-cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: rust-build-timings
@@ -95,7 +118,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-executable
-          path: target/release/saved-notes-library.exe
+          path: ${{ runner.temp }}/windows-executable/lib-ts.exe
           if-no-files-found: error
           retention-days: 1
 
@@ -124,7 +147,7 @@ jobs:
         run: |
           $stage = Join-Path $env:RUNNER_TEMP 'lib.ts'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item 'target/release/saved-notes-library.exe' (Join-Path $stage 'lib.ts.exe')
+          Copy-Item 'target/release/lib-ts.exe' (Join-Path $stage 'lib.ts.exe')
           Copy-Item 'dist' $stage -Recurse
           Copy-Item 'fonts' $stage -Recurse
           Copy-Item 'LICENSE' $stage
@@ -135,7 +158,7 @@ jobs:
           name: lib.ts
           path: ${{ runner.temp }}/lib.ts
           if-no-files-found: error
-          compression-level: 9
+          compression-level: 1
           retention-days: 90
 
   publish-release:

@@ -16,13 +16,13 @@ await run(process.env.CARGO || 'cargo', ['build', '--release']);
 const platform = `${process.platform}-${process.arch}`;
 const extension = process.platform === 'win32' ? '.exe' : '';
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-const output = resolve(root, 'release', `saved-notes-${platform}-${stamp}`);
+const output = resolve(root, 'release', `lib.ts-${platform}-${stamp}`);
 await mkdir(output, { recursive: true });
-await cp(resolve(root, 'target/release', `saved-notes-library${extension}`), resolve(output, `saved-notes-library${extension}`));
+await cp(resolve(root, 'target/release', `lib-ts${extension}`), resolve(output, `lib-ts${extension}`));
 await cp(resolve(root, 'dist'), resolve(output, 'dist'), { recursive: true });
 for (const path of ['fonts', 'LICENSE']) {
   await cp(resolve(root, path), resolve(output, path), { recursive: true });
 }
 await mkdir(resolve(output, 'data'));
-await writeFile(resolve(output, 'DEPLOY.md'), `# Deployment\n\nThis package contains the native Rust service for ${platform}. No Node.js runtime is required.\n\n1. Copy this directory to the target machine.\n2. Run saved-notes-library${extension} E:/notes to register and open a repository, or run it without an argument to restore saved repositories.\n3. Open http://127.0.0.1:49191/.\n\nRepository registrations and reading state are stored in data/. Keep that directory when updating. Registered repository paths must exist on the target machine. Do not run multiple service processes against the same data directory.\n\nThe package includes the frontend, Typst fonts, and their licenses. Typst package caches remain machine-local.\n`, 'utf8');
+await writeFile(resolve(output, 'DEPLOY.md'), `# Deployment\n\nThis package contains the native Rust service for ${platform}. No Node.js runtime is required.\n\n1. Copy this directory to the target machine.\n2. Run lib-ts${extension} E:/notes to register and open a repository, or run it without an argument to restore saved repositories.\n3. Open http://127.0.0.1:49191/.\n\nRepository registrations and reading state are stored in data/. Keep that directory when updating. Registered repository paths must exist on the target machine. Do not run multiple service processes against the same data directory.\n\nThe package includes the frontend, Typst fonts, and their licenses. Typst package caches remain machine-local.\n`, 'utf8');
 console.log(`\nDeployment directory: ${output}`);

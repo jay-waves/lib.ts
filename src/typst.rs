@@ -1195,7 +1195,7 @@ impl TypstWorld {
         let main_source = Bytes::from_string(source);
         let inputs = Dict::from_iter([(Str::from("theme"), theme.into_value())]);
         let library = Library::builder().with_inputs(inputs).build();
-        let packages = SystemPackages::new(SystemDownloader::new("saved-notes-library"));
+        let packages = SystemPackages::new(SystemDownloader::new("lib-ts"));
         Ok(Self {
             library: LazyHash::new(library),
             fonts,

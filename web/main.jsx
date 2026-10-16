@@ -366,7 +366,7 @@ function App() {
           <div className="tree-scroll" ref={restoreFilesScroll}
             onScroll={event => { filesScrollTop.current = event.currentTarget.scrollTop; }}>{!bookmarksOnly && recentOnly ? <RecentFiles state={recentState} renderTree={nodes => <FileTree nodes={nodes} label="Browsing history"
               selected={selected} navigate={navigate} expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />} /> : bookmarksOnly && bookmarkState.loading ? <div className="tree-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading bookmarks</span></div> : tree ? filteredTree.length ? bookmarksOnly
-            ? <BookmarkList files={filteredTree} selected={selected} navigate={navigate} state={bookmarkState} />
+            ? <BookmarkList files={filteredTree} selected={selected} navigate={navigate} />
             : <FileTree nodes={filteredTree} label="Notes tree" selected={selected} navigate={navigate} searching={Boolean(search.trim())}
               expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />
             : <div className="tree-empty">{bookmarksOnly ? bookmarkSearch.trim() ? 'No matching bookmarks' : bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="tree-loading"><Spinner size="small" /></div> : null}</div>

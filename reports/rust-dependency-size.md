@@ -5,7 +5,7 @@
 ## 方法与边界
 
 - 使用当前 release 配置，未调整符号剥离、优化级别或 LTO。
-- `cargo rustc --release --locked --offline --bin saved-notes-library -- -C link-arg=-Wl,-Map=/tmp/libts-release.map` 生成链接映射。
+- `cargo rustc --release --locked --offline --bin lib-ts -- -C link-arg=-Wl,-Map=/tmp/libts-release.map` 生成链接映射。
 - 按映射中的输入 archive 汇总保留下来的 section 字节。数字是各包的链接贡献，不是移除功能后的实测收益，也不包含泛型在调用方实例化的全部体积。不能把相关包简单相加作为保证值。
 - 此处衡量可执行文件体积，未测运行时 RSS。Linux 的动态系统库不包含在可执行文件大小中，Windows 需另外测量。
 
