@@ -12,6 +12,7 @@ export function pagedDocumentLayout(pages = []) {
 
 export function imageDocumentLayout(size) {
   return {
+    fitBeforePaint: true,
     pageCount: size ? 1 : 0,
     contentWidth: size?.width || 0,
     initialFit: (width, _height, viewportWidth) => ({

@@ -28,7 +28,7 @@ export function FileTree({ nodes, label, selected, navigate, searching = false, 
     function activate(event: MouseEvent | KeyboardEvent) {
       if (!isPlainTreeActivation(event)) return;
       event.preventDefault();
-      if (node.virtual || (directory && (!expanded || node.path === selected))) {
+      if (node.virtual || (directory && !expanded)) {
         setExpandedPaths(paths => ({ ...paths, [node.path]: !expanded }));
         return;
       }
@@ -40,15 +40,6 @@ export function FileTree({ nodes, label, selected, navigate, searching = false, 
       <TreeView.Item key={node.path} className="file-tree-item" id={node.path} current={node.path === selected}
         expanded={directory ? expanded : undefined}
         onExpandedChange={directory ? expanded => setExpandedPaths(paths => ({ ...paths, [node.path]: expanded })) : undefined}
-        onClickCapture={directory ? event => {
-          // Primer's chevron stops bubbling and toggles independently. Route it
-          // through the row activation before that handler, only for this item.
-          const target = event.target as Element;
-          if (target.closest('.PRIVATE_TreeView-item-toggle') && target.closest('[role="treeitem"]') === event.currentTarget) {
-            event.stopPropagation();
-            activate(event);
-          }
-        } : undefined}
         onSelect={activate}>
         <TreeView.LeadingVisual>{directory ? <TreeView.DirectoryIcon /> : <FileTypeIcon name={node.name} />}</TreeView.LeadingVisual>
         {node.virtual ? <span className="file-tree-link">{node.name}</span> : directory ? link

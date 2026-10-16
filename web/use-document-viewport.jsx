@@ -78,6 +78,13 @@ export function useDocumentViewport(layout) {
     return () => viewport.style.removeProperty('--document-width');
   }, [layout.contentWidth, scale]);
   useLayoutEffect(() => {
+    // Images only acquire dimensions on load. Fit that first measured layout
+    // before painting rather than displaying the native-size image for two frames.
+    if (layout.fitBeforePaint && active && pageCount && !initiallyFitted.current) {
+      fitAndRecenter(initialFit, true);
+    }
+  }, [layout.fitBeforePaint, active, pageCount, initialFit, fitAndRecenter]);
+  useLayoutEffect(() => {
     const point = pending.current;
     if (point?.saved) restorePagePosition(ref.current, point.saved, point.x, point.y);
     if (point?.headerTop != null) ref.current.scrollTop = point.headerTop;

@@ -12,7 +12,8 @@ export function ImagePreview() {
   const layout = useMemo(() => imageDocumentLayout(size), [size]);
   return <DocumentPreview layout={layout}>
     <div className={styles.pages} data-dim-images>
-      <div className={[styles.page, 'document-page'].join(' ')} data-page="1" style={{ width: size ? `${size.width * viewport.scale}px` : 'max-content',
+      <div className={[styles.page, 'document-page'].join(' ')} data-page="1" style={{ width: size ? `${size.width * viewport.scale}px` : error ? 'max-content' : 0,
+        visibility: size || error ? undefined : 'hidden',
         aspectRatio: size ? `${size.width} / ${size.height}` : undefined }}>
         <img src={`${document.url}&v=${encodeURIComponent(`${document.modified}:${version || 0}`)}`}
           alt={document.name} draggable={false} onLoad={event => {
