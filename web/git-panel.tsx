@@ -43,7 +43,7 @@ export default function GitPanel({ onSelect, selected, scope, state: { status, l
           return <ActionList.Item key={change.path} active={selected === change.path && scope === group.id}
             onSelect={() => onSelect(change.path, group.id)}>
             <ActionList.LeadingVisual><FileDiffIcon /></ActionList.LeadingVisual>
-            <span className="git-change-path" title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path}>{change.path}</span>
+            <span className="git-change-path" title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path}><bdi dir="ltr">{change.path}</bdi></span>
             <ActionList.TrailingVisual>
               <span className="git-change-status" data-kind={label} title={label} aria-label={label}>{change.code}</span>
             </ActionList.TrailingVisual>

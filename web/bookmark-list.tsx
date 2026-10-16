@@ -1,4 +1,5 @@
 import type { TreeNode } from './api/contracts';
+import { FileTypeIcon } from './file-type-icon';
 import { fileUrl } from './urls.mjs';
 import { isPlainTreeActivation } from './file-tree.mjs';
 
@@ -16,7 +17,8 @@ export function BookmarkList({ files, selected, navigate }: {
           event.preventDefault();
           navigate(file.path, false);
         }}>
-        <span className="bookmark-path">{file.path}</span>
+        <span className="bookmark-icon" aria-hidden="true"><FileTypeIcon name={file.name} /></span>
+        <span className="bookmark-path"><bdi dir="ltr">{file.path}</bdi></span>
       </a>
     </li>)}
   </ul>;
