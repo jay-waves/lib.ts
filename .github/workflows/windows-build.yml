@@ -51,12 +51,26 @@ jobs:
 
       # Only restore the executable when all Rust build inputs match exactly.
       # Keep embedded assets here in sync with include_str!/include_bytes! in src/.
+      # Bump v1 or the toolchain prefix when compiler flags or the build command change.
+      # Publishing/frontend workflow edits must not invalidate this cache.
       - name: Restore Windows executable
         id: executable-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/windows-executable
-          key: windows-executable-v1-rust-1.99.0-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock', 'build.rs', '.cargo/**', 'rust-toolchain*', 'web/image-theme.css', 'fonts/manifest.json', '.github/workflows/windows-build.yml') }}
+          key: windows-executable-v1-rust-1.99.0-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock', 'build.rs', '.cargo/**', 'rust-toolchain*', 'web/image-theme.css', 'fonts/manifest.json') }}
+
+      - name: Report executable cache match
+        shell: pwsh
+        env:
+          EXECUTABLE_CACHE_KEY: ${{ steps.executable-cache.outputs.cache-primary-key }}
+          EXECUTABLE_CACHE_HIT: ${{ steps.executable-cache.outputs.cache-hit }}
+        run: |
+          Write-Output "Executable cache key: $env:EXECUTABLE_CACHE_KEY"
+          Write-Output "Exact executable cache match: $env:EXECUTABLE_CACHE_HIT"
+          if ($env:EXECUTABLE_CACHE_HIT -ne 'true') {
+            Write-Output 'Executable cache unavailable for these Rust inputs; restoring Cargo dependencies and building once.'
+          }
 
       - name: Install Rust
         if: steps.executable-cache.outputs.cache-hit != 'true'
@@ -103,6 +117,14 @@ jobs:
           $stage = Join-Path $env:RUNNER_TEMP 'windows-executable'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item 'target/release/lib-ts.exe' $stage
+
+      # Save immediately after staging, independently of later artifact uploads.
+      - name: Save Windows executable
+        if: github.ref == 'refs/heads/main' && steps.executable-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/windows-executable
+          key: ${{ steps.executable-cache.outputs.cache-primary-key }}
 
       - name: Upload Rust build timings
         if: always() && github.event_name != 'pull_request' && steps.executable-cache.outputs.cache-hit != 'true'
