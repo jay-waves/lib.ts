@@ -1,16 +1,21 @@
 //! Bounded full-text search built on ripgrep's matcher and searcher crates.
+//! Pagination retains a stable result snapshot; expired snapshots require a new search.
+//! Never combine pages from different snapshots after eviction or query changes.
 
 use grep_matcher::Matcher;
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{Searcher, sinks::UTF8};
-use ignore::WalkBuilder;
+use ignore::{
+    WalkBuilder,
+    overrides::{Override, OverrideBuilder},
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs, io,
     path::Path,
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
     time::{Duration, Instant},
@@ -19,10 +24,13 @@ use std::{
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_SCAN_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FILES: usize = 1000;
+const MAX_PATH_FILES: usize = 20_000;
 const MAX_RESULT_BYTES: usize = 2 * 1024 * 1024;
 const PAGE_SIZE: usize = 20;
 const MAX_SNIPPET_LINES: usize = 10;
 const MAX_LINE_RANGES: usize = 24;
+pub const SEARCH_EXPIRED: &str = "Search expired. Run the search again.";
+
 const SNAPSHOT_TTL: Duration = Duration::from_secs(300);
 const IGNORED_DIRS: &[&str] = &["node_modules", ".work", ".archive", ".git"];
 
@@ -30,16 +38,18 @@ static NEXT_SEARCH_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Default)]
 pub struct SearchService {
-    snapshots: Mutex<HashMap<String, Snapshot>>,
+    snapshots: Mutex<HashMap<String, Arc<Snapshot>>>,
 }
 
 struct Snapshot {
     identity: String,
     created: Instant,
     result: SearchResult,
+    text_query: String,
+    facets: SearchFacets,
+    match_count: usize,
 }
 
-#[derive(Clone)]
 struct SearchResult {
     files: Vec<FileResult>,
     engine: &'static str,
@@ -50,6 +60,7 @@ struct SearchResult {
 #[serde(rename_all = "kebab-case")]
 pub(super) enum SearchScope {
     Files,
+    Paths,
     CurrentFile,
     Bookmarks,
 }
@@ -58,6 +69,7 @@ impl SearchScope {
     fn as_str(self) -> &'static str {
         match self {
             Self::Files => "files",
+            Self::Paths => "paths",
             Self::CurrentFile => "current-file",
             Self::Bookmarks => "bookmarks",
         }
@@ -93,7 +105,7 @@ pub(super) struct SearchFacet {
     pub(super) count: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub(super) struct SearchFacets {
     pub(super) languages: Vec<SearchFacet>,
     pub(super) paths: Vec<SearchFacet>,
@@ -159,74 +171,96 @@ impl SearchService {
         bookmarks: Option<&[String]>,
         private: Option<&Path>,
     ) -> Result<SearchResponse, String> {
+        let scope = params.scope.unwrap_or(SearchScope::Files);
         let input = params.q.trim();
-        if input.is_empty() || input.len() > 256 || input.contains(['\r', '\n', '\0']) {
+        if (input.is_empty() && scope != SearchScope::Paths)
+            || input.len() > 256
+            || input.contains(['\r', '\n', '\0'])
+        {
             return Err("Enter a single-line search query of 1–256 characters.".into());
         }
-        let scope = params.scope.unwrap_or(SearchScope::Files);
-        let mut spec = parse_query(input)?;
         let current_file = params.current_file.as_deref().unwrap_or_default();
-        if scope == SearchScope::CurrentFile
-            && (current_file.is_empty()
-                || current_file.contains(['\\', '\0', ':'])
-                || current_file
-                    .split('/')
-                    .any(|part| part.is_empty() || part == "." || part == ".."))
-        {
-            return Err("Choose a repository-relative current file.".into());
-        }
-        if let Some(language) = params
-            .lang
-            .as_deref()
-            .filter(|value| !value.is_empty())
-            .or_else(|| params.language.as_deref().filter(|value| !value.is_empty()))
-        {
-            spec.languages.push(language.to_owned());
-        }
-        if spec.text.is_empty() {
-            return Err("Enter a non-empty search query.".into());
-        }
-        let bookmark_identity = bookmarks
-            .map(|paths| {
-                let mut paths = paths.to_vec();
-                paths.sort();
-                paths.join("\0")
-            })
-            .unwrap_or_default();
-        let identity = format!(
-            "{}\0{input}\0{}\0{current_file}\0{bookmark_identity}",
-            root.display(),
-            scope.as_str()
-        );
+        let bookmark_paths = if scope == SearchScope::Bookmarks {
+            Some(bookmarks.ok_or("Bookmark search is unavailable.")?)
+        } else {
+            None
+        };
+        let mut bookmark_identity = bookmark_paths.unwrap_or_default().to_vec();
+        bookmark_identity.sort();
+        let identity = serde_json::to_string(&(
+            root,
+            input,
+            scope,
+            current_file,
+            &params.lang,
+            &params.language,
+            &params.path,
+            bookmark_identity,
+            private,
+        ))
+        .map_err(|error| error.to_string())?;
         self.expire_snapshots();
 
-        let search_id = if let Some(id) = params.search_id.as_ref() {
+        let (search_id, snapshot) = if let Some(id) = params.search_id.as_ref() {
             let snapshots = self
                 .snapshots
                 .lock()
                 .map_err(|_| "Search cache lock poisoned")?;
-            let snapshot = snapshots
-                .get(id)
-                .ok_or("Search expired. Run the search again.")?;
+            let snapshot = snapshots.get(id).ok_or(SEARCH_EXPIRED)?;
             if snapshot.identity != identity {
-                return Err("Search expired. Run the search again.".into());
+                return Err(SEARCH_EXPIRED.into());
             }
-            id.clone()
+            (id.clone(), Arc::clone(snapshot))
         } else {
-            let root = root.to_path_buf();
+            let mut spec = parse_query(input)?;
+            if scope == SearchScope::CurrentFile
+                && (current_file.is_empty()
+                    || current_file.contains(['\\', '\0', ':'])
+                    || current_file
+                        .split('/')
+                        .any(|part| part.is_empty() || part == "." || part == ".."))
+            {
+                return Err("Choose a repository-relative current file.".into());
+            }
+            if let Some(language) = params
+                .lang
+                .as_deref()
+                .filter(|value| !value.is_empty())
+                .or_else(|| params.language.as_deref().filter(|value| !value.is_empty()))
+            {
+                spec.languages.push(language.to_owned());
+            }
+            if let Some(filter) = params.path.as_deref().and_then(params_path_filter) {
+                spec.paths.push(filter);
+            }
+            if spec.text.is_empty() && scope != SearchScope::Paths {
+                return Err("Enter a non-empty search query.".into());
+            }
             let mut result = scan(
-                &root,
+                root,
                 &spec,
                 (scope == SearchScope::CurrentFile).then_some(current_file),
                 private,
+                scope == SearchScope::Paths,
+                bookmark_paths,
             )?;
-            if scope == SearchScope::Bookmarks {
-                let bookmarks =
-                    bookmarks.ok_or("Bookmark search is unavailable in the Rust backend.")?;
-                result
-                    .files
-                    .retain(|file| bookmarks.iter().any(|path| path == &file.path));
-            }
+            result.files.sort_by(|a, b| {
+                (b.path == current_file)
+                    .cmp(&(a.path == current_file))
+                    .then_with(|| a.path.cmp(&b.path))
+            });
+            // Facets describe this filtered snapshot, including any scan limits.
+            let snapshot = Arc::new(Snapshot {
+                identity,
+                created: Instant::now(),
+                text_query: spec.text,
+                facets: SearchFacets {
+                    languages: facets(result.files.iter().map(|file| file.language.as_str())),
+                    paths: facet_paths(result.files.iter().map(|file| file.path.as_str())),
+                },
+                match_count: result.files.iter().map(|file| file.match_count).sum(),
+                result,
+            });
             let id = format!(
                 "{}-{}",
                 std::process::id(),
@@ -245,98 +279,34 @@ impl SearchService {
                     snapshots.remove(&oldest);
                 }
             }
-            snapshots.insert(
-                id.clone(),
-                Snapshot {
-                    identity,
-                    created: Instant::now(),
-                    result,
-                },
-            );
-            id
+            snapshots.insert(id.clone(), Arc::clone(&snapshot));
+            (id, snapshot)
         };
 
-        let snapshots = self
-            .snapshots
-            .lock()
-            .map_err(|_| "Search cache lock poisoned")?;
-        let result = &snapshots
-            .get(&search_id)
-            .ok_or("Search expired. Run the search again.")?
-            .result;
-        let language_filters = spec
-            .languages
-            .iter()
-            .map(|value| normalize_language(value))
-            .collect::<Vec<_>>();
-        let extra_path = params.path.as_deref().and_then(params_path_filter);
-        let matches = result
+        // The cache lock is released before cloning the page or serializing it.
+        let result = &snapshot.result;
+        let total = result.files.len();
+        let offset = params.offset.unwrap_or(0).min(total);
+        let page = result
             .files
-            .iter()
-            .filter(|file| {
-                language_filters
-                    .iter()
-                    .all(|language| normalize_language(&file.language) == *language)
-                    && spec
-                        .paths
-                        .iter()
-                        .all(|filter| path_matches(&file.path, filter))
-                    && extra_path
-                        .as_ref()
-                        .is_none_or(|filter| path_matches(&file.path, filter))
-            })
-            .collect::<Vec<_>>();
-        let preferred = params.current_file.as_deref().unwrap_or("");
-        let mut matches = matches;
-        matches.sort_by(|a, b| {
-            (b.path == preferred)
-                .cmp(&(a.path == preferred))
-                .then_with(|| a.path.cmp(&b.path))
-        });
-        let offset = params.offset.unwrap_or(0).min(MAX_FILES);
-        let page = matches
             .iter()
             .skip(offset)
             .take(PAGE_SIZE)
-            .map(|file| (*file).clone())
+            .cloned()
             .collect::<Vec<_>>();
-        let languages = facets(
-            result
-                .files
-                .iter()
-                .filter(|file| {
-                    spec.paths
-                        .iter()
-                        .all(|filter| path_matches(&file.path, filter))
-                })
-                .map(|file| file.language.as_str()),
-        );
-        let paths = facet_paths(
-            result
-                .files
-                .iter()
-                .filter(|file| {
-                    language_filters
-                        .iter()
-                        .all(|language| normalize_language(&file.language) == *language)
-                })
-                .map(|file| file.path.as_str()),
-        );
-        let total = matches.len();
-        let match_count = matches.iter().map(|file| file.match_count).sum::<usize>();
         let next_offset = (offset + page.len() < total).then_some(offset + page.len());
         Ok(SearchResponse {
             query: input.to_owned(),
-            text_query: spec.text,
+            text_query: snapshot.text_query.clone(),
             scope: scope.as_str().to_owned(),
             search_id,
             engine: result.engine,
             truncated: result.truncated,
             total,
-            match_count,
+            match_count: snapshot.match_count,
             files: page,
             next_offset,
-            facets: SearchFacets { languages, paths },
+            facets: snapshot.facets.clone(),
         })
     }
 
@@ -352,12 +322,30 @@ fn scan(
     spec: &SearchSpec,
     only_path: Option<&str>,
     private: Option<&Path>,
+    paths_only: bool,
+    bookmarks: Option<&[String]>,
 ) -> Result<SearchResult, String> {
     let matcher = RegexMatcherBuilder::new()
         .case_insensitive(!spec.case_sensitive)
         .fixed_strings(!spec.regex)
         .build(&spec.text)
         .map_err(|error| format!("Invalid regular expression: {error}"))?;
+    let path_filters = spec
+        .paths
+        .iter()
+        .map(CompiledPathFilter::new)
+        .collect::<Result<Vec<_>, _>>()?;
+    let languages = spec
+        .languages
+        .iter()
+        .map(|value| normalize_language(value))
+        .collect::<Vec<_>>();
+    let bookmarks = bookmarks.map(|paths| {
+        paths
+            .iter()
+            .map(String::as_str)
+            .collect::<std::collections::HashSet<_>>()
+    });
     let mut searcher = Searcher::new();
     let mut files = Vec::new();
     let mut scanned_bytes = 0_u64;
@@ -372,7 +360,9 @@ fn scan(
         .git_global(spec.respect_gitignore)
         .git_exclude(spec.respect_gitignore)
         .require_git(false)
-        .parents(true);
+        .parents(true)
+        .max_filesize((!paths_only).then_some(MAX_FILE_BYTES))
+        .add_custom_ignore_filename(".rgignore");
     if let Some(relative) = only_path {
         let candidate = root.join(relative);
         let canonical = candidate
@@ -384,7 +374,15 @@ fn scan(
     }
     let only_path = only_path.map(|relative| root.join(relative));
     let private = private.map(Path::to_path_buf);
+    let walk_root = root.clone();
     walker.filter_entry(move |entry| {
+        if entry.depth() > 0
+            && entry.path().strip_prefix(&walk_root).is_ok_and(|relative| {
+                ignored_relative_path(&relative.to_string_lossy().replace('\\', "/"))
+            })
+        {
+            return false;
+        }
         !private
             .as_ref()
             .is_some_and(|private| entry.path().starts_with(private))
@@ -408,40 +406,61 @@ fn scan(
             .replace('\\', "/");
         if relative.starts_with("../")
             || relative == ".."
-            || ignored_relative_path(&relative)
-            || crate::file_kind::has_binary_extension(path)
+            || (!paths_only && crate::file_kind::has_binary_extension(path))
         {
             continue;
         }
-        let metadata = match entry.metadata() {
-            Ok(metadata) => metadata,
-            Err(_) => continue,
-        };
-        if metadata.len() > MAX_FILE_BYTES {
+        let language = search_language(path);
+        let normalized_language = normalize_language(&language);
+        if !languages.iter().all(|value| *value == normalized_language)
+            || !path_filters.iter().all(|filter| filter.matches(&relative))
+            || bookmarks
+                .as_ref()
+                .is_some_and(|paths| !paths.contains(relative.as_str()))
+        {
             continue;
         }
-        if scanned_bytes.saturating_add(metadata.len()) > MAX_SCAN_BYTES {
-            truncated = true;
-            break;
-        }
-        scanned_bytes += metadata.len();
-        let bytes = match fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(_) => continue,
+        let details = if paths_only {
+            if !spec.text.is_empty()
+                && !matcher
+                    .is_match(relative.as_bytes())
+                    .map_err(|error| error.to_string())?
+            {
+                continue;
+            }
+            MatchDetails {
+                match_count: 1,
+                ..MatchDetails::default()
+            }
+        } else {
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
+            if metadata.len() > MAX_FILE_BYTES {
+                continue;
+            }
+            if scanned_bytes.saturating_add(metadata.len()) > MAX_SCAN_BYTES {
+                truncated = true;
+                break;
+            }
+            scanned_bytes += metadata.len();
+            let bytes = match fs::read(path) {
+                Ok(bytes) => bytes,
+                Err(_) => continue,
+            };
+            if bytes.len() as u64 > MAX_FILE_BYTES || !valid_text(&bytes) {
+                continue;
+            }
+            let text = match std::str::from_utf8(&bytes) {
+                Ok(text) => text,
+                Err(_) => continue,
+            };
+            find_matches(&mut searcher, &matcher, text).map_err(|error| error.to_string())?
         };
-        if bytes.len() as u64 > MAX_FILE_BYTES || !valid_text(&bytes) {
-            continue;
-        }
-        let text = match std::str::from_utf8(&bytes) {
-            Ok(text) => text,
-            Err(_) => continue,
-        };
-        let details =
-            find_matches(&mut searcher, &matcher, text).map_err(|error| error.to_string())?;
         if details.match_count == 0 {
             continue;
         }
-        let language = search_language(path);
         let file = FileResult {
             path: relative,
             language,
@@ -450,20 +469,20 @@ fn scan(
             snippets_truncated: details.snippets_truncated,
         };
         result_bytes = result_bytes.saturating_add(estimate_file_bytes(&file));
-        if result_bytes > MAX_RESULT_BYTES {
+        let max_files = if paths_only {
+            MAX_PATH_FILES
+        } else {
+            MAX_FILES
+        };
+        if result_bytes > MAX_RESULT_BYTES || files.len() >= max_files {
             truncated = true;
             break;
         }
         files.push(file);
-        if files.len() >= MAX_FILES {
-            truncated = true;
-            break;
-        }
     }
-    files.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(SearchResult {
         files,
-        engine: "ripgrep",
+        engine: if paths_only { "paths" } else { "ripgrep" },
         truncated,
     })
 }
@@ -479,63 +498,60 @@ fn find_matches(
         text.as_bytes(),
         UTF8(|line_num, line: &str| {
             let line = line.trim_end_matches(['\r', '\n']);
-            let mut ranges: Vec<(usize, usize)> = Vec::new();
-            let mut first_match = None;
+            let mut snippet: Option<SnippetLine> = None;
+            let mut window = 0..0;
             matcher
                 .find_iter(line.as_bytes(), |matched| {
-                    let start = byte_to_utf16(line, matched.start());
-                    let end = byte_to_utf16(line, matched.end());
-                    first_match.get_or_insert(start);
                     details.match_count += 1;
-                    if details.snippets.len() < MAX_SNIPPET_LINES && start < 1400 {
-                        let mut merged = false;
-                        if let Some(last) = ranges.last_mut() {
-                            if last.1 == start && last.0 != last.1 && end > start {
-                                last.1 = end;
-                                merged = true;
-                            }
+                    if details.snippets.len() >= MAX_SNIPPET_LINES {
+                        details.snippets_truncated = true;
+                        return true;
+                    }
+                    let snippet = snippet.get_or_insert_with(|| {
+                        // Work in byte offsets until rendering the bounded snippet. This
+                        // avoids rescanning a long line's prefix for every match.
+                        let start = line[..matched.start()]
+                            .char_indices()
+                            .rev()
+                            .nth(199)
+                            .map_or(0, |(offset, _)| offset);
+                        let end = line[start..]
+                            .char_indices()
+                            .nth(1200)
+                            .map_or(line.len(), |(offset, _)| start + offset);
+                        window = start..end;
+                        SnippetLine {
+                            number: line_num as usize,
+                            text: line[window.clone()].to_owned(),
+                            clipped: start > 0 || end < line.len(),
+                            ranges: Vec::new(),
                         }
-                        if !merged && ranges.len() < MAX_LINE_RANGES {
-                            ranges.push((start, end));
-                        } else if !merged {
-                            details.snippets_truncated = true;
-                        }
-                    } else {
+                    });
+                    if matched.start() > window.end
+                        || (matched.start() == window.end && !matched.is_empty())
+                        || snippet.ranges.len() >= MAX_LINE_RANGES
+                    {
+                        details.snippets_truncated = true;
+                        return true;
+                    }
+                    if matched.end() > window.end {
                         details.snippets_truncated = true;
                     }
+                    let start = byte_to_utf16(&snippet.text, matched.start() - window.start);
+                    let end =
+                        byte_to_utf16(&snippet.text, matched.end().min(window.end) - window.start);
+                    if let Some(last) = snippet.ranges.last_mut() {
+                        if last.1 == start && last.0 != last.1 && end > start {
+                            last.1 = end;
+                            return true;
+                        }
+                    }
+                    snippet.ranges.push((start, end));
                     true
                 })
                 .map_err(|error| io::Error::other(error.to_string()))?;
-            if let Some(first_match) = first_match {
-                if details.snippets.len() < MAX_SNIPPET_LINES {
-                    let from = first_match.saturating_sub(200);
-                    let to = from + 1200;
-                    let (snippet, actual_from, actual_to) = utf16_slice(line, from, to);
-                    let ranges = ranges
-                        .into_iter()
-                        .filter(|(start, end)| {
-                            if start == end {
-                                *start >= actual_from && *start <= actual_to
-                            } else {
-                                *start < actual_to && *end > actual_from
-                            }
-                        })
-                        .map(|(start, end)| {
-                            (
-                                start.saturating_sub(actual_from),
-                                end.min(actual_to).saturating_sub(actual_from),
-                            )
-                        })
-                        .collect();
-                    details.snippets.push(SnippetLine {
-                        number: line_num as usize,
-                        text: snippet,
-                        clipped: actual_from > 0 || actual_to < line.encode_utf16().count(),
-                        ranges,
-                    });
-                } else {
-                    details.snippets_truncated = true;
-                }
+            if let Some(snippet) = snippet {
+                details.snippets.push(snippet);
             }
             Ok(true)
         }),
@@ -544,7 +560,7 @@ fn find_matches(
 }
 
 fn parse_query(input: &str) -> Result<SearchSpec, String> {
-    let mut tokens = Vec::<(String, bool)>::new();
+    let mut tokens = Vec::<(String, String, bool)>::new();
     let mut index = 0;
     let chars = input.char_indices().collect::<Vec<_>>();
     while index < chars.len() {
@@ -554,7 +570,7 @@ fn parse_query(input: &str) -> Result<SearchSpec, String> {
         if index == chars.len() {
             break;
         }
-        let start = chars[index].0;
+        let mut start = chars[index].0;
         if chars[index].1 == '/' {
             let mut end = None;
             let mut in_class = false;
@@ -596,15 +612,23 @@ fn parse_query(input: &str) -> Result<SearchSpec, String> {
             if pattern.is_empty() {
                 return Err("Enter a non-empty regular expression between the slashes.".into());
             }
-            RegexMatcherBuilder::new()
-                .case_insensitive(flags == "i")
-                .build(&pattern)
-                .map_err(|error| format!("Invalid regular expression: {error}"))?;
-            tokens.push((format!("\0REGEX:{}:{}", flags, pattern), false));
+            tokens.push(("regex".into(), format!("{flags}:{pattern}"), false));
             index = after;
             continue;
         }
-        let quoted = chars[index].1 == '"';
+        let qualifier = ["lang:", "language:", "path:", "case:", "gitignore:"]
+            .into_iter()
+            .find(|prefix| {
+                input[start..]
+                    .get(..prefix.len())
+                    .is_some_and(|value| value.eq_ignore_ascii_case(prefix))
+            });
+        let kind = qualifier.map_or("text", |prefix| prefix.trim_end_matches(':'));
+        if let Some(prefix) = qualifier {
+            index += prefix.len();
+            start += prefix.len();
+        }
+        let quoted = chars.get(index).is_some_and(|(_, ch)| *ch == '"');
         if quoted {
             index += 1;
             let mut value = String::new();
@@ -626,14 +650,17 @@ fn parse_query(input: &str) -> Result<SearchSpec, String> {
             if !closed {
                 return Err("Close the quotation mark in your search query.".into());
             }
-            tokens.push((value, true));
+            if chars.get(index).is_some_and(|(_, ch)| !ch.is_whitespace()) {
+                return Err("Separate search terms and filters with a space.".into());
+            }
+            tokens.push((kind.into(), value, true));
         } else {
             let mut end = index;
             while end < chars.len() && !chars[end].1.is_whitespace() {
                 end += 1;
             }
             let byte_end = chars.get(end).map(|item| item.0).unwrap_or(input.len());
-            tokens.push((input[start..byte_end].to_owned(), false));
+            tokens.push((kind.into(), input[start..byte_end].to_owned(), false));
             index = end;
         }
     }
@@ -644,43 +671,35 @@ fn parse_query(input: &str) -> Result<SearchSpec, String> {
     let mut case_sensitive = false;
     let mut regex_case_sensitive = None;
     let mut respect_gitignore = true;
-    for (token, quoted) in tokens {
-        if let Some(value) = token.strip_prefix("\0REGEX:") {
-            let (flags, pattern) = value.split_once(':').unwrap_or(("", value));
-            text_terms.push(pattern.to_owned());
-            regex = true;
-            regex_case_sensitive = Some(flags != "i");
-        } else if !quoted {
-            let lower = token.to_ascii_lowercase();
-            if let Some(value) = lower
-                .strip_prefix("lang:")
-                .or_else(|| lower.strip_prefix("language:"))
-            {
-                languages.push(value.to_owned());
-            } else if let Some(value) = lower.strip_prefix("path:") {
-                paths.push(PathFilter {
-                    value: value.to_owned(),
-                    quoted: false,
-                });
-            } else if lower == "--no-gitignore" {
-                respect_gitignore = false;
-            } else if let Some(value) = lower.strip_prefix("gitignore:") {
-                match value {
-                    "yes" => respect_gitignore = true,
-                    "no" => respect_gitignore = false,
-                    _ => return Err("Use gitignore:yes or gitignore:no.".into()),
-                }
-            } else if let Some(value) = lower.strip_prefix("case:") {
-                match value {
-                    "yes" => case_sensitive = true,
-                    "no" => case_sensitive = false,
+    for (kind, value, quoted) in tokens {
+        if kind != "text" && value.is_empty() {
+            return Err(format!("Enter a value after {kind}:"));
+        }
+        match kind.as_str() {
+            "regex" => {
+                let (flags, pattern) = value.split_once(':').unwrap();
+                text_terms.push(pattern.to_owned());
+                regex = true;
+                regex_case_sensitive = Some(flags != "i");
+            }
+            "lang" | "language" => languages.push(value),
+            "path" => paths.push(PathFilter { value, quoted }),
+            "case" => {
+                case_sensitive = match value.as_str() {
+                    "yes" => true,
+                    "no" => false,
                     _ => return Err("Use case:yes or case:no.".into()),
                 }
-            } else {
-                text_terms.push(token);
             }
-        } else {
-            text_terms.push(token);
+            "gitignore" => {
+                respect_gitignore = match value.as_str() {
+                    "yes" => true,
+                    "no" => false,
+                    _ => return Err("Use gitignore:yes or gitignore:no.".into()),
+                }
+            }
+            _ if !quoted && value == "--no-gitignore" => respect_gitignore = false,
+            _ => text_terms.push(value),
         }
     }
     if regex && text_terms.len() != 1 {
@@ -699,39 +718,50 @@ fn parse_query(input: &str) -> Result<SearchSpec, String> {
     })
 }
 
-fn path_matches(path: &str, filter: &PathFilter) -> bool {
-    if filter.quoted || !filter.value.contains(['*', '?']) {
-        return path.to_lowercase().contains(&filter.value.to_lowercase());
-    }
-    let anchored = filter.value.starts_with('/');
-    let pattern = filter.value.trim_start_matches('/');
-    let mut regex = String::new();
-    let chars = pattern.chars().collect::<Vec<_>>();
-    let mut i = 0;
-    while i < chars.len() {
-        match chars[i] {
-            '*' if chars.get(i + 1) == Some(&'*') => {
-                i += 1;
-                if chars.get(i + 1) == Some(&'/') {
-                    regex.push_str("(?:.*/)?");
-                    i += 1;
-                } else {
-                    regex.push_str(".*");
-                }
-            }
-            '*' => regex.push_str("[^/]*"),
-            '?' => regex.push_str("[^/]"),
-            ch => regex.push_str(&regex::escape(&ch.to_string())),
+enum CompiledPathFilter {
+    Literal(String),
+    Glob(Override),
+}
+
+impl CompiledPathFilter {
+    fn new(filter: &PathFilter) -> Result<Self, String> {
+        if filter.quoted || !filter.value.contains(['*', '?']) {
+            return Ok(Self::Literal(filter.value.to_lowercase()));
         }
-        i += 1;
+        // Preserve substring filters and AND between qualifiers. Only glob
+        // matching is delegated to ripgrep's matcher; it must not override gitignore.
+        let mut builder = OverrideBuilder::new("");
+        builder
+            .case_insensitive(true)
+            .map_err(|error| error.to_string())?;
+        // The query language exposes *, ** and ?. Other glob metacharacters
+        // remain literal, matching the browser's bookmark filters.
+        let escaped = filter.value.chars().fold(String::new(), |mut pattern, ch| {
+            if matches!(ch, '[' | ']' | '{' | '}' | '\\') {
+                pattern.push('\\');
+            }
+            pattern.push(ch);
+            pattern
+        });
+        let pattern = if escaped.starts_with('/') {
+            escaped
+        } else {
+            format!("**/{escaped}")
+        };
+        builder
+            .add(&pattern)
+            .map_err(|error| format!("Invalid path glob: {error}"))?;
+        Ok(Self::Glob(
+            builder.build().map_err(|error| error.to_string())?,
+        ))
     }
-    let prefix = if anchored { "^" } else { "(?:^|/)" };
-    RegexMatcherBuilder::new()
-        .case_insensitive(true)
-        .build(&format!("{prefix}{regex}$"))
-        .ok()
-        .and_then(|matcher| matcher.is_match(path.as_bytes()).ok())
-        .unwrap_or(false)
+
+    fn matches(&self, path: &str) -> bool {
+        match self {
+            Self::Literal(needle) => path.to_lowercase().contains(needle),
+            Self::Glob(glob) => glob.matched(path, false).is_whitelist(),
+        }
+    }
 }
 
 fn params_path_filter(value: &str) -> Option<PathFilter> {
@@ -880,38 +910,241 @@ fn byte_to_utf16(text: &str, byte: usize) -> usize {
     text[..byte].encode_utf16().count()
 }
 
-fn utf16_slice(text: &str, start: usize, end: usize) -> (String, usize, usize) {
-    let mut utf16 = 0;
-    let mut byte_start = text.len();
-    let mut byte_end = text.len();
-    for (byte, ch) in text.char_indices() {
-        if utf16 >= start && byte_start == text.len() {
-            byte_start = byte;
-        }
-        if utf16 >= end {
-            byte_end = byte;
-            break;
-        }
-        utf16 += ch.len_utf16();
-    }
-    if byte_start == text.len() && start >= utf16 {
-        byte_start = text.len();
-    }
-    if byte_end == text.len() && end >= utf16 {
-        byte_end = text.len();
-    }
-    let actual_start = text[..byte_start].encode_utf16().count();
-    let actual_end = text[..byte_end].encode_utf16().count();
-    (
-        text[byte_start..byte_end].to_owned(),
-        actual_start,
-        actual_end,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn params(query: &str) -> SearchParams {
+        SearchParams {
+            q: query.into(),
+            scope: None,
+            current_file: None,
+            search_id: None,
+            offset: None,
+            lang: None,
+            language: None,
+            path: None,
+        }
+    }
+
+    #[test]
+    fn filters_before_spending_the_result_budget() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::create_dir(root.join("target")).unwrap();
+        fs::write(root.join("target/keep.rs"), "needle").unwrap();
+        for index in 0..=MAX_FILES {
+            fs::write(root.join(format!("other-{index}.txt")), "needle").unwrap();
+        }
+        let service = SearchService::default();
+        for query in [
+            "needle lang:rs",
+            "needle path:target/",
+            "needle path:**/*.rs",
+        ] {
+            let result = service
+                .search_with_private(root, params(query), None, None)
+                .unwrap();
+            assert_eq!(result.total, 1, "{query}");
+            assert_eq!(result.files[0].path, "target/keep.rs");
+            assert!(
+                !result.truncated,
+                "unrelated matches must not consume the budget"
+            );
+            assert_eq!(result.facets.languages.len(), 1);
+            assert_eq!(result.facets.languages[0].count, 1);
+        }
+        let mut request = params("needle");
+        request.scope = Some(SearchScope::Bookmarks);
+        let result = service
+            .search_with_private(root, request, Some(&["target/keep.rs".into()]), None)
+            .unwrap();
+        assert_eq!(result.total, 1);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn text_pages_keep_order_counts_and_contents_from_the_snapshot() {
+        let directory = tempfile::tempdir().unwrap();
+        for index in 0..25 {
+            fs::write(
+                directory.path().join(format!("file{index:02}.rs")),
+                "needle needle",
+            )
+            .unwrap();
+        }
+        let service = SearchService::default();
+        let mut request = params("needle");
+        request.current_file = Some("file24.rs".into());
+        let first = service
+            .search_with_private(directory.path(), request, None, None)
+            .unwrap();
+        assert_eq!(first.files[0].path, "file24.rs");
+        assert_eq!(first.match_count, 50);
+        fs::write(directory.path().join("file23.rs"), "changed").unwrap();
+        let mut request = params("needle");
+        request.current_file = Some("file24.rs".into());
+        request.search_id = Some(first.search_id);
+        request.offset = first.next_offset;
+        let second = service
+            .search_with_private(directory.path(), request, None, None)
+            .unwrap();
+        assert_eq!(second.files.len(), 5);
+        assert_eq!(second.total, 25);
+        assert_eq!(second.match_count, 50);
+        assert_eq!(second.facets.languages[0].count, 25);
+        assert!(second.next_offset.is_none());
+        assert!(
+            second
+                .files
+                .iter()
+                .all(|file| file.snippets[0].lines[0].text == "needle needle")
+        );
+        let paths = first
+            .files
+            .iter()
+            .chain(&second.files)
+            .map(|file| &file.path)
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(paths.len(), 25);
+    }
+
+    #[test]
+    fn snapshot_identity_includes_filters_but_not_unrelated_bookmarks() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(directory.path().join("keep.rs"), "needle").unwrap();
+        let service = SearchService::default();
+        let first = service
+            .search_with_private(directory.path(), params("needle"), None, None)
+            .unwrap();
+        let mut page = params("needle");
+        page.search_id = Some(first.search_id.clone());
+        let result = service
+            .search_with_private(directory.path(), page, Some(&["changed.md".into()]), None)
+            .unwrap();
+        assert_eq!(result.total, 1);
+        for (language, path) in [(Some("js"), None), (None, Some("other/"))] {
+            let mut page = params("needle");
+            page.search_id = Some(first.search_id.clone());
+            page.lang = language.map(str::to_owned);
+            page.path = path.map(str::to_owned);
+            assert!(
+                matches!(service.search_with_private(directory.path(), page, None, None), Err(error) if error == SEARCH_EXPIRED)
+            );
+        }
+        service.snapshots.lock().unwrap().clear();
+        let mut page = params("needle");
+        page.search_id = Some(first.search_id);
+        assert!(
+            matches!(service.search_with_private(directory.path(), page, None, None), Err(error) if error == SEARCH_EXPIRED)
+        );
+    }
+
+    #[test]
+    fn parses_quoted_qualifiers_and_rejects_missing_values() {
+        let query = parse_query(r#"needle PATH:"My Docs/" lang:"Rust" path:"literal*""#).unwrap();
+        assert_eq!(query.text, "needle");
+        assert_eq!(query.paths[0].value, "My Docs/");
+        assert!(query.paths[0].quoted);
+        assert!(
+            CompiledPathFilter::new(&query.paths[1])
+                .unwrap()
+                .matches("literal*/a.rs")
+        );
+        assert!(
+            !CompiledPathFilter::new(&query.paths[1])
+                .unwrap()
+                .matches("literal-other/a.rs")
+        );
+        for query in [
+            "needle lang:",
+            "needle path:",
+            "needle case:maybe",
+            r#"needle path:"unterminated"#,
+            r#""word"suffix"#,
+        ] {
+            assert!(parse_query(query).is_err(), "{query}");
+        }
+    }
+
+    #[test]
+    fn native_path_globs_preserve_root_and_recursive_matching() {
+        for (pattern, path, expected) in [
+            ("src/**/*.rs", "src/main.rs", true),
+            ("src/**/*.rs", "nested/src/deep/main.rs", true),
+            ("/src/*.rs", "nested/src/main.rs", false),
+            ("/src/*.rs", "src/deep/main.rs", false),
+            ("/src/*.rs", "src/MAIN.RS", true),
+            ("*.rs", "nested/main.rs", true),
+            ("file?.rs", "file12.rs", false),
+            ("src/[id]/*.rs", "src/[id]/main.rs", true),
+            ("src/{a,b}/*.rs", "src/a/main.rs", false),
+        ] {
+            let filter = CompiledPathFilter::new(&PathFilter {
+                value: pattern.into(),
+                quoted: false,
+            })
+            .unwrap();
+            assert_eq!(filter.matches(path), expected, "{pattern}: {path}");
+        }
+    }
+
+    #[test]
+    fn long_line_snippets_keep_distant_unicode_matches_and_bound_ranges() {
+        let matcher = RegexMatcherBuilder::new()
+            .fixed_strings(true)
+            .build("hit")
+            .unwrap();
+        let line = format!("{}hit", "😀".repeat(2000));
+        let result = find_matches(&mut Searcher::new(), &matcher, &line).unwrap();
+        assert_eq!(result.match_count, 1);
+        assert_eq!(result.snippets[0].ranges, [(400, 403)]);
+        assert!(result.snippets[0].clipped);
+        assert!(result.snippets[0].text.ends_with("hit"));
+        let dense = "hit ".repeat(20_000);
+        let result = find_matches(&mut Searcher::new(), &matcher, &dense).unwrap();
+        assert_eq!(result.match_count, 20_000);
+        assert_eq!(result.snippets[0].ranges.len(), MAX_LINE_RANGES);
+        assert!(result.snippets_truncated);
+    }
+
+    #[test]
+    fn gitignore_and_fixed_exclusions_apply_to_both_search_modes() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::write(root.join(".gitignore"), "ignored.rs\n").unwrap();
+        fs::write(root.join(".rgignore"), "rgignored.rs\n").unwrap();
+        for name in ["keep.rs", "ignored.rs", "rgignored.rs"] {
+            fs::write(root.join(name), "needle").unwrap();
+        }
+        fs::create_dir(root.join("node_modules")).unwrap();
+        fs::write(root.join("node_modules/dependency.rs"), "needle").unwrap();
+        let service = SearchService::default();
+        for scope in [SearchScope::Files, SearchScope::Paths] {
+            for (query, total) in [("", 1), (" gitignore:no", 2)] {
+                let mut request = params(&format!(
+                    "{}{}",
+                    if scope == SearchScope::Paths {
+                        ".rs"
+                    } else {
+                        "needle"
+                    },
+                    query
+                ));
+                request.scope = Some(scope);
+                let result = service
+                    .search_with_private(root, request, None, None)
+                    .unwrap();
+                assert_eq!(result.total, total);
+                assert!(
+                    !result
+                        .files
+                        .iter()
+                        .any(|file| file.path.starts_with("node_modules/"))
+                );
+            }
+        }
+    }
 
     #[test]
     fn parses_ripgrep_query_forms() {
@@ -921,6 +1154,82 @@ mod tests {
         assert!(!query.case_sensitive);
         assert_eq!(query.languages, ["rs"]);
         assert_eq!(query.paths[0].value, "src/**");
+    }
+
+    #[test]
+    fn path_search_pages_names_without_reading_contents_and_keeps_a_snapshot() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::create_dir(root.join("src")).unwrap();
+        fs::create_dir(root.join("private")).unwrap();
+        fs::write(root.join("private/secret.rs"), "").unwrap();
+        fs::write(root.join(".hidden.rs"), "").unwrap();
+        fs::create_dir(root.join("node_modules")).unwrap();
+        fs::write(root.join("node_modules/dependency.rs"), "").unwrap();
+        for index in 0..25 {
+            fs::write(root.join(format!("src/file{index:02}.rs")), [0, 255]).unwrap();
+        }
+        fs::write(root.join("src/document.pdf"), [0, 255]).unwrap();
+        let service = SearchService::default();
+        let params = |q: &str, search_id, offset| SearchParams {
+            q: q.into(),
+            scope: Some(SearchScope::Paths),
+            current_file: None,
+            search_id,
+            offset,
+            lang: None,
+            language: None,
+            path: None,
+        };
+        let first = service
+            .search_with_private(
+                root,
+                params("", None, None),
+                None,
+                Some(&root.join("private")),
+            )
+            .unwrap();
+        assert_eq!(first.total, 26);
+        assert_eq!(first.files.len(), PAGE_SIZE);
+        assert_eq!(first.next_offset, Some(PAGE_SIZE));
+        assert!(first.files.iter().all(|file| file.snippets.is_empty()));
+        fs::write(root.join("src/new.rs"), "").unwrap();
+        let second = service
+            .search_with_private(
+                root,
+                params("", Some(first.search_id), first.next_offset),
+                None,
+                Some(&root.join("private")),
+            )
+            .unwrap();
+        assert_eq!(second.total, 26);
+        assert_eq!(second.files.len(), 6);
+        assert_eq!(second.next_offset, None);
+        let filtered = service
+            .search_with_private(
+                root,
+                params("/FILE0/i lang:rs path:src/**", None, None),
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(filtered.total, 10);
+        assert!(
+            filtered
+                .files
+                .iter()
+                .all(|file| file.path.starts_with("src/file0"))
+        );
+        assert!(
+            service
+                .search_with_private(
+                    root,
+                    params("different", Some(filtered.search_id), Some(20)),
+                    None,
+                    None
+                )
+                .is_err()
+        );
     }
 
     #[test]

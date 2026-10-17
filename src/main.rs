@@ -55,7 +55,6 @@ fn stream_file(
 }
 
 mod access;
-mod cross_search;
 mod documents;
 mod file_kind;
 mod git;
@@ -87,7 +86,6 @@ struct AppState {
     repositories: Arc<repositories::RepositoryStore>,
     reading: Arc<reading::ReadingStore>,
     runtime: Arc<RuntimeState>,
-    cross_search: Arc<cross_search::Service>,
     base_url: Arc<String>,
 }
 
@@ -1535,7 +1533,14 @@ async fn search(
     .await
     {
         Ok(Ok(value)) => Json(value).into_response(),
-        Ok(Err(error)) => json_error(StatusCode::BAD_REQUEST, error).into_response(),
+        Ok(Err(error)) => {
+            let status = if error == search::SEARCH_EXPIRED {
+                StatusCode::GONE
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            json_error(status, error).into_response()
+        }
         Err(error) => {
             json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
         }
@@ -1998,7 +2003,6 @@ fn build_router(state: AppState) -> Router {
         .route("/library/session", get(library_session))
         .route("/library/activity", axum::routing::post(library_activity))
         .route("/library/open", axum::routing::post(library_open))
-        .route("/search-repos", get(cross_search::search_repositories))
         .with_state(state.clone());
     Router::new()
         .route("/", get(index))
@@ -2123,7 +2127,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         repositories,
         reading: Arc::new(reading::ReadingStore::new(data_directory.clone())),
         runtime: Arc::new(RuntimeState::default()),
-        cross_search: Arc::new(cross_search::Service::default()),
         base_url,
     };
     let lease_state = state.clone();

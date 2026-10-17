@@ -129,7 +129,6 @@ fn test_state(temporary: &tempfile::TempDir) -> (AppState, String) {
             repositories,
             reading: Arc::new(reading::ReadingStore::new(data)),
             runtime: Arc::new(RuntimeState::default()),
-            cross_search: Arc::new(cross_search::Service::default()),
             base_url: Arc::new("http://127.0.0.1:49191".into()),
         },
         repo.slug,
@@ -638,65 +637,6 @@ async fn document_and_asset_changes_are_both_emitted_by_library_events() {
 }
 
 #[tokio::test]
-async fn cross_repository_search_keeps_facets_and_pagination_consistent() {
-    let temporary = tempfile::tempdir().unwrap();
-    let (state, _slug) = test_state(&temporary);
-    let second_root = temporary.path().join("archive");
-    std::fs::create_dir_all(&second_root).unwrap();
-    for index in 0..24 {
-        std::fs::write(
-            second_root.join(format!("note-{index:02}.md")),
-            "needle in archive\n",
-        )
-        .unwrap();
-    }
-    let app = build_router(state);
-    let added = request(
-        &app,
-        "POST",
-        "/api/repos",
-        Some(serde_json::json!({"root":second_root})),
-    )
-    .await;
-    assert_eq!(added.status(), StatusCode::CREATED);
-
-    let first = json(request(&app, "GET", "/api/search-repos?q=needle&repo=*", None).await).await;
-    assert_eq!(first["total"], 25);
-    assert_eq!(first["files"].as_array().unwrap().len(), 20);
-    assert_eq!(first["nextOffset"], 20);
-    assert!(first["facets"]["languages"].is_array());
-    assert!(
-        first["files"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|file| file["repoId"].is_string() && file["repoName"].is_string())
-    );
-    let search_id = first["searchId"].as_str().unwrap();
-    let second = json(
-        request(
-            &app,
-            "GET",
-            &format!("/api/search-repos?q=needle&repo=*&searchId={search_id}&offset=20"),
-            None,
-        )
-        .await,
-    )
-    .await;
-    assert_eq!(second["total"], 25);
-    assert_eq!(second["files"].as_array().unwrap().len(), 5);
-    assert!(second["nextOffset"].is_null());
-    let expired = request(
-        &app,
-        "GET",
-        &format!("/api/search-repos?q=other&repo=*&searchId={search_id}"),
-        None,
-    )
-    .await;
-    assert_eq!(expired.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
 async fn pdf_metadata_and_page_route_match_frontend_contract() {
     let temporary = tempfile::tempdir().unwrap();
     let (state, slug) = test_state(&temporary);
@@ -805,6 +745,7 @@ async fn api_routes_keep_global_and_repository_operations_separate() {
         "/api/recent-files",
         "/api/git/status",
         "/api/search?q=needle",
+        "/api/search-repos?q=needle",
         "/api/library/tree-events",
         "/api/library/events?path=note.md",
         &format!("/{slug}/api/repos"),
