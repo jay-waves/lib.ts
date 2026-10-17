@@ -354,7 +354,7 @@ function App() {
           <div className="sidebar-scroll files-scroll" ref={restoreFilesScroll}
             onScroll={event => { filesScrollTop.current = event.currentTarget.scrollTop; }}>{!bookmarksOnly && recentOnly ? <RecentFiles state={recentState} renderTree={nodes => <FileTree nodes={nodes} label="Browsing history"
               selected={selected} navigate={navigate} expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />} /> : bookmarksOnly && bookmarkState.loading ? <div className="sidebar-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading bookmarks</span></div> : tree ? filteredTree.length ? bookmarksOnly
-            ? <BookmarkList files={filteredTree} selected={selected} navigate={navigate} />
+            ? <BookmarkList files={filteredTree} bookmarks={bookmarkState.bookmarks} selected={selected} navigate={navigate} />
             : <FileTree nodes={filteredTree} label="Notes tree" selected={selected} navigate={navigate}
               expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />
             : <div className="sidebar-empty">{bookmarksOnly ? bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="sidebar-loading"><Spinner size="small" /></div> : null}</div>
@@ -428,7 +428,7 @@ function App() {
                 sidebarToggle={narrow && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible} size="small" variant="invisible"
                   className="sidebar-toggle" icon={SidebarExpandIcon} aria-label="Show sidebar"
                   aria-expanded={filesVisible} aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />} />
-              <Reader ref={readerRef} key={document.path} document={document} request={readerRequest}
+              <Reader ref={readerRef} key={document.path} document={document} request={readerRequest} bookmarkState={bookmarkState}
                 navigate={navigate} onReload={reloadDocument} onActivity={readerActivity} />
             </>}
             </>}

@@ -32,12 +32,12 @@ export function useBookmarks(active = true) {
       });
     return () => controller.abort();
   }, [revision, active]);
-  const setBookmark = useCallback(async (path: string, bookmarked: boolean) => {
+  const setBookmark = useCallback(async (path: string, bookmarked: boolean, line?: number) => {
     setSaving(true);
     setError('');
     try {
       if (!apiBase) throw new Error('Bookmarks are available only inside a repository.');
-      setBookmarks(await saveBookmark(apiBase, path, bookmarked));
+      setBookmarks(await saveBookmark(apiBase, path, bookmarked, line));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -47,9 +47,9 @@ export function useBookmarks(active = true) {
   return { bookmarks, loading, saving, error, setBookmark, refresh: () => setRevision(value => value + 1) };
 }
 
-export function BookmarkMenu({ state, path }: { state: BookmarkState; path: string }) {
-  const bookmarked = state.bookmarks.some(item => item.path === path);
-  return <ActionList.Item disabled={state.loading || state.saving} onSelect={() => state.setBookmark(path, !bookmarked)}>
-    {bookmarked ? 'Remove bookmark' : 'Add bookmark'}
+export function BookmarkMenu({ state, path, line }: { state: BookmarkState; path: string; line?: number }) {
+  const bookmarked = state.bookmarks.some(item => item.path === path && item.line === line);
+  return <ActionList.Item disabled={state.loading || state.saving} onSelect={() => state.setBookmark(path, !bookmarked, line)}>
+    {bookmarked ? `Remove ${line ? 'line' : 'file'} bookmark` : `Bookmark ${line ? 'this line' : 'file'}`}
   </ActionList.Item>;
 }

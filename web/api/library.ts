@@ -17,8 +17,8 @@ export async function getBookmarks(apiBase: string, signal?: AbortSignal) {
   return (await requestJson(`${apiBase}/bookmarks`, bookmarksResponseSchema, { signal })).bookmarks;
 }
 
-export async function setBookmark(apiBase: string, path: string, bookmarked: boolean) {
-  const body = setBookmarkSchema.parse({ path, bookmarked });
+export async function setBookmark(apiBase: string, path: string, bookmarked: boolean, line?: number) {
+  const body = setBookmarkSchema.parse({ path, bookmarked, line });
   return (await requestJson(`${apiBase}/bookmarks`, bookmarksResponseSchema, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },

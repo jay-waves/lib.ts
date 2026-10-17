@@ -6,7 +6,7 @@ export function sourceLineAtViewport(panel, document, view, inset) {
     return markdownLineAtViewport(panel, document.lineCount, inset);
   const y = panel.getBoundingClientRect().top + panel.clientTop + inset;
   if (view === 'raw') {
-    const lines = panel.querySelectorAll('.raw-line-numbers span');
+    const lines = panel.querySelectorAll('.raw-line-numbers > span');
     let low = 0, high = lines.length;
     while (low < high) {
       const middle = Math.floor((low + high) / 2);

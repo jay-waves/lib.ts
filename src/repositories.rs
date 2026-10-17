@@ -10,6 +10,8 @@ use std::{
 #[serde(rename_all = "camelCase")]
 pub struct Bookmark {
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
     pub updated_at: String,
 }
 
@@ -320,7 +322,11 @@ impl RepositoryStore {
         id: &str,
         path: &str,
         bookmarked: bool,
+        line: Option<u32>,
     ) -> Result<Vec<Bookmark>, String> {
+        if line == Some(0) {
+            return Err("Bookmark line must be positive.".into());
+        }
         if path.is_empty()
             || path.len() > 4096
             || path.contains(['\\', ':', '\0', '\r', '\n'])
@@ -340,10 +346,11 @@ impl RepositoryStore {
             .find(|repo| repo.id == id || same_slug(&repo.slug, id))
             .ok_or("Repo not found")?;
         repo.bookmarks
-            .retain(|item| !same_bookmark_path(&item.path, path));
+            .retain(|item| !same_bookmark_path(&item.path, path) || item.line != line);
         if bookmarked {
             repo.bookmarks.push(Bookmark {
                 path: path.into(),
+                line,
                 updated_at: now(),
             });
         }
@@ -358,4 +365,46 @@ fn new_id() -> Result<String, String> {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes).map_err(|error| error.to_string())?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn line_bookmarks_coexist_with_file_bookmarks_and_persist() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("repo");
+        fs::create_dir(&root).unwrap();
+        let data = temporary.path().join("data");
+        let store = RepositoryStore::open(&data, Some(&root)).unwrap();
+        let id = store.list().unwrap()[0].id.clone();
+        store.set_bookmark(&id, "note.md", true, None).unwrap();
+        store.set_bookmark(&id, "note.md", true, Some(3)).unwrap();
+        store.set_bookmark(&id, "note.md", true, Some(8)).unwrap();
+        let bookmarks = store.set_bookmark(&id, "note.md", true, Some(3)).unwrap();
+        assert_eq!(bookmarks.len(), 3);
+        assert!(store.set_bookmark(&id, "note.md", true, Some(0)).is_err());
+        let bookmarks = store.set_bookmark(&id, "note.md", false, None).unwrap();
+        assert_eq!(bookmarks.len(), 2);
+        assert!(bookmarks.iter().all(|item| item.line.is_some()));
+        store.set_bookmark(&id, "note.md", false, Some(3)).unwrap();
+        let reopened = RepositoryStore::open(&data, None).unwrap();
+        let bookmarks = reopened.find(&id).unwrap().unwrap().bookmarks;
+        assert_eq!(bookmarks.len(), 1);
+        assert_eq!(bookmarks[0].line, Some(8));
+    }
+
+    #[test]
+    fn old_file_bookmarks_need_no_migration() {
+        let bookmark: Bookmark =
+            serde_json::from_str(r#"{"path":"note.md","updatedAt":"old"}"#).unwrap();
+        assert_eq!(bookmark.line, None);
+        assert!(
+            serde_json::to_value(bookmark)
+                .unwrap()
+                .get("line")
+                .is_none()
+        );
+    }
 }

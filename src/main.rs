@@ -581,6 +581,7 @@ struct AddRepositoryRequest {
 struct SetBookmarkRequest {
     path: String,
     bookmarked: bool,
+    line: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -1025,7 +1026,7 @@ async fn set_bookmark(
     }
     match state
         .repositories
-        .set_bookmark(&repo.id, &request.path, request.bookmarked)
+        .set_bookmark(&repo.id, &request.path, request.bookmarked, request.line)
     {
         Ok(bookmarks) => Json(serde_json::json!({"bookmarks":bookmarks})).into_response(),
         Err(error) => json_error(StatusCode::BAD_REQUEST, error).into_response(),

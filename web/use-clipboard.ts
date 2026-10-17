@@ -11,7 +11,7 @@ export function useClipboard() {
 
   async function copy(label: string, value: string | undefined) {
     try {
-      if (!value) throw new Error('Path is unavailable. Reload the page and try again.');
+      if (value === undefined) throw new Error('Content is unavailable. Reload the page and try again.');
       await navigator.clipboard.writeText(value);
       setCopied(label);
       setError('');
