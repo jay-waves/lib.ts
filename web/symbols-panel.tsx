@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { TreeView } from '@primer/react';
-import { CodeIcon, KeyIcon, PackageIcon, WorkflowIcon } from '@primer/octicons-react';
+import { CodeSymbolIcon } from './code-symbol-icon';
 import { buildSymbolTree, symbolBranch, type SymbolTreeNode } from './symbol-tree';
 import { isPlainTreeActivation } from './file-tree.mjs';
 import { activeSymbolId, revealSymbolVertically } from './active-symbol.mjs';
@@ -21,15 +21,7 @@ export interface DocumentSymbol extends OutlineItem {
 }
 
 export function SymbolLevelIcon({ level, kind }: { level?: number; kind?: string }) {
-  switch (kind) {
-    case 'function': case 'method': return <CodeIcon size={16} aria-hidden="true" />;
-    case 'procedure': return <WorkflowIcon size={16} aria-hidden="true" />;
-    case 'variable': case 'parameter': case 'constant': case 'property': case 'field': case 'entry':
-      return <KeyIcon size={16} aria-hidden="true" />;
-    case 'class': case 'type': case 'interface': case 'module': case 'namespace':
-      return <PackageIcon size={16} aria-hidden="true" />;
-    default: if (kind) return <CodeIcon size={16} aria-hidden="true" />;
-  }
+  if (kind) return <CodeSymbolIcon kind={kind} />;
   return <span className="inline-flex size-3.5 shrink-0 items-center justify-center text-[11px] leading-none font-semibold tracking-[-.04em] text-muted" aria-hidden="true">H{Math.max(1, Number(level) || 1)}</span>;
 }
 

@@ -225,11 +225,6 @@ fn load_document(
         .into_owned();
     let absolute_path = client_path(&path);
     let modified = modified_rfc3339(&path);
-    let extension = path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
     let detected = file_kind::from_path(&path)
         .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
     let mime = detected.mime;
@@ -312,7 +307,7 @@ fn load_document(
         } else {
             let source = String::from_utf8(bytes).expect("validated UTF-8 document");
             let line_count = source.lines().count();
-            match extension.as_str() {
+            match detected.format.as_str() {
                 "md" | "markdown" => {
                     let html = if view == Some("raw") {
                         None
@@ -341,7 +336,7 @@ fn load_document(
                     compile: None,
                 },
                 _ => DocumentContent::Text {
-                    outline: crate::symbols::extract(&extension, &source),
+                    outline: crate::symbols::extract(&detected.format, &source),
                     line_count,
                     source,
                 },

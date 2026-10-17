@@ -484,14 +484,20 @@ fn decode_url_segment(value: &str) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
-async fn media_type(path: &Path, file: &mut tokio::fs::File) -> io::Result<&'static str> {
+async fn media_type(path: &Path, file: &mut tokio::fs::File) -> io::Result<String> {
     let mut prefix = Vec::with_capacity(file_kind::HEADER_BYTES);
     (&mut *file)
         .take(file_kind::HEADER_BYTES as u64)
         .read_to_end(&mut prefix)
         .await?;
     file.rewind().await?;
-    Ok(file_kind::detect(path, &prefix).mime)
+    let detected = file_kind::detect(path, &prefix);
+    // Browsers may otherwise decode UTF-8 source files using a legacy encoding.
+    Ok(if !detected.binary && detected.mime.starts_with("text/") {
+        format!("{}; charset=utf-8", detected.mime)
+    } else {
+        detected.mime.to_owned()
+    })
 }
 
 #[derive(Deserialize)]

@@ -249,6 +249,40 @@ async fn file_stream_preserves_large_payloads_across_chunk_boundaries() {
 }
 
 #[tokio::test]
+async fn raw_text_media_type_declares_utf8_and_preserves_file_bytes() {
+    use tokio::io::AsyncReadExt;
+
+    let temporary = tempfile::tempdir().unwrap();
+    for (name, bytes, expected) in [
+        (
+            "sqlite.md",
+            "SQLite 中文说明\n".as_bytes(),
+            "text/markdown; charset=utf-8",
+        ),
+        (
+            "note.txt",
+            "中文原始文本\n".as_bytes(),
+            "text/plain; charset=utf-8",
+        ),
+        (
+            "page.html",
+            "<p>中文</p>".as_bytes(),
+            "text/html; charset=utf-8",
+        ),
+        ("image.md", &b"\x89PNG\r\n\x1a\n"[..], "image/png"),
+        ("binary.txt", &b"data\0\xff"[..], "application/octet-stream"),
+    ] {
+        let path = temporary.path().join(name);
+        std::fs::write(&path, bytes).unwrap();
+        let mut file = tokio::fs::File::open(&path).await.unwrap();
+        assert_eq!(media_type(&path, &mut file).await.unwrap(), expected);
+        let mut actual = Vec::new();
+        file.read_to_end(&mut actual).await.unwrap();
+        assert_eq!(actual, bytes);
+    }
+}
+
+#[tokio::test]
 async fn content_detection_preserves_renamed_previews_assets_and_text_semantics() {
     let temporary = tempfile::tempdir().unwrap();
     let (state, slug) = test_state(&temporary);
