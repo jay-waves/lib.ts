@@ -6,6 +6,7 @@ rust-version = "1.92"
 
 [profile.release]
 strip = "symbols"
+panic = "abort"
 
 [dependencies]
 axum = { version = "0.8", features = ["http1", "json", "query", "tokio"] }
@@ -39,6 +40,18 @@ time = { version = "0.3", features = ["formatting", "parsing"] }
 thiserror = "2.0.21"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt"] }
+
+tree-sitter = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-javascript = "0.25"
+tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.25"
+tree-sitter-go = "0.25"
+tree-sitter-java = "0.23"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-lua = "0.5"
+tree-sitter-bash = "0.25"
 
 [dev-dependencies]
 tempfile = "3"

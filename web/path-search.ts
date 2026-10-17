@@ -1,6 +1,6 @@
 import { parseSearchQuery, languageMatches, pathMatches } from './search-query.ts';
 
-const languages: Record<string, string> = { md: 'Markdown', typ: 'Typst', js: 'JavaScript', jsx: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', ts: 'TypeScript', tsx: 'TypeScript', py: 'Python', go: 'Go', rs: 'Rust', lua: 'Lua', json: 'JSON', css: 'CSS', html: 'HTML', yml: 'YAML', yaml: 'YAML', sh: 'Shell', ps1: 'PowerShell', c: 'C', h: 'C', cpp: 'C++', java: 'Java', toml: 'TOML', rb: 'Ruby', php: 'PHP', sql: 'SQL', xml: 'XML', svg: 'SVG' };
+const languages: Record<string, string> = { md: 'Markdown', markdown: 'Markdown', typ: 'Typst', js: 'JavaScript', jsx: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', ts: 'TypeScript', tsx: 'TypeScript', py: 'Python', go: 'Go', rs: 'Rust', lua: 'Lua', json: 'JSON', css: 'CSS', html: 'HTML', htm: 'HTML', yml: 'YAML', yaml: 'YAML', sh: 'Shell', bash: 'Shell', ps1: 'PowerShell', pwsh: 'PowerShell', c: 'C', h: 'C', cpp: 'C++', hpp: 'C++', java: 'Java', toml: 'TOML', rb: 'Ruby', php: 'PHP', sql: 'SQL', xml: 'XML', svg: 'SVG' };
 export function filterSearchPaths(paths: readonly string[], query: string) {
   const parsed = parseSearchQuery(query);
   const regex = parsed.regex ? new RegExp(parsed.text, parsed.caseSensitive ? 'u' : 'iu') : null;

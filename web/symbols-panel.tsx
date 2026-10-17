@@ -1,6 +1,7 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActionList } from '@primer/react';
-import { SearchInput } from './search-input.tsx';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { TreeView } from '@primer/react';
+import { buildSymbolTree, symbolBranch, type SymbolTreeNode } from './symbol-tree';
+import { isPlainTreeActivation } from './file-tree.mjs';
 import { activeSymbolId, revealSymbolVertically } from './active-symbol.mjs';
 
 interface OutlineItem {
@@ -15,6 +16,10 @@ interface OutlineItem {
 export interface DocumentSymbol extends OutlineItem {
   id: string;
   group?: boolean;
+}
+
+export function SymbolLevelIcon({ level }: { level?: number }) {
+  return <span className="inline-flex size-3.5 shrink-0 items-center justify-center text-[11px] leading-none font-semibold tracking-[-.04em] text-muted" aria-hidden="true">H{Math.max(1, Number(level) || 1)}</span>;
 }
 
 interface SymbolsPanelProps {
@@ -33,6 +38,9 @@ export function documentSymbols(document: { type: string; html?: string; outline
   if (document.type === 'typst') return (document.outline || []).map((heading, index) => ({
     id: `typst-symbol-${index}`, name: heading.name, level: heading.level, line: heading.line, position: heading.position,
   }));
+  if (document.type === 'text') return (document.outline || []).map((item, index) => ({
+    ...item, id: `code-symbol-${index}`,
+  }));
   if (document.type !== 'markdown') return [];
   const dom = new DOMParser().parseFromString(document.html ?? '', 'text/html');
   return [...dom.querySelectorAll<HTMLElement>(':is(h1,h2,h3,h4,h5,h6)[data-source-line]')]
@@ -42,30 +50,47 @@ export function documentSymbols(document: { type: string; html?: string; outline
     }));
 }
 export function SymbolsPanel({ symbols, status, onSelect, hidden, visible }: SymbolsPanelProps) {
-  const [symbolSearch, setSymbolSearch] = useState('');
   const scrollRef = useRef<HTMLElement>(null);
-  const filteredSymbols = useMemo(() => {
-    const term = symbolSearch.trim().toLocaleLowerCase();
-    return term ? symbols.filter(symbol => symbol.name.toLocaleLowerCase().includes(term)) : symbols;
-  }, [symbols, symbolSearch]);
   const currentSymbol = activeSymbolId(symbols, status);
+  const nodes = useMemo(() => buildSymbolTree(symbols), [symbols]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  useEffect(() => setExpanded({}), [symbols]);
+  useEffect(() => {
+    if (!currentSymbol) return;
+    const branch = symbolBranch(nodes, currentSymbol);
+    if (branch.length) setExpanded(previous => ({ ...previous, ...Object.fromEntries(branch.map(id => [id, true])) }));
+  }, [nodes, currentSymbol]);
   useLayoutEffect(() => {
     if (hidden || !visible || !currentSymbol) return;
     const panel = scrollRef.current;
-    revealSymbolVertically(panel, panel?.querySelector('[aria-current="location"]'));
-  }, [currentSymbol, hidden, visible, symbolSearch]);
+    revealSymbolVertically(panel, panel?.querySelector('[aria-current="true"]'));
+  }, [currentSymbol, hidden, visible, expanded]);
+
+  function renderNode({ symbol, children }: SymbolTreeNode) {
+    const isExpanded = expanded[symbol.id] ?? false;
+    return <TreeView.Item key={symbol.id} id={`outline-tree-${symbol.id}`} className="file-tree-item"
+      current={symbol.id === currentSymbol} expanded={children.length ? isExpanded : undefined}
+      onExpandedChange={value => setExpanded(previous => ({ ...previous, [symbol.id]: value }))}
+      onSelect={event => {
+        if (!isPlainTreeActivation(event)) return;
+        event.preventDefault();
+        if (children.length && !isExpanded) {
+          setExpanded(previous => ({ ...previous, [symbol.id]: true }));
+          return;
+        }
+        if (!symbol.group) onSelect(symbol);
+      }}>
+      <TreeView.LeadingVisual><SymbolLevelIcon level={symbol.level} /></TreeView.LeadingVisual>
+      <span className="file-tree-link symbol-tree-label">{symbol.name}</span>
+      {children.length > 0 && <TreeView.SubTree>{children.map(renderNode)}</TreeView.SubTree>}
+    </TreeView.Item>;
+  }
 
   return <div className="flex min-h-0 flex-1 flex-col [&[hidden]]:hidden" hidden={hidden}>
-    <div className="sidebar-search">
-      <SearchInput size="small" block onClear={() => setSymbolSearch('')} aria-label="Search symbols" placeholder="Search symbols…"
-        value={symbolSearch} onChange={event => setSymbolSearch(event.target.value)} />
-    </div>
-    <nav ref={scrollRef} className="sidebar-scroll" aria-label="Document symbols">
-      {filteredSymbols.length ? <ActionList variant="full">
-        {filteredSymbols.map(symbol => <ActionList.Item className="sidebar-list-item group" key={symbol.id} disabled={symbol.group}
-          active={symbol.id === currentSymbol} aria-current={symbol.id === currentSymbol ? 'location' : undefined}
-          onSelect={() => onSelect(symbol)}><span className="block min-w-0 box-border truncate text-ui font-normal text-fg group-aria-[current=page]:font-semibold group-aria-[current=location]:font-semibold" style={{ paddingInlineStart: `${Math.max(0, (symbol.level || 1) - 1) * 20}px` }}>{symbol.name}</span></ActionList.Item>)}
-      </ActionList> : <div className="sidebar-empty">{symbols.length ? 'No matching symbols' : 'No symbols found'}</div>}
+    <nav ref={scrollRef} className="sidebar-scroll pt-sidebar-top" aria-label="Document symbols">
+      {symbols.length ? <div className="file-tree-view symbol-tree"><TreeView aria-label="Symbol hierarchy">
+        {nodes.map(renderNode)}
+      </TreeView></div> : <div className="sidebar-empty">No symbols found</div>}
     </nav>
   </div>;
 }

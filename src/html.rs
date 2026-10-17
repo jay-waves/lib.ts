@@ -1,3 +1,5 @@
+//! HTML previews run in a sandbox with repository-local resources and restricted network access.
+//! The sandbox is not a separate process: scripts may still consume CPU.
 use crate::{
     AppState, PathQuery, checked_library_path, documents::read_document_source, encode_path,
     encode_query_component, file_kind, json_error, media_type, stream_file, worker_error,

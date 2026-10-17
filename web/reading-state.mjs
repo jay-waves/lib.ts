@@ -1,3 +1,5 @@
+// Bound browser position and pending-sync maps together. Flush on repository switches
+// and page exit as well as the timer; exit synchronization uses keepalive.
 const READING_RECORD_LIMIT = 100;
 const READING_FLUSH_INTERVAL = 2000;
 

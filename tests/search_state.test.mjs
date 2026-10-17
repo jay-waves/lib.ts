@@ -58,3 +58,15 @@ test('a mismatched response snapshot preserves files and reports an error', () =
   assert.deepEqual(state.result.files.map(file => file.path), ['a.ts']);
   assert.equal(state.page.status, 'error');
 });
+
+
+test('expired pagination preserves the old page and requests a fresh search', () => {
+  let state = searchReducer(initialSearchState, { type: 'search-success', result: page('expired', ['a.ts']) });
+  state = searchReducer(state, { type: 'page-start', searchId: 'expired' });
+  state = searchReducer(state, { type: 'page-error', searchId: 'expired', error: 'Search expired', expired: true });
+  assert.equal(state.page.expired, true);
+  assert.deepEqual(state.result.files.map(file => file.path), ['a.ts']);
+  state = searchReducer(state, { type: 'search-start' });
+  state = searchReducer(state, { type: 'search-success', result: page('fresh', ['b.ts']) });
+  assert.deepEqual(state.result.files.map(file => file.path), ['b.ts']);
+});

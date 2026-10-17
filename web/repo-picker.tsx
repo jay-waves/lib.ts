@@ -50,7 +50,7 @@ function DirectoryPicker({ initialPath, onClose, beforeNavigate }: DirectoryPick
   }
   return <dialog ref={dialog} className="box-border w-[min(620px,calc(100vw-32px))] max-h-[calc(100dvh-48px)] overflow-hidden rounded-ui border border-solid border-border bg-surface p-0 font-ui text-ui text-fg open:flex open:flex-col backdrop:bg-black/30 [&_button]:ui-focus [&_button]:font-ui [&_button]:cursor-pointer [&_button:disabled]:opacity-55 [&_button:disabled]:cursor-default" onCancel={event => { event.preventDefault(); if (!adding) onClose(); }}
     aria-label="Add repository">
-    <div className="flex min-h-toolbar flex-none items-center border-0 border-b border-solid border-divider px-6 py-2">
+    <div className="flex min-h-toolbar flex-none items-center border-0 border-b border-solid border-divider px-6 py-3">
       <PathBar items={machine ? directoryPathSegments(directory?.path ?? requestedPath, machine) : []} disabled={adding}
         onNavigate={setRequestedPath} />
     </div>

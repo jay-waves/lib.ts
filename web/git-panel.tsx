@@ -33,14 +33,14 @@ export default function GitPanel({ onSelect, selected, scope, state: { status, l
         <summary className="ui-focus mt-1.5 flex cursor-pointer list-none items-center gap-2 rounded-ui px-2 py-1.5 text-ui hover:bg-hover group-first:mt-0 group-open:[&>svg]:rotate-90">
           <ChevronRightIcon /> {group.label} <CounterLabel>{group.changes.length}</CounterLabel>
         </summary>
-        <ActionList variant="full" aria-label={group.label}>{group.changes.map(change => {
+        <ActionList className="mt-1!" variant="full" aria-label={group.label}>{group.changes.map(change => {
           const label = changeLabel(change.code);
           return <ActionList.Item className="sidebar-list-item" key={change.path} active={selected === change.path && scope === group.id}
             onSelect={() => onSelect(change.path, group.id)}>
             <ActionList.LeadingVisual><FileDiffIcon /></ActionList.LeadingVisual>
             <span className="sidebar-path git-change-path text-ui text-fg"><bdi dir="ltr">{change.path}</bdi></span>
             <ActionList.TrailingVisual>
-              <span className="text-meta font-semibold text-attention data-[kind=Added]:text-success data-[kind=Untracked]:text-success data-[kind=Deleted]:text-danger data-[kind=Conflict]:text-danger" data-kind={label} aria-label={label}>{change.code}</span>
+              <span className="text-meta font-semibold text-attention data-[kind=Added]:text-[var(--git-added-fg)] data-[kind=Untracked]:text-[var(--git-added-fg)] data-[kind=Deleted]:text-[var(--git-deleted-fg)] data-[kind=Conflict]:text-[var(--git-deleted-fg)]" data-kind={label} aria-label={label}>{change.code}</span>
             </ActionList.TrailingVisual>
           </ActionList.Item>;
         })}</ActionList>

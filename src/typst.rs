@@ -63,6 +63,8 @@ fn typst_font_store() -> Arc<FontStore> {
     store
 }
 
+// Keep native TTF/OTF inputs in fonts/manifest.json. Browser WOFF2 assets are
+// separate: the native parser cannot decode webfont containers directly.
 fn build_typst_font_store() -> FontStore {
     let explicit = std::env::var_os("TYPST_FONTS")
         .map(|value| std::env::split_paths(&value).collect::<Vec<_>>());

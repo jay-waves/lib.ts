@@ -1,17 +1,17 @@
 import { cp, mkdir, writeFile } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const run = (command, args) => new Promise((done, fail) => {
-  const child = spawn(command, args, { cwd: root, stdio: 'inherit', windowsHide: true });
+const run = (command, args, options = {}) => new Promise((done, fail) => {
+  const child = spawn(command, args, { cwd: root, stdio: 'inherit', windowsHide: true, ...options });
   child.once('error', fail);
   child.once('exit', code => code === 0 ? done() : fail(new Error(`${command} failed (${code})`)));
 });
 
 await run(process.execPath, [resolve(root, 'node_modules/vite/bin/vite.js'), 'build']);
-await run(process.env.CARGO || 'cargo', ['build', '--release']);
+await run(process.env.CARGO || 'cargo', ['build', '--release', '--locked']);
 
 const platform = `${process.platform}-${process.arch}`;
 const extension = process.platform === 'win32' ? '.exe' : '';
@@ -26,3 +26,9 @@ for (const path of ['fonts', 'LICENSE']) {
 await mkdir(resolve(output, 'data'));
 await writeFile(resolve(output, 'DEPLOY.md'), `# Deployment\n\nThis package contains the native Rust service for ${platform}. No Node.js runtime is required.\n\n1. Copy this directory to the target machine.\n2. Run lib-ts${extension} E:/notes to register and open a repository, or run it without an argument to restore saved repositories.\n3. Open http://127.0.0.1:49191/.\n\nRepository registrations and reading state are stored in data/. Keep that directory when updating. Registered repository paths must exist on the target machine. Do not run multiple service processes against the same data directory.\n\nThe package includes the frontend, Typst fonts, and their licenses. Typst package caches remain machine-local.\n`, 'utf8');
 console.log(`\nDeployment directory: ${output}`);
+
+const archive = `${output}.tar.xz`;
+await run('tar', ['-cJf', archive, '-C', dirname(output), basename(output)], {
+  env: { ...process.env, XZ_OPT: '-9 -T2' },
+});
+console.log(`Deployment archive: ${archive}`);

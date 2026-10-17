@@ -1,7 +1,9 @@
+/* Primer row adapters live here: preserve shared selection/focus rules when upgrading
+   TreeView internals. Path labels clip the start; bdi preserves logical path order. */
 @reference "./tailwind.css";
 
 /* Shared sidebar hierarchy, including the narrow-screen drawer. */
-.sidebar, .sidebar-drawer-header, .sidebar-rail {
+.sidebar, .sidebar-drawer-header, .sidebar-rail, .file-tree-view {
   @apply font-ui text-ui font-normal;
   --sidebar-selection-color: var(--fgColor-accent);
   --control-transparent-bgColor-hover: var(--bgColor-muted);
@@ -13,41 +15,35 @@
 .sidebar input::placeholder { font: inherit; }
 
 /* The search container already supplies the gap before the first list row. */
-.sidebar .sidebar-search:not(.is-collapsed) + .sidebar-scroll { padding-top: 0; }
+.sidebar .sidebar-search + .sidebar-scroll { padding-top: 0; }
 .sidebar .sidebar-search + .sidebar-scroll > section:first-child > .search-facet-title { margin-top: 0; }
 
 /* Keep the Files inset independent of the first row's file or folder content. */
 .sidebar .files-scroll { padding-top: var(--spacing-sidebar-top); }
 
-.sidebar .file-tree-link[aria-current="page"] {
+.file-tree-view .file-tree-link[aria-current="page"] {
   @apply font-semibold;
 }
 
-.sidebar .file-tree-link { @apply block truncate font-ui text-ui font-normal text-inherit no-underline; }
-.sidebar .file-tree-link:hover { text-decoration: none; }
-.sidebar .files-search { display: flex; align-items: center; gap: 4px; flex: none; max-height: 64px; opacity: 1; transform: translateY(0); overflow: hidden; transition: max-height 200ms ease, padding 200ms ease, opacity 150ms ease, transform 200ms ease; }
-.sidebar .files-search > span { flex: 1; min-width: 0; width: 0; }
-.sidebar .files-search.is-collapsed { min-height: 0; max-height: 0; padding-top: 0; padding-bottom: 0; border-bottom: 0; opacity: 0; transform: translateY(18px) scale(.92); pointer-events: none; }
-@media (prefers-reduced-motion: reduce) {
-  .sidebar .files-search { transition: none; }
-}
+.file-tree-view .file-tree-link { @apply block truncate font-ui text-ui font-normal text-inherit no-underline; }
+.file-tree-view .file-tree-link:hover { text-decoration: none; }
 
 /* Shared navigation state and Primer's row adapters. */
 .sidebar .sidebar-list-item,
-.sidebar .file-tree-item > .PRIVATE_TreeView-item-container {
+.file-tree-view .file-tree-item > .PRIVATE_TreeView-item-container {
   @apply relative box-border min-w-0 min-h-row rounded-ui;
 }
 .sidebar .sidebar-list-item:not([data-is-disabled]):hover {
   background: var(--control-transparent-bgColor-hover);
 }
 .sidebar .sidebar-list-item:not([data-is-disabled]):is([data-active="true"], [aria-current="page"], [aria-current="location"]),
-.sidebar .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container {
+.file-tree-view .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container {
   background: var(--bgColor-accent-muted);
 }
 /* Primer supplies its own markers too; suppress them while keeping focus rings. */
 .sidebar .sidebar-list-item::after,
 .sidebar .sidebar-list-item [aria-expanded]::after,
-.sidebar .file-tree-item > .PRIVATE_TreeView-item-container::after {
+.file-tree-view .file-tree-item > .PRIVATE_TreeView-item-container::after {
   content: none !important;
 }
 .sidebar .bookmark-link[aria-current="page"] .sidebar-path,
@@ -56,23 +52,35 @@
 }
 .sidebar .sidebar-list-item:focus-visible,
 .sidebar .sidebar-list-item :focus-visible,
-.sidebar .file-tree-item:focus-visible > .PRIVATE_TreeView-item-container {
+.file-tree-view .file-tree-item:focus-visible > .PRIVATE_TreeView-item-container {
   outline: 2px solid var(--sidebar-selection-color);
   outline-offset: -2px;
 }
-.sidebar .file-tree-item > .PRIVATE_TreeView-item-container {
+.file-tree-view .file-tree-item > .PRIVATE_TreeView-item-container {
   font-size: var(--text-ui);
   line-height: var(--text-ui--line-height);
   --custom-line-height: var(--text-ui--line-height);
   --min-item-height: var(--spacing-row);
   grid-template-columns: var(--spacer-width) var(--leading-action-width) var(--toggle-width) minmax(0, 1fr) auto;
 }
-.sidebar .PRIVATE_TreeView-item-content { min-width: 0; }
-.sidebar .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container > .PRIVATE_TreeView-item-toggle:hover {
+.file-tree-view .PRIVATE_TreeView-item-content { min-width: 0; }
+.file-tree-view .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container > .PRIVATE_TreeView-item-toggle:hover {
   background-color: transparent;
 }
 /* Only the outer box is RTL: bdi keeps the actual path in logical order. */
 .sidebar .sidebar-path { @apply path-label; }
 @media (forced-colors: active) {
-  .sidebar, .sidebar-rail { --sidebar-selection-color: Highlight; }
+  .sidebar, .sidebar-rail, .file-tree-view { --sidebar-selection-color: Highlight; }
+}
+
+/* Match the sidebar row height and typography; only the disclosure icon differs. */
+.search-file-tree .PRIVATE_TreeView-item-toggle svg { width: 12px !important; height: 12px !important; }
+
+/* Match Search title/card insets without changing nested tree indentation. */
+.search-file-tree .file-tree-item > .PRIVATE_TreeView-item-container {
+  padding-inline: 12px;
+}
+
+.symbol-tree .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container .symbol-tree-label {
+  font-weight: 600;
 }

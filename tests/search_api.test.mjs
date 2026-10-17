@@ -20,7 +20,7 @@ test('repository search preserves query encoding, current file and cancellation 
   t.mock.method(globalThis, 'fetch', async (input, init) => { url = new URL(input, 'http://localhost'); options = init; return json(response()); });
   const result = await searchRepository('/notes/api', { ...request, refresh: true }, controller.signal);
   assert.equal(url.pathname, '/notes/api/search');
-  assert.deepEqual(Object.fromEntries(url.searchParams), { q: request.query, currentFile: request.currentFile, refresh: 'true' });
+  assert.deepEqual(Object.fromEntries(url.searchParams), { q: request.query, currentFile: request.currentFile });
   assert.equal(options.signal, controller.signal);
   assert.deepEqual(result, response());
 });
@@ -38,9 +38,9 @@ test('current file scope and snapshot pages preserve their request parameters', 
 });
 
 test('expired snapshots retain the backend message and HTTP status', async t => {
-  t.mock.method(globalThis, 'fetch', async () => json({ error: 'Search expired. Run the search again.' }, 400));
+  t.mock.method(globalThis, 'fetch', async () => json({ error: 'Search expired. Run the search again.' }, 410));
   await assert.rejects(searchRepository('/notes/api', { ...request, searchId: 'snapshot', offset: 20 }),
-    error => error.status === 400 && error.message === 'Search expired. Run the search again.');
+    error => error.status === 410 && error.message === 'Search expired. Run the search again.');
 });
 
 test('malformed responses and mismatched snapshots cannot become search results', async t => {
@@ -66,4 +66,19 @@ test('an unsupported scope from an untyped caller fails instead of searching the
   const mock = t.mock.method(globalThis, 'fetch', async () => json(response()));
   await assert.rejects(searchRepository('/notes/api', { ...request, scope: 'invalid-url-scope', refresh: true }), /Unsupported search scope/);
   assert.equal(mock.mock.callCount(), 0);
+});
+
+
+test('file path search supports empty queries and reuses snapshot pagination', async t => {
+  const urls = [];
+  t.mock.method(globalThis, 'fetch', async input => {
+    urls.push(new URL(input, 'http://localhost'));
+    return json(response({ query: '', textQuery: '', scope: 'paths', files: [], total: 25, nextOffset: 20 }));
+  });
+  await searchRepository('/notes/api', { query: '', currentFile: '', scope: 'paths', refresh: true });
+  await searchRepository('/notes/api', { query: '', currentFile: '', scope: 'paths', searchId: 'snapshot', offset: 20 });
+  assert.equal(urls[0].searchParams.get('scope'), 'paths');
+  assert.equal(urls[0].searchParams.get('q'), '');
+  assert.equal(urls[1].searchParams.get('offset'), '20');
+  assert.equal(urls[1].searchParams.get('searchId'), 'snapshot');
 });

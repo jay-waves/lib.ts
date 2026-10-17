@@ -1,4 +1,7 @@
 //! Shared repository snapshots refreshed by native filesystem events.
+//! Repositories share a serialized snapshot and non-recursive visible-directory watches.
+//! Debounced events rebuild the full visible tree; unchanged snapshots do not emit updates.
+//! Idle subscriptions release watches. Ignore rules and private paths are applied when walking.
 use ignore::WalkBuilder;
 use notify::{EventKind, RecursiveMode, Watcher, event::ModifyKind};
 use serde::Serialize;

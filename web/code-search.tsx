@@ -6,10 +6,13 @@ import { SearchInput } from './search-input';
 import { loadRawHighlighter } from './raw-highlight-loader.mjs';
 import { parseSearchQuery, updateQueryQualifier, normalizeLanguage, cardMatchLines } from './search-query.ts';
 import './code-search.css';
+import { FileTree } from './file-tree-view';
+import { fileTreeFromPaths } from './file-tree.mjs';
 import type { SearchResponse } from './api/contracts';
 import { initialSearchState, searchReducer } from './search-state';
 import { filterSearchPaths } from './path-search';
 import { searchRepository } from './api/search';
+import { ApiError } from './api/client';
 
 type SearchFile = SearchResponse['files'][number];
 type SearchLine = SearchFile['snippets'][number]['lines'][number];
@@ -17,7 +20,7 @@ type Navigate = (path: string, directory?: boolean, line?: number) => void;
 type HighlightRaw = (source: string, path: string) => string;
 type FacetItem = { value: string; count?: number };
 export interface SearchConfig { query: string; scope?: '' | 'current-file' | 'files' | 'bookmarks' | 'symbols' }
-import type { DocumentSymbol } from './symbols-panel';
+import { SymbolLevelIcon, type DocumentSymbol } from './symbols-panel';
 export type SearchSymbol = DocumentSymbol;
 export interface CodeSearchOptions {
   config: SearchConfig;
@@ -110,13 +113,16 @@ function SnippetLines({ lines: sourceLines, path, navigate, highlightRaw }: Snip
   const lines = useMemo(() => sourceLines.map(line => ({ ...line, html: highlightedLine(line, path, highlightRaw) })), [sourceLines, path, highlightRaw]);
   if (!lines.length) return null;
   return <div className="search-snippet" aria-label={`Lines ${lines[0].number}–${lines.at(-1)?.number}`}>
-    {lines.map((line, index) => <div key={line.number} className={`search-code-line ${index > 0 && line.number > lines[index - 1].number + 1 ? 'after-gap' : ''}`}>
+    {lines.map((line, index) => <React.Fragment key={line.number}>
+      {index > 0 && line.number > lines[index - 1].number + 1 && <div className="search-code-gap" aria-hidden="true" />}
+      <div className="search-code-line">
       <a className="search-line-number" href={fileUrl(path, line.number)} aria-label={`Open ${path} at line ${line.number}`}
         onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
           event.preventDefault(); navigate(path, false, line.number); }}>{line.number}</a>
       <code className="hljs" dangerouslySetInnerHTML={{ __html: line.html }} />
       {line.clipped && <span className="search-line-clipped">…</span>}
-    </div>)}
+      </div>
+    </React.Fragment>)}
   </div>;
 }
 
@@ -129,6 +135,18 @@ function Snippet(props: SnippetProps) {
   return <Suspense fallback={<SnippetLines {...props} />}><HighlightedSnippet {...props} /></Suspense>;
 }
 
+function SearchResultsLayout({ label, summary, busy, children }: {
+  label: string;
+  summary?: React.ReactNode;
+  busy?: boolean;
+  children: React.ReactNode;
+}) {
+  return <section className="code-search-results mx-auto mb-9 pt-sidebar-top w-[var(--content-width)] box-border min-w-0" aria-label={label} aria-busy={busy}>
+    {summary && <div className="search-results-title mb-1 flex min-h-row box-border items-center gap-2 px-3 text-[13px] leading-5 [&>span]:text-muted" role="status" aria-live="polite">{summary}</div>}
+    {children}
+  </section>;
+}
+
 function ResultCard({ file, navigate, selected = false, onFocus }: { file: SearchFile; navigate: Navigate; selected?: boolean; onFocus: React.FocusEventHandler<HTMLElement> }) {
   const snippetId = useId();
   const [expanded, setExpanded] = useState(false);
@@ -137,7 +155,7 @@ function ResultCard({ file, navigate, selected = false, onFocus }: { file: Searc
   const lines = useMemo(() => cardMatchLines(file, expanded), [file, expanded]);
   return <article className={`min-w-0 overflow-hidden rounded-lg border border-solid border-border bg-surface${selected ? ' outline-2 outline-solid outline-accent outline-offset-2' : ''}`} aria-label={file.path}
     tabIndex={selected ? 0 : -1} data-search-result onFocus={onFocus}>
-    <header className="flex items-center gap-2 border-0 border-b border-solid border-divider bg-surface px-3 py-2 text-ui [&>svg]:shrink-0 [&>svg]:text-muted [&>a]:flex [&>a]:min-w-0 [&>a]:flex-wrap [&>a]:items-baseline [&>a]:gap-x-2 [&>a]:font-semibold [&>a]:[overflow-wrap:anywhere] max-[960px]:flex-wrap max-[960px]:px-2.5 max-[960px]:[&>a]:flex-1">
+    <header className="flex min-h-row box-border items-center gap-2 border-0 border-b border-solid border-divider bg-surface px-3 py-1 text-ui [&>svg]:shrink-0 [&>svg]:text-muted [&>a]:flex [&>a]:min-w-0 [&>a]:flex-wrap [&>a]:items-baseline [&>a]:gap-x-2 [&>a]:font-semibold [&>a]:[overflow-wrap:anywhere] max-[960px]:flex-wrap max-[960px]:[&>a]:flex-1">
       <FileCodeIcon />
       <Link href={fileUrl(file.path, firstLine)} onClick={event => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -149,16 +167,14 @@ function ResultCard({ file, navigate, selected = false, onFocus }: { file: Searc
       <Snippet lines={lines} path={file.path} navigate={navigate} />
     </div>
     <footer className="bg-subtle text-meta empty:hidden">
+      {file.snippetsTruncated && <p className="m-0 px-3 py-1 text-muted">Preview limited. Open the file to see all matches.</p>}
       {allLines.length > 5 &&
         <button type="button" className="ui-focus flex min-h-row w-full box-border cursor-pointer items-center border-0 border-t border-solid border-divider bg-transparent py-0 ps-0 pe-4 text-start font-ui text-meta leading-5 text-muted hover:bg-selected hover:text-accent focus-visible:bg-selected focus-visible:text-accent" aria-expanded={expanded} aria-controls={snippetId}
           onClick={() => setExpanded(value => !value)}>
           <span className="flex w-14 flex-none items-center justify-end pe-3.5" aria-hidden="true">{expanded ? <FoldIcon size={16} /> : <UnfoldIcon size={16} />}</span>
           <span>{expanded ? 'Show less' : `Show ${allLines.length - 5} more ${allLines.length - 5 === 1 ? 'line' : 'lines'}`}</span>
         </button>}
-      {file.snippetsTruncated && <Link className="block border-0 py-2 ps-14 pe-4 text-meta! text-muted! hover:text-accent! [&:not(:first-child)]:border-t [&:not(:first-child)]:border-solid [&:not(:first-child)]:border-divider" href={fileUrl(file.path, firstLine)} onClick={event => {
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        event.preventDefault(); navigate(file.path, false, firstLine);
-      }}>View all matches</Link>}
+
     </footer>
   </article>;
 }
@@ -199,11 +215,12 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
   const language = syntax.parsed.languages.at(-1) || '';
   const path = syntax.parsed.paths.at(-1)?.value || '';
   const textQuery = syntax.parsed.text;
-  const pathSearch = ['files', 'bookmarks'].includes(scope);
+  const fileSearch = scope === 'files';
+  const pathSearch = fileSearch || scope === 'bookmarks';
   const symbolSearch = scope === 'symbols';
-  const repositoryScope = scope === 'files' || scope === 'bookmarks' || scope === 'symbols' ? '' : scope;
-  let pathResults: ReturnType<typeof filterSearchPaths> = [];
-  if (pathSearch && !syntax.error) pathResults = filterSearchPaths(paths, query);
+  const repositoryScope = fileSearch ? 'paths' : scope === 'bookmarks' || scope === 'symbols' ? '' : scope;
+  const [expandedResultPaths, setExpandedResultPaths] = useState<Record<string, boolean>>({});
+  useEffect(() => setExpandedResultPaths({}), [query, scope]);
   const symbolResults = symbolSearch && !syntax.error ? symbols.filter(symbol => {
     if (!textQuery) return true;
     if (syntax.parsed.regex) {
@@ -218,9 +235,14 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
   const [revision, setRevision] = useState(0);
   const [state, dispatch] = useReducer(searchReducer, initialSearchState);
   const result = state.status === 'ready' ? state.result : null;
+  const pathResults = useMemo(() => fileSearch ? result?.files || []
+    : scope === 'bookmarks' && !syntax.error ? filterSearchPaths(paths, query) : [], [fileSearch, result, scope, syntax.error, paths, query]);
+  const resultTree = useMemo(() => fileTreeFromPaths(pathResults.map(file => file.path)), [pathResults]);
+
   const loading = state.status === 'loading';
   const loadingMore = state.status === 'ready' && state.page.status === 'loading';
   const pageError = state.status === 'ready' && state.page.status === 'error' ? state.page.error : undefined;
+  const pageExpired = state.status === 'ready' && state.page.status === 'error' && state.page.expired;
   const searchError = state.status === 'error' ? state.error : '';
   const [activeResult, setActiveResult] = useState(-1);
   const error = syntax.error || searchError;
@@ -258,7 +280,7 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
     moreRequest.current?.abort();
     moreRequest.current = null;
     scrollRef.current?.scrollTo({ top: 0 });
-    if (pathSearch || symbolSearch || !textQuery.trim() || syntax.error) {
+    if (scope === 'bookmarks' || symbolSearch || (!fileSearch && !textQuery.trim()) || syntax.error) {
       dispatch({ type: 'search-idle' });
       return () => controller.abort();
     }
@@ -272,12 +294,18 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
       if (generation.current !== id || controller.signal.aborted) return;
       snapshot.current = { identity, searchId: value.searchId };
       dispatch({ type: 'search-success', result: value });
-    }).catch(cause => { if (!controller.signal.aborted && generation.current === id) dispatch({ type: 'search-error', error: errorMessage(cause) }); });
+    }).catch(cause => {
+      if (controller.signal.aborted || generation.current !== id) return;
+      if (cached && cause instanceof ApiError && cause.status === 410) {
+        snapshot.current = null;
+        setRevision(value => value + 1);
+      } else dispatch({ type: 'search-error', error: errorMessage(cause) });
+    });
     return () => { controller.abort(); moreRequest.current?.abort(); };
-  }, [active, query, textQuery, currentFile, revision, scope, syntax.error, scrollRef, pathSearch, symbolSearch, repositoryScope]);
+  }, [active, query, textQuery, currentFile, revision, scope, syntax.error, scrollRef, symbolSearch, repositoryScope, fileSearch]);
 
   const loadMore = useCallback(async () => {
-    if (pathSearch || symbolSearch || !result || result.nextOffset === null || moreRequest.current) return;
+    if (scope === 'bookmarks' || symbolSearch || !result || result.nextOffset === null || moreRequest.current) return;
     const id = generation.current;
     const controller = new AbortController();
     moreRequest.current = controller;
@@ -290,21 +318,28 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
       if (generation.current !== id || controller.signal.aborted) return;
       dispatch({ type: 'page-success', searchId: result.searchId, result: page });
     } catch (cause) {
-      if (!controller.signal.aborted && generation.current === id) dispatch({ type: 'page-error', searchId: result.searchId, error: errorMessage(cause) });
+      if (!controller.signal.aborted && generation.current === id) dispatch({ type: 'page-error', searchId: result.searchId, error: errorMessage(cause), expired: cause instanceof ApiError && cause.status === 410 });
     } finally {
       if (moreRequest.current === controller) moreRequest.current = null;
     }
-  }, [result, query, currentFile, repositoryScope, pathSearch, symbolSearch]);
+  }, [result, query, currentFile, repositoryScope, symbolSearch, scope]);
 
   useEffect(() => {
-    if (pathSearch || symbolSearch || !active || !sentinelRef.current || !result || result.nextOffset === null || pageError || loadingMore) return;
+    if (scope === 'bookmarks' || symbolSearch || !active || !sentinelRef.current || !result || result.nextOffset === null || pageError || loadingMore) return;
+    // A collapsed tree can keep the sentinel visible forever; wait for a
+    // directory to open or an explicit request rather than draining every page.
+    if (fileSearch && !query.trim() && !Object.values(expandedResultPaths).some(Boolean)) return;
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) void loadMore();
     }, { root: scrollRef.current, rootMargin: '350px' });
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [active, result, loadMore, loadingMore, pageError, scrollRef, pathSearch, symbolSearch]);
+  }, [active, result, loadMore, loadingMore, pageError, scrollRef, symbolSearch, scope, fileSearch, query, expandedResultPaths]);
 
+  function restartSearch() {
+    snapshot.current = null;
+    setRevision(value => value + 1);
+  }
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = draft.trim();
@@ -349,14 +384,14 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
         onSelect={value => filter('path', value)} />
     </div>
   </>;
-  const results = <section className="code-search-results mx-auto mb-9 pt-sidebar-top w-[var(--content-width)] box-border" aria-label="Search results" aria-busy={loading}>
-    {(loading || result) && <div className="mb-3.5 flex min-h-row items-center gap-2 text-ui [&>span]:text-muted" role="status" aria-live="polite">
-      {loading ? <><Spinner size="small" /> Searching…</> : result ?
-        <><strong>{result.total.toLocaleString()}{result.truncated ? '+' : ''} files</strong><span>· {result.matchCount.toLocaleString()}{result.truncated ? '+' : ''} matches</span></>
-        : null}
-    </div>}
-    {error && <div className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert"><h2>Could not search</h2><p>{error}</p>
-      <Button onClick={() => { snapshot.current = null; setRevision(value => value + 1); }}>Retry search</Button></div>}
+  const pagination = result?.nextOffset != null && <div className="flex min-h-[100px] flex-col items-center justify-center gap-2" ref={sentinelRef}>
+    {pageError && <p role="alert">{pageError}</p>}
+    {loadingMore ? <Spinner size="small" /> : <Button onClick={pageExpired ? restartSearch : loadMore}>{pageExpired ? 'Search again' : pageError ? 'Retry loading' : 'Load more results'}</Button>}
+  </div>;
+  const results = <SearchResultsLayout label="Search results" busy={loading}
+    summary={loading ? <><Spinner size="small" /> Searching…</> : result ?
+      <><strong>{result.total.toLocaleString()}{result.truncated ? '+' : ''} files</strong><span>· {result.matchCount.toLocaleString()}{result.truncated ? '+' : ''} matches</span></> : null}>
+    {error && <div className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert"><h2>Could not search</h2><p>{error}</p></div>}
     {result?.truncated && <p className="mx-auto mb-4 max-w-[1100px] rounded-md border border-solid border-[var(--borderColor-attention-muted)] bg-[var(--bgColor-attention-muted)] p-3 text-ui" role="status">Results are limited. Counts cover the files found so far. Use a more specific query to find more.</p>}
     {!symbolSearch && !textQuery.trim() && !syntax.error && <SearchTips active={active} />}
     {result?.total === 0 && <div className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui"><p>No matching code. Try another term or clear the filters.</p></div>}
@@ -365,29 +400,29 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
       {result?.files.map((file, index) => <ResultCard key={`${result.searchId}:${file.path}`} file={file} navigate={navigate}
         selected={activeResult === index} onFocus={() => setActiveResult(index)} />)}
     </div>
-    {result?.nextOffset != null && <div className="flex min-h-[100px] flex-col items-center justify-center gap-2" ref={sentinelRef}>
-      {pageError && <p role="alert">{pageError}</p>}
-      {loadingMore ? <Spinner size="small" /> : <Button onClick={loadMore}>{pageError ? 'Retry loading' : 'Load more results'}</Button>}
-    </div>}
-  </section>;
-  const filteredResults = <section className="code-search-results mx-auto mb-9 pt-sidebar-top w-[var(--content-width)] box-border" aria-label="Filtered files">
-    <div className="mb-3.5 flex min-h-row items-center gap-2 text-ui [&>span]:text-muted" role="status" aria-live="polite"><strong>{pathResults.length} files</strong></div>
-    {syntax.error && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{syntax.error}</p>}
-    {!syntax.error && !pathResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">No matching files.</p>}
-    <ActionList>{pathResults.map(file => <ActionList.Item key={file.path} onSelect={() => navigate(file.path)}>
+    {pagination}
+  </SearchResultsLayout>;
+  const filteredResults = <SearchResultsLayout label="Filtered files" busy={fileSearch && loading} summary={fileSearch && loading ? <><Spinner size="small" /> Searching…</> : <strong>{fileSearch ? result?.total ?? 0 : pathResults.length}{fileSearch && result?.truncated ? '+' : ''} files</strong>}>
+    {(fileSearch ? error : syntax.error) && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{fileSearch ? error : syntax.error}</p>}
+    {!error && !loading && !pathResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">No matching files.</p>}
+    {scope === 'files' ? <FileTree nodes={resultTree} label="Matching files" selected={currentFile}
+      navigate={navigate} searching={Boolean(query.trim())} variant="results" navigateDirectories={false}
+      expandedPaths={expandedResultPaths} setExpandedPaths={setExpandedResultPaths} />
+      : <ActionList variant="full">{pathResults.map(file => <ActionList.Item className="search-result-item" key={file.path} onSelect={() => navigate(file.path)}>
       <ActionList.LeadingVisual>{scope === 'bookmarks' ? <BookmarkIcon /> : <FileCodeIcon />}</ActionList.LeadingVisual>
       {file.path}
-    </ActionList.Item>)}</ActionList>
-  </section>;
-  const filteredSymbols = <section className="code-search-results mx-auto mb-9 pt-sidebar-top w-[var(--content-width)] box-border" aria-label="Filtered symbols">
-    <div className="mb-3.5 flex min-h-row items-center gap-2 text-ui [&>span]:text-muted" role="status" aria-live="polite"><strong>{symbolResults.length} symbols</strong></div>
+    </ActionList.Item>)}</ActionList>}
+    {fileSearch && result?.truncated && <p className="px-3 text-ui text-muted">Results are limited. Refine the search to find more files.</p>}
+    {fileSearch && pagination}
+  </SearchResultsLayout>;
+  const filteredSymbols = <SearchResultsLayout label="Filtered symbols" summary={<strong>{symbolResults.length} symbols</strong>}>
     {syntax.error && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{syntax.error}</p>}
     {!syntax.error && !symbolResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">{symbols.length ? 'No matching symbols.' : 'No symbols in the current document.'}</p>}
-    <ActionList>{symbolResults.map(symbol => <ActionList.Item key={symbol.id} onSelect={() => onSelectSymbol?.(symbol)}>
-      <ActionList.LeadingVisual><span className="inline-flex size-4 shrink-0 items-center justify-center text-[10px] leading-none font-semibold tracking-[-.04em] text-muted" aria-hidden="true">H{Math.max(1, Number(symbol.level) || 1)}</span></ActionList.LeadingVisual>
+    <ActionList variant="full">{symbolResults.map(symbol => <ActionList.Item className="search-result-item" key={symbol.id} onSelect={() => onSelectSymbol?.(symbol)}>
+      <ActionList.LeadingVisual><SymbolLevelIcon level={symbol.level} /></ActionList.LeadingVisual>
       <span>{symbol.name}</span>
       <ActionList.Description>{symbol.page ? `Page ${symbol.page}` : `Line ${symbol.line}`}</ActionList.Description>
     </ActionList.Item>)}</ActionList>
-  </section>;
+  </SearchResultsLayout>;
   return { sidebar, results: pathSearch ? filteredResults : symbolSearch ? filteredSymbols : results };
 }

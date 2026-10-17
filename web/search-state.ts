@@ -3,7 +3,7 @@ import type { SearchResponse } from './api/contracts';
 type PageState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'error'; error: string };
+  | { status: 'error'; error: string; expired?: boolean };
 
 export type SearchState =
   | { status: 'idle' }
@@ -22,7 +22,7 @@ export type SearchAction =
   | { type: 'search-error'; error: string }
   | { type: 'page-start'; searchId: string }
   | { type: 'page-success'; searchId: string; result: SearchResponse }
-  | { type: 'page-error'; searchId: string; error: string };
+  | { type: 'page-error'; searchId: string; error: string; expired?: boolean };
 
 export const initialSearchState: SearchState = { status: 'idle' };
 
@@ -53,6 +53,6 @@ export function searchReducer(state: SearchState, action: SearchAction): SearchS
       };
     case 'page-error':
       if (state.status !== 'ready' || state.page.status !== 'loading' || state.result.searchId !== action.searchId) return state;
-      return { ...state, page: { status: 'error', error: action.error } };
+      return { ...state, page: { status: 'error', error: action.error, expired: action.expired } };
   }
 }

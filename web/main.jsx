@@ -12,7 +12,6 @@ import React, { useContext, useCallback, useEffect, useLayoutEffect, useMemo, us
 import { createRoot } from 'react-dom/client';
 import { BaseStyles, Button, Spinner } from '@primer/react';
 import { Dialog as SideSheet } from '@primer/react/experimental';
-import { SearchInput } from './search-input.tsx';
 import { FocusCenterIcon, SortDescIcon, FoldIcon, FileDirectoryIcon, SearchIcon, SidebarExpandIcon, ListUnorderedIcon, RepoIcon, GitBranchIcon, BookmarkIcon, HistoryIcon } from '@primer/octicons-react';
 import { useBookmarks } from './bookmarks';
 import { RecentFiles, useRecentFiles } from './recent-files';
@@ -61,10 +60,10 @@ const sidebarViews = [
 
 
 function SidebarRail({ visible, selected, onSelect, drawer = false }) {
-  return <nav className="sidebar-rail col-start-1 row-start-1 flex w-sidebar-rail flex-none box-border flex-col items-center gap-2 border-0 border-e border-solid border-divider bg-subtle px-1 py-1.5" aria-label="Sidebar views">
-    {sidebarViews.map(view => <IconButton unsafeDisableTooltip key={view.id} size="large" variant="invisible"
-      className={`relative size-toolbar! text-muted! [&_svg]:size-5! aria-pressed:bg-selected! aria-pressed:text-fg!${view.id === 'repos' ? ' mt-auto' : ''}`}
-      icon={view.icon} aria-label={view.label}
+  return <nav className="sidebar-rail col-start-1 row-start-1 flex w-sidebar-rail flex-none box-border flex-col items-center gap-3 border-0 border-e border-solid border-divider bg-subtle px-1 pt-3 pb-sidebar-top" aria-label="Sidebar views">
+    {sidebarViews.map(view => <IconButton unsafeDisableTooltip key={view.id} size="medium" variant="invisible"
+      className={`relative size-10! text-muted! [&_svg]:size-6! aria-pressed:bg-selected! aria-pressed:text-fg!${view.id === 'repos' ? ' mt-auto' : ''}`}
+      icon={props => <view.icon {...props} size={24} stroke="currentColor" strokeWidth={0.3} strokeLinejoin="round" />} aria-label={view.label}
       aria-pressed={visible && selected === view.id} aria-controls="sidebar-content"
       onClick={() => onSelect(view.id, !drawer)} />)}
   </nav>;
@@ -114,8 +113,6 @@ function App() {
   const bookmarkState = useBookmarks(active && Boolean(apiBase));
   const [recentOnly, setRecentOnly] = useState(() => Boolean(initialSidebar.recentOnly));
   const [documentRevision, setDocumentRevision] = useState(0);
-  const [search, setSearch] = useState('');
-  const [bookmarkSearch, setBookmarkSearch] = useState('');
   const [expandedPaths, setExpandedPaths] = useState(() => expandedPathEntries(currentPath()));
   const [readerStatus, setReaderStatus] = useState({ view: 'preview', line: null, page: null, pending: true });
   const readerRef = useRef(null);
@@ -144,11 +141,9 @@ function App() {
   const sortLabels = { name: 'name', modified: 'modified time (newest first)' };
   const sortTitle = `Sorted by ${sortLabels[sortMode]}; click to sort by ${sortLabels[nextSortMode]}`;
   const [locateRequest, setLocateRequest] = useState(0);
-  const [fileSearchCollapsed, setFileSearchCollapsed] = useState(() => initialSidebar.fileSearchCollapsed ?? true);
   useEffect(() => {
-    if (active) saveSidebarState(apiBase, { sidebarTab, filesVisible, sidebarWidth, bookmarksOnly, recentOnly, fileSearchCollapsed, sortMode });
-  }, [active, sidebarTab, filesVisible, sidebarWidth, bookmarksOnly, recentOnly, fileSearchCollapsed, sortMode]);
-  const fileSearchRef = useRef(null);
+    if (active) saveSidebarState(apiBase, { sidebarTab, filesVisible, sidebarWidth, bookmarksOnly, recentOnly, sortMode });
+  }, [active, sidebarTab, filesVisible, sidebarWidth, bookmarksOnly, recentOnly, sortMode]);
   const filesScrollRef = useRef(null);
   const filesScrollTop = useRef(0);
   const restoreFilesScroll = useCallback(element => {
@@ -273,8 +268,8 @@ function App() {
   const entries = selectedNode?.type === 'directory' ? selectedNode.children : !selected ? tree?.children : null;
   const filteredTree = useMemo(() => {
     const nodes = sortMode === 'name' ? tree?.children : sortFileTree(tree?.children);
-    return fileTreeForView(nodes, { bookmarksOnly, bookmarks: bookmarkState.bookmarks, query: bookmarksOnly ? bookmarkSearch : search });
-  }, [tree, search, bookmarkSearch, sortMode, bookmarksOnly, bookmarkState.bookmarks]);
+    return fileTreeForView(nodes, { bookmarksOnly, bookmarks: bookmarkState.bookmarks });
+  }, [tree, sortMode, bookmarksOnly, bookmarkState.bookmarks]);
   useLayoutEffect(() => {
     if (!locateRequest) return;
     const panel = filesScrollRef.current;
@@ -306,9 +301,10 @@ function App() {
   }, navigate, active: active && Boolean(apiBase) && searchMode,
     currentFile: selected, scrollRef: mainPanelRef, treeIndex, bookmarks: bookmarkState.bookmarks,
     symbols, onSelectSymbol: jumpToSymbol });
-  function selectSidebarView(id, collapse = true) {
+  function selectSidebarView(id, collapse = true, searchScope) {
     readerRef.current?.capture();
-    if (id === 'search' && currentRouteKind() !== 'search') history.pushState(null, '', searchUrl(repoId, searchConfig.query, searchConfig.scope, selected));
+    if (id === 'search' && searchScope !== undefined) setSearchConfig(config => ({ ...config, scope: searchScope }));
+    if (id === 'search' && currentRouteKind() !== 'search') history.pushState(null, '', searchUrl(repoId, searchConfig.query, searchScope ?? searchConfig.scope, selected));
     else if (id === 'git' && currentRouteKind() !== 'git') history.pushState(null, '', gitUrl(repoId, gitPath || '', gitScope));
     else if (!['search', 'git'].includes(id) && ['search', 'git'].includes(currentRouteKind())) {
       history.pushState(null, '', fileUrl(selected));
@@ -330,32 +326,18 @@ function App() {
           </Suspense>}
           {active && <RepoPicker hidden={sidebarTab !== 'repos'} beforeNavigate={syncReadingPositions} />}
           {sidebarTab === 'search' ? codeSearch.sidebar : sidebarTab === 'files' || bookmarksOnly ? <>
-          {bookmarksOnly && <div className="sidebar-search">
-            <SearchInput size="small" onClear={() => setBookmarkSearch('')}
-              aria-label="Search bookmarks" placeholder="Search bookmarks…"
-              value={bookmarkSearch} onChange={event => setBookmarkSearch(event.target.value)} />
-          </div>}
-          {!bookmarksOnly && !recentOnly && <div
-            className={`sidebar-search files-search ${fileSearchCollapsed ? 'is-collapsed' : ''}`}
-            aria-hidden={fileSearchCollapsed} inert={fileSearchCollapsed ? true : undefined}>
-            <SearchInput ref={fileSearchRef} size="small" clearable clearLabel="Close file search"
-              onClear={() => { setSearch(''); setFileSearchCollapsed(true); }}
-              onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setSearch(''); setFileSearchCollapsed(true); } }}
-              id="files-search-input" aria-label="Search files" placeholder="Go to file"
-              value={search} onChange={event => setSearch(event.target.value)} />
-          </div>}
-          {!bookmarksOnly && (fileSearchCollapsed || recentOnly) && <div className="relative flex min-h-toolbar flex-none box-border items-center justify-center border-0 border-b border-solid border-divider px-2 py-1 [&_button]:flex-none [&_button]:text-muted! [&_button[aria-pressed=true]]:bg-selected! [&_button[aria-pressed=true]]:text-accent!" role="toolbar" aria-label="File tree actions">
-            <div className="flex flex-wrap items-center justify-center gap-2">
+          {!bookmarksOnly && <div className="relative flex min-h-toolbar flex-none box-border items-center justify-center border-0 border-b border-solid border-divider px-[clamp(24px,12%,36px)] py-1 [&_button]:flex-none [&_button]:text-muted! [&_button[aria-pressed=true]]:bg-selected! [&_button[aria-pressed=true]]:text-accent!" role="toolbar" aria-label="File tree actions">
+            <div className="flex w-full flex-wrap items-center justify-between gap-y-2">
             <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={HistoryIcon}
               aria-label={recentOnly ? 'Show all files' : 'Recent Files'}
               aria-pressed={recentOnly} onClick={() => setRecentOnly(value => !value)} />
-            <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={FoldIcon} aria-label={!recentOnly && search.trim() ? 'Clear file search to collapse folders' : 'Collapse all folders'}
+            <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={FoldIcon} aria-label="Collapse all folders"
               disabled={recentOnly ? !HISTORY_GROUPS.some(group => expandedPaths[`history:${group.id}`] !== false)
-                : Boolean(search.trim()) || !Object.values(expandedPaths).some(Boolean)}
+                : !Object.values(expandedPaths).some(Boolean)}
               onClick={() => setExpandedPaths(recentOnly ? Object.fromEntries(HISTORY_GROUPS.map(group => [`history:${group.id}`, false])) : {})} />
             <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={FocusCenterIcon} aria-label="Locate current file" disabled={!selectedNode}
               onClick={() => {
-                setSearch(''); setRecentOnly(false);
+                setRecentOnly(false);
                 setExpandedPaths(paths => ({ ...paths, ...expandedPathEntries(selected) }));
                 setLocateRequest(value => value + 1);
               }} />
@@ -363,12 +345,8 @@ function App() {
               disabled={recentOnly}
               onClick={() => setSortMode(nextSortMode)} />
             <IconButton unsafeDisableTooltip
-              size="small" variant="invisible" icon={SearchIcon} aria-label={search.trim() ? `Search files: ${search}` : 'Search files'}
-              aria-expanded={!fileSearchCollapsed} aria-controls="files-search-input"
-              onClick={() => {
-                setRecentOnly(false); setFileSearchCollapsed(false);
-                requestAnimationFrame(() => fileSearchRef.current?.focus());
-              }} />
+              size="small" variant="invisible" icon={SearchIcon} aria-label="Search"
+              onClick={() => selectSidebarView('search', false, 'files')} />
             </div>
           </div>}
           {bookmarksOnly && bookmarkState.error && <div className="action-error" role="alert">{bookmarkState.error}</div>}
@@ -377,9 +355,9 @@ function App() {
             onScroll={event => { filesScrollTop.current = event.currentTarget.scrollTop; }}>{!bookmarksOnly && recentOnly ? <RecentFiles state={recentState} renderTree={nodes => <FileTree nodes={nodes} label="Browsing history"
               selected={selected} navigate={navigate} expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />} /> : bookmarksOnly && bookmarkState.loading ? <div className="sidebar-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading bookmarks</span></div> : tree ? filteredTree.length ? bookmarksOnly
             ? <BookmarkList files={filteredTree} selected={selected} navigate={navigate} />
-            : <FileTree nodes={filteredTree} label="Notes tree" selected={selected} navigate={navigate} searching={Boolean(search.trim())}
+            : <FileTree nodes={filteredTree} label="Notes tree" selected={selected} navigate={navigate}
               expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />
-            : <div className="sidebar-empty">{bookmarksOnly ? bookmarkSearch.trim() ? 'No matching bookmarks' : bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="sidebar-loading"><Spinner size="small" /></div> : null}</div>
+            : <div className="sidebar-empty">{bookmarksOnly ? bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="sidebar-loading"><Spinner size="small" /></div> : null}</div>
           </> : null}
     <SymbolsPanel symbols={symbols} status={readerStatus} onSelect={jumpToSymbol}
       hidden={sidebarTab !== 'symbols'} visible={filesVisible} />

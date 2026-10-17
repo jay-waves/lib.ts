@@ -10,5 +10,7 @@ extracted without modification from the original Microsoft Core Fonts installer:
 https://downloads.sourceforge.net/project/corefonts/the%20fonts/final/georgi32.exe
 
 manifest.json is the explicit loading list. Listed files are supplied to the native compiler, which also includes default fonts.
-SC aliases are generated as cached name-table adaptations for native file loading;
-the original distributed files remain unchanged. No WASM font metadata build is needed. Keep licenses with redistributed fonts.
+Keep licenses with redistributed fonts.
+
+Frontend code uses Regular and Bold WOFF2 from the official Iosevka 34.9.0 WebFont package, stored in web/fonts with its license. Native Typst continues to use the TTF files listed in manifest.json.
+Source: https://github.com/be5invis/Iosevka/releases/download/v34.9.0/PkgWebFont-Iosevka-34.9.0.zip

@@ -48,7 +48,7 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
         {!['image', 'pdf', 'binary'].includes(document.type) && <button className="ui-tab" role="tab"
           aria-selected={status.view === 'raw'} onClick={() => readerRef.current?.switchView('raw')}>Raw</button>}
       </div>
-      <span className="ms-3 min-w-0 self-center truncate font-code text-[10px] leading-4 text-muted tabular-nums tracking-[-.15px] @max-reader-sm/reader:ms-0 @max-reader-sm/reader:order-3 @max-reader-sm/reader:basis-full" aria-busy={document.lineCount != null && status.pending}>
+      <span className="ms-3 min-w-0 self-center truncate font-code text-ui leading-5 text-muted tabular-nums tracking-[-.15px] @max-reader-sm/reader:ms-0 @max-reader-sm/reader:order-3 @max-reader-sm/reader:basis-full" aria-busy={document.lineCount != null && status.pending}>
         {document.lineCount != null && <>{`${status.line ?? '—'} / ${document.lineCount} lines · `}</>}
         {sizeLabel(document.size)}
         {document.modified && <>{' · '}<time dateTime={document.modified}>
@@ -69,7 +69,7 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
           <ActionList>
             <BookmarkMenu state={bookmarkState} path={document.path} />
             <ActionList.LinkItem href={fileUrl(document.path)} target="_blank" rel="noopener noreferrer">
-              Open in New Tab
+              Open in new tab
             </ActionList.LinkItem>
             <ActionList.LinkItem href={`${apiBase}/asset?path=${encodeURIComponent(document.path)}`}
               target="_blank" rel="noopener noreferrer">

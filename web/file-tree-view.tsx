@@ -16,18 +16,20 @@ interface FileTreeProps {
   selected: string;
   navigate(path: string, directory: boolean): void;
   searching?: boolean;
+  variant?: 'sidebar' | 'results';
+  navigateDirectories?: boolean;
   expandedPaths: Record<string, boolean>;
   setExpandedPaths: Dispatch<SetStateAction<Record<string, boolean>>>;
 }
 
-export function FileTree({ nodes, label, selected, navigate, searching = false, expandedPaths, setExpandedPaths }: FileTreeProps) {
+export function FileTree({ nodes, label, selected, navigate, searching = false, variant = 'sidebar', navigateDirectories = true, expandedPaths, setExpandedPaths }: FileTreeProps) {
   function renderNode(node: FileTreeNode) {
     const directory = node.type === 'directory';
     const expanded = expandedPaths[node.path] ?? (node.virtual || searching);
     function activate(event: MouseEvent | KeyboardEvent) {
       if (!isPlainTreeActivation(event)) return;
       event.preventDefault();
-      if (node.virtual || (directory && !expanded)) {
+      if (node.virtual || (directory && (!navigateDirectories || !expanded))) {
         setExpandedPaths(paths => ({ ...paths, [node.path]: !expanded }));
         return;
       }
@@ -40,11 +42,11 @@ export function FileTree({ nodes, label, selected, navigate, searching = false, 
         expanded={directory ? expanded : undefined}
         onExpandedChange={directory ? expanded => setExpandedPaths(paths => ({ ...paths, [node.path]: expanded })) : undefined}
         onSelect={activate}>
-        <TreeView.LeadingVisual>{directory ? <TreeView.DirectoryIcon /> : <FileTypeIcon name={node.name} />}</TreeView.LeadingVisual>
-        {node.virtual ? <span className="file-tree-link">{node.name}</span> : link}
+        <TreeView.LeadingVisual><span className="inline-flex [&_svg]:size-3.5!">{directory ? <TreeView.DirectoryIcon /> : <FileTypeIcon name={node.name} />}</span></TreeView.LeadingVisual>
+        {node.virtual || (directory && !navigateDirectories) ? <span className="file-tree-link">{node.name}</span> : link}
         {directory && <TreeView.SubTree>{node.children?.map(renderNode)}</TreeView.SubTree>}
       </TreeView.Item>
     );
   }
-  return <TreeView aria-label={label}>{nodes.map(renderNode)}</TreeView>;
+  return <div className={`file-tree-view${variant === 'results' ? ' search-file-tree' : ''}`}><TreeView aria-label={label}>{nodes.map(renderNode)}</TreeView></div>;
 }

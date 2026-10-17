@@ -5,7 +5,7 @@ export function normalizeSidebarState(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const state = {};
   if (views.has(value.sidebarTab)) state.sidebarTab = value.sidebarTab;
-  for (const key of ['filesVisible', 'bookmarksOnly', 'recentOnly', 'fileSearchCollapsed']) {
+  for (const key of ['filesVisible', 'bookmarksOnly', 'recentOnly']) {
     if (typeof value[key] === 'boolean') state[key] = value[key];
   }
   if (Number.isFinite(value.sidebarWidth) && value.sidebarWidth >= 180 && value.sidebarWidth <= 480)

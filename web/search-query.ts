@@ -103,7 +103,7 @@ export function updateQueryQualifier(query: string, kind: QueryQualifier, value:
   return remaining.join(' ');
 }
 
-const aliases: Record<string, string> = { js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', rs: 'rust', cpp: 'c++', cplusplus: 'c++', sh: 'shell', bash: 'shell', md: 'markdown', yml: 'yaml', plain: 'text', plaintext: 'text' };
+const aliases: Record<string, string> = { js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', rs: 'rust', cpp: 'c++', cplusplus: 'c++', sh: 'shell', bash: 'shell', md: 'markdown', yml: 'yaml', plain: 'text', plaintext: 'text' };
 export function normalizeLanguage(value: string) {
   const lower = value.toLowerCase().replace(/[ -]/g, '');
   return aliases[lower] || lower;

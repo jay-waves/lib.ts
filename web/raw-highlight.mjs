@@ -1,7 +1,10 @@
 import hljs from 'highlight.js/lib/common';
 import powershell from 'highlight.js/lib/languages/powershell';
+import excel from 'highlight.js/lib/languages/excel';
 
 hljs.registerLanguage('powershell', powershell);
+// Excel formula syntax only; binary workbooks are handled as file assets.
+hljs.registerLanguage('excel', excel);
 hljs.registerLanguage('bibtex', hljs => ({
   name: 'BibTeX',
   aliases: ['bib'],

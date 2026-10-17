@@ -1,16 +1,17 @@
 /* Based on https://github.com/sindresorhus/github-markdown-css.
  * Code block colors live in highlight.css.
  */
+/* Official Iosevka 34.9.0 WebFont; native Typst TTFs remain in ../../fonts. */
 @font-face {
   font-family: "Iosevka";
-  src: url("../../fonts/Iosevka-Regular.ttf") format("truetype");
+  src: url("../fonts/Iosevka-Regular.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: block;
 }
 @font-face {
   font-family: "Iosevka";
-  src: url("../../fonts/Iosevka-Bold.ttf") format("truetype");
+  src: url("../fonts/Iosevka-Bold.woff2") format("woff2");
   font-style: normal;
   font-weight: 700;
   font-display: block;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sortFileTree, filterBookmarkedTree, isPlainTreeActivation, fileTreeForView, fileListFromPaths } from '../web/file-tree.mjs';
+import { sortFileTree, filterBookmarkedTree, isPlainTreeActivation, fileTreeForView, fileListFromPaths, fileTreeFromPaths } from '../web/file-tree.mjs';
 
 test('modified sorting is recursive, directories first, newest first and leaves the source intact', () => {
   const older = { name: 'a.md', type: 'file', modified: '2026-01-01T00:00:00Z' };
@@ -87,4 +87,17 @@ test('History flattens paths in strict visit order and retains same-named and mi
   assert.ok(nodes.every(node => node.type === 'file' && !node.children));
   assert.deepEqual(fileListFromPaths(['a/b/c.md']), [{ name: 'c.md', path: 'a/b/c.md', type: 'file' }]);
   assert.deepEqual(fileListFromPaths(), []);
+});
+
+
+test('search file tree groups ancestors, preserves full paths and sorts directories first', () => {
+  const paths = ['z.md', 'src/main.rs', 'src/nested/a.rs', 'docs/main.rs', 'src/main.rs', 'file10.ts', 'file2.ts'];
+  const original = [...paths];
+  const tree = fileTreeFromPaths(paths);
+  assert.deepEqual(tree.map(node => node.path), ['docs', 'src', 'file2.ts', 'file10.ts', 'z.md']);
+  assert.deepEqual(tree[1].children.map(node => node.path), ['src/nested', 'src/main.rs']);
+  assert.deepEqual(tree[1].children[0].children, [{ name: 'a.rs', path: 'src/nested/a.rs', type: 'file' }]);
+  assert.equal(tree[0].children[0].path, 'docs/main.rs');
+  assert.deepEqual(paths, original);
+  assert.deepEqual(fileTreeFromPaths([]), []);
 });

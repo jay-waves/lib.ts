@@ -1,4 +1,6 @@
 //! Bounded CPU workers, independent of Tokio's filesystem/blocking pool.
+//! Cancellation skips queued jobs; a running native job cannot be forcibly stopped.
+//! Queue/input budgets bound admitted work, not peak process memory.
 use crate::resources::Cancellation;
 use std::{
     collections::VecDeque,
@@ -175,6 +177,8 @@ impl WorkerPool {
                     if reply.is_closed() {
                         return;
                     }
+                    // Recovery applies only to unwind builds (including Cargo tests).
+                    // Release uses panic=abort, so a panic terminates the process.
                     let value = catch_unwind(AssertUnwindSafe(|| task(cancellation)))
                         .map_err(|_| WorkerError::Panicked);
                     drop(_reservation);

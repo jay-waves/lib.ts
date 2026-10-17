@@ -1,3 +1,6 @@
+//! Host/Origin validation is a browser request boundary, not user authentication.
+//! Load access.json once at startup; public URLs do not implicitly whitelist hosts.
+//! Proxy protocol comes from configuration, not untrusted forwarded headers.
 use axum::http::{HeaderMap, Method, Uri, header, uri::Authority};
 use serde::Deserialize;
 use std::{collections::HashSet, net::IpAddr, path::Path};

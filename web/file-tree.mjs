@@ -72,3 +72,31 @@ export function fileTreeForView(nodes, { bookmarksOnly = false, bookmarks = [], 
   collect(filterBookmarkedTree(nodes, bookmarks));
   return filterFileTree(files, query);
 }
+
+// Rebuild just the matched files and their ancestors without changing source data.
+export function fileTreeFromPaths(paths = []) {
+  const root = [];
+  const directories = new Map();
+  for (const path of new Set(paths)) {
+    const parts = path.split('/');
+    let children = root;
+    for (let index = 0; index < parts.length - 1; index++) {
+      const directoryPath = parts.slice(0, index + 1).join('/');
+      let directory = directories.get(directoryPath);
+      if (!directory) {
+        directory = { name: parts[index], path: directoryPath, type: 'directory', children: [] };
+        directories.set(directoryPath, directory);
+        children.push(directory);
+      }
+      children = directory.children;
+    }
+    children.push({ name: parts.at(-1), path, type: 'file' });
+  }
+  function sort(nodes) {
+    nodes.sort((a, b) => (a.type === b.type ? 0 : a.type === 'directory' ? -1 : 1)
+      || a.name.localeCompare(b.name, undefined, { numeric: true }));
+    for (const node of nodes) if (node.children) sort(node.children);
+    return nodes;
+  }
+  return sort(root);
+}

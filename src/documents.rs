@@ -107,6 +107,7 @@ enum DocumentContent {
         compile: Option<TypstCompilation>,
     },
     Text {
+        outline: Vec<crate::symbols::Symbol>,
         line_count: usize,
         source: String,
     },
@@ -339,7 +340,11 @@ fn load_document(
                     pages: Vec::new(),
                     compile: None,
                 },
-                _ => DocumentContent::Text { line_count, source },
+                _ => DocumentContent::Text {
+                    outline: crate::symbols::extract(&extension, &source),
+                    line_count,
+                    source,
+                },
             }
         }
     };

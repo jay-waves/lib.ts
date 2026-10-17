@@ -1,3 +1,5 @@
+# Main builds the reusable Windows artifact; tags publish the matching commit
+# into a major.minor rolling release instead of rebuilding it.
 name: Windows native build
 
 on:
@@ -218,7 +220,7 @@ jobs:
             core.setOutput('tag', tag);
             core.setOutput('version', version);
             core.setOutput('sha', commit.sha);
-            core.setOutput('asset', `lib.ts-${tag}-windows-x86_64.zip`);
+            core.setOutput('asset', `lib.ts-${tag}-windows-x86_64.tar.xz`);
 
       - name: Find successful main build for this commit
         id: main-build
@@ -270,7 +272,8 @@ jobs:
       - name: Package Windows release
         env:
           RELEASE_ASSET: ${{ steps.series.outputs.asset }}
-        run: zip -r "$RUNNER_TEMP/$RELEASE_ASSET" lib.ts
+          XZ_OPT: "-9 -T2"
+        run: tar -cJf "$RUNNER_TEMP/$RELEASE_ASSET" lib.ts
         working-directory: ${{ runner.temp }}
 
       - name: Publish rolling release

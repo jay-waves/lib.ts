@@ -1,4 +1,6 @@
 //! Native PDF metadata and per-page SVG rendering through Hayro.
+//! Page keys include a fixed revision so an update cannot mix document versions.
+//! Input/SVG cache budgets exclude temporary layout, image and rendering allocations.
 
 use crate::resources::{ByteCache, Cancellation};
 use bytes::Bytes;

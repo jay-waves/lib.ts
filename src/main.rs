@@ -66,6 +66,7 @@ mod render;
 mod repositories;
 mod resources;
 mod search;
+mod symbols;
 mod tree;
 mod typst;
 mod worker;

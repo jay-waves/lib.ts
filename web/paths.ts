@@ -1,3 +1,5 @@
+// Repository route segments are URL encoded independently; API paths stay relative
+// to the repository root. Filesystem breadcrumbs also handle drive and UNC roots.
 type Repository = string | { slug: string };
 
 /** Absolute filesystem breadcrumbs with a machine or network-server entry. */

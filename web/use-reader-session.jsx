@@ -1,3 +1,6 @@
+// Owns restoration, view/scale changes and navigation scheduling for all renderers.
+// Keep only the latest navigation request; do not persist intermediate restoration positions.
+// Tracking and resource watching remain separate from renderer layout.
 import { useContext, useEffect, useRef, useState } from 'react';
 import { SessionActivity } from './session-activity';
 import { apiBase, pageBase } from './urls.mjs';

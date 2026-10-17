@@ -1,7 +1,7 @@
 import { requestJson } from './client.ts';
 import { searchResponseSchema, type SearchResponse } from './contracts.ts';
 
-export type RepositorySearchScope = '' | 'current-file';
+export type RepositorySearchScope = '' | 'current-file' | 'paths';
 export type SearchRequest = {
   query: string;
   currentFile: string;
@@ -16,11 +16,10 @@ export async function searchRepository(
   request: SearchRequest,
   signal?: AbortSignal,
 ): Promise<SearchResponse> {
-  if (request.scope !== '' && request.scope !== 'current-file') throw new Error('Unsupported search scope.');
+  if (request.scope !== '' && request.scope !== 'current-file' && request.scope !== 'paths') throw new Error('Unsupported search scope.');
   const params = new URLSearchParams({ q: request.query, currentFile: request.currentFile });
   if (request.scope) params.set('scope', request.scope);
-  if (request.refresh) params.set('refresh', 'true');
-  else {
+  if (!request.refresh) {
     params.set('searchId', request.searchId);
     if (request.offset !== undefined) {
       if (!Number.isSafeInteger(request.offset) || request.offset < 0) throw new Error('Invalid search offset.');

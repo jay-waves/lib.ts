@@ -1,3 +1,6 @@
+/* Shared UI dimensions and colors belong here; document typography stays in renderer CSS.
+   Keep utility names literal for scanning, and pass dynamic values through inline styles.
+   Toolbar container queries use reader width, not the overall window width. */
 /* Keep Primer and document defaults; deliberately omit Preflight. */
 @layer theme, utilities;
 @import "tailwindcss/theme.css" layer(theme);

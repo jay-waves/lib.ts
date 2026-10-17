@@ -72,3 +72,16 @@ test('opening or switching at line one keeps the PathBar at the document top', (
     }
   }
 });
+
+test('code Symbols navigate to the definition line with the toolbar inset', () => {
+  let movement;
+  const panel = { clientTop: 0, scrollTop: 100,
+    getBoundingClientRect: () => ({ top: 50 }),
+    querySelector: selector => {
+      assert.equal(selector, '#L21');
+      return { getBoundingClientRect: () => ({ top: 500, height: 20 }) };
+    },
+    scrollTo: value => { movement = value; } };
+  assert.equal(navigateReaderSymbol(panel, { type: 'text' }, 'raw', { line: 21 }, 62), true);
+  assert.deepEqual(movement, { top: 488, behavior: 'instant' });
+});

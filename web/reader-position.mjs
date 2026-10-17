@@ -21,7 +21,7 @@ export function restoreReaderPosition(panel, document, view, position, inset) {
 }
 
 export function navigateReaderSymbol(panel, document, view, symbol, inset, updateHeadings) {
-  if (document.type === 'typst' || (document.type === 'markdown' && view === 'raw')) {
+  if (document.type === 'text' || document.type === 'typst' || (document.type === 'markdown' && view === 'raw')) {
     scrollToTypstSource(panel, document, view, symbol.line, inset,
       { position: symbol.position, behavior: 'instant', navigation: 'outline' });
     return true;
