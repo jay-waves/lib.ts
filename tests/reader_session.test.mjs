@@ -67,6 +67,13 @@ test('view policy keeps source-only and preview-only formats consistent with rou
     assert.equal(readerView({ type }, 'raw'), 'raw');
     assert.equal(readerView({ type }, null), 'preview');
   }
-  assert.deepEqual(readerRouteRequest('note.md', '?line=42'), { path: 'note.md', line: 42, view: 'raw' });
-  assert.deepEqual(readerRouteRequest('note.typ', '?line=42&view=preview'), { path: 'note.typ', line: 42, view: 'preview' });
+  assert.deepEqual(readerRouteRequest('note.md', '?line=42'), { path: 'note.md', line: 42, page: null, view: 'raw' });
+  assert.deepEqual(readerRouteRequest('note.typ', '?line=42&view=preview'), { path: 'note.typ', line: 42, page: null, view: 'preview' });
+});
+
+test('page bookmark URLs preserve page coordinates through history navigation', () => {
+  assert.deepEqual(readerRouteRequest('book.pdf', '?page=3&x=0.5&y=0.25'),
+    { path: 'book.pdf', line: null, page: { index: 2, x: 0.5, y: 0.25 }, view: null });
+  assert.equal(readerRouteRequest('book.pdf', '?page=-1').page, null);
+  assert.equal(readerRouteRequest('book.pdf', '?page=2&x=Infinity').page, null);
 });

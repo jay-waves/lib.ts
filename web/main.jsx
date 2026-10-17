@@ -167,7 +167,7 @@ function App() {
   function readerActivity(activity) {
     if (activity.kind === 'position') {
       setReaderStatus(status => ({ view: activity.view, pending: activity.pending,
-        symbolId: activity.symbolId,
+        symbolId: activity.symbolId, bookmarkPage: activity.bookmarkPage,
         line: activity.pending ? status.line : activity.line || null,
         page: activity.pending ? status.page : activity.page || null }));
     }
@@ -253,12 +253,12 @@ function App() {
     const name = selected.split('/').filter(Boolean).at(-1) || tree?.name || 'Notes';
     if (active) window.document.title = name;
   }, [selected, tree?.name, active]);
-  function navigate(path, directory = false, line = null) {
+  function navigate(path, directory = false, line = null, page = null) {
     readerRef.current?.capture();
     setGitPath(null);
     setSidebarTab(tab => tab === 'search' ? 'files' : tab);
-    setReaderRequest({ path, line, view: line ? 'raw' : null });
-    history.pushState(null, '', fileUrl(path, directory) + (line ? `?line=${line}#L${line}` : ''));
+    setReaderRequest({ path, line, page, view: line ? 'raw' : null });
+    history.pushState(null, '', fileUrl(path, directory) + (page ? `?page=${page.index + 1}&x=${page.x}&y=${page.y}` : line ? `?line=${line}#L${line}` : ''));
     setExpandedPaths(paths => ({ ...paths, ...expandedPathEntries(path) }));
     setSelected(path);
     if (narrow) setFilesVisible(false);
@@ -354,7 +354,7 @@ function App() {
           <div className="sidebar-scroll files-scroll" ref={restoreFilesScroll}
             onScroll={event => { filesScrollTop.current = event.currentTarget.scrollTop; }}>{!bookmarksOnly && recentOnly ? <RecentFiles state={recentState} renderTree={nodes => <FileTree nodes={nodes} label="Browsing history"
               selected={selected} navigate={navigate} expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />} /> : bookmarksOnly && bookmarkState.loading ? <div className="sidebar-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading bookmarks</span></div> : tree ? filteredTree.length ? bookmarksOnly
-            ? <BookmarkList files={filteredTree} bookmarks={bookmarkState.bookmarks} selected={selected} navigate={navigate} />
+            ? <BookmarkList files={filteredTree} bookmarks={bookmarkState.bookmarks} selected={selected} request={readerRequest} navigate={navigate} />
             : <FileTree nodes={filteredTree} label="Notes tree" selected={selected} navigate={navigate}
               expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />
             : <div className="sidebar-empty">{bookmarksOnly ? bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="sidebar-loading"><Spinner size="small" /></div> : null}</div>

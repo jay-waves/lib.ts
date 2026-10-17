@@ -1,6 +1,7 @@
 import { requestJson, requestJsonWithResponse } from './client';
 import {
   bookmarksResponseSchema,
+  type Bookmark,
   setBookmarkSchema,
   treeEvents,
   treeSchema,
@@ -17,8 +18,8 @@ export async function getBookmarks(apiBase: string, signal?: AbortSignal) {
   return (await requestJson(`${apiBase}/bookmarks`, bookmarksResponseSchema, { signal })).bookmarks;
 }
 
-export async function setBookmark(apiBase: string, path: string, bookmarked: boolean, line?: number) {
-  const body = setBookmarkSchema.parse({ path, bookmarked, line });
+export async function setBookmark(apiBase: string, path: string, bookmarked: boolean, line?: number, page?: Bookmark['page']) {
+  const body = setBookmarkSchema.parse({ path, bookmarked, line, page });
   return (await requestJson(`${apiBase}/bookmarks`, bookmarksResponseSchema, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },

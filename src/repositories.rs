@@ -6,12 +6,21 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+pub struct BookmarkPage {
+    pub index: u32,
+    pub x: f64,
+    pub y: f64,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Bookmark {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<BookmarkPage>,
     pub updated_at: String,
 }
 
@@ -317,6 +326,7 @@ impl RepositoryStore {
         Ok(Some(output))
     }
 
+    #[cfg(test)]
     pub fn set_bookmark(
         &self,
         id: &str,
@@ -324,6 +334,29 @@ impl RepositoryStore {
         bookmarked: bool,
         line: Option<u32>,
     ) -> Result<Vec<Bookmark>, String> {
+        self.set_position_bookmark(id, path, bookmarked, line, None)
+    }
+
+    pub fn set_position_bookmark(
+        &self,
+        id: &str,
+        path: &str,
+        bookmarked: bool,
+        line: Option<u32>,
+        page: Option<BookmarkPage>,
+    ) -> Result<Vec<Bookmark>, String> {
+        if page
+            .as_ref()
+            .is_some_and(|p| !p.x.is_finite() || !p.y.is_finite())
+            || (page.is_some() && line.is_some())
+        {
+            return Err("Invalid bookmark position.".into());
+        }
+        let line = if page.is_none() {
+            Some(line.unwrap_or(1))
+        } else {
+            None
+        };
         if line == Some(0) {
             return Err("Bookmark line must be positive.".into());
         }
@@ -345,12 +378,19 @@ impl RepositoryStore {
             .iter_mut()
             .find(|repo| repo.id == id || same_slug(&repo.slug, id))
             .ok_or("Repo not found")?;
-        repo.bookmarks
-            .retain(|item| !same_bookmark_path(&item.path, path) || item.line != line);
+        repo.bookmarks.retain(|item| {
+            !same_bookmark_path(&item.path, path)
+                || (item
+                    .line
+                    .or(if item.page.is_none() { Some(1) } else { None })
+                    != line
+                    || item.page != page)
+        });
         if bookmarked {
             repo.bookmarks.push(Bookmark {
                 path: path.into(),
                 line,
+                page,
                 updated_at: now(),
             });
         }
@@ -372,7 +412,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn line_bookmarks_coexist_with_file_bookmarks_and_persist() {
+    fn position_bookmarks_default_to_first_line_and_persist() {
         let temporary = tempfile::tempdir().unwrap();
         let root = temporary.path().join("repo");
         fs::create_dir(&root).unwrap();
@@ -380,6 +420,9 @@ mod tests {
         let store = RepositoryStore::open(&data, Some(&root)).unwrap();
         let id = store.list().unwrap()[0].id.clone();
         store.set_bookmark(&id, "note.md", true, None).unwrap();
+        let first = store.set_bookmark(&id, "note.md", true, Some(1)).unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].line, Some(1));
         store.set_bookmark(&id, "note.md", true, Some(3)).unwrap();
         store.set_bookmark(&id, "note.md", true, Some(8)).unwrap();
         let bookmarks = store.set_bookmark(&id, "note.md", true, Some(3)).unwrap();
@@ -393,6 +436,41 @@ mod tests {
         let bookmarks = reopened.find(&id).unwrap().unwrap().bookmarks;
         assert_eq!(bookmarks.len(), 1);
         assert_eq!(bookmarks[0].line, Some(8));
+    }
+
+    #[test]
+    fn page_bookmarks_deduplicate_and_persist() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("repo");
+        fs::create_dir(&root).unwrap();
+        let data = temporary.path().join("data");
+        let store = RepositoryStore::open(&data, Some(&root)).unwrap();
+        let id = store.list().unwrap()[0].id.clone();
+        let page = BookmarkPage {
+            index: 2,
+            x: 0.5,
+            y: 0.25,
+        };
+        for _ in 0..2 {
+            let items = store
+                .set_position_bookmark(&id, "book.pdf", true, None, Some(page.clone()))
+                .unwrap();
+            assert_eq!(items.len(), 1);
+        }
+        assert!(
+            store
+                .set_position_bookmark(&id, "book.pdf", true, Some(1), Some(page.clone()))
+                .is_err()
+        );
+        let reopened = RepositoryStore::open(&data, None).unwrap();
+        let items = reopened.find(&id).unwrap().unwrap().bookmarks;
+        assert!(items[0].page == Some(page.clone()));
+        assert!(
+            store
+                .set_position_bookmark(&id, "book.pdf", false, None, Some(page))
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

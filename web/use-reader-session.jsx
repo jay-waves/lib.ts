@@ -36,7 +36,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
     // This also handles saved progress without requiring a user scroll.
     selectedSymbol.current = symbolSelectionAt(selectedSymbol.current, panel().scrollTop);
     notify({ kind: 'position', line: position.line || null,
-      page: position.page ? position.page.index + 1 : null, view: state.view, pending: false });
+      page: position.page ? position.page.index + 1 : null, bookmarkPage: position.page, view: state.view, pending: false });
   };
   const scheduleCapture = useReaderTracking({ root, active: active && ready, document, view, capture,
     retry: () => navigation.retry(), onPending: () => notify({ kind: 'position', view: latest.current.view, pending: true }),
@@ -92,7 +92,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
       consumed.current = request;
       const nextView = readerView(document, request.view || view);
       if (nextView !== view) setView(nextView);
-      const position = request.line ? { line: request.line } : initial.current;
+      const position = request.page ? { page: request.page } : request.line ? { line: request.line } : initial.current;
       initial.current = null;
       navigation.request(() => {
         if (latest.current.view !== nextView) return false;

@@ -22,11 +22,12 @@ export const treeSchema = z.object({
 export type FileTree = z.infer<typeof treeSchema> & { revision: string | null };
 
 const bookmarkLine = z.number().int().positive().max(4294967295).optional();
-export const bookmarkSchema = z.object({ path: z.string(), line: bookmarkLine, updatedAt: z.string() });
+const bookmarkPage = z.object({ index: z.number().int().nonnegative().max(4294967295), x: z.number().finite(), y: z.number().finite() }).optional();
+export const bookmarkSchema = z.object({ path: z.string(), line: bookmarkLine, page: bookmarkPage, updatedAt: z.string() });
 export const bookmarksResponseSchema = z.object({ bookmarks: z.array(bookmarkSchema) });
 export type Bookmark = z.infer<typeof bookmarkSchema>;
 
-export const setBookmarkSchema = z.object({ path: z.string(), bookmarked: z.boolean(), line: bookmarkLine });
+export const setBookmarkSchema = z.object({ path: z.string(), bookmarked: z.boolean(), line: bookmarkLine, page: bookmarkPage });
 
 export const recentFilesResponseSchema = z.object({
   recent: z.array(z.string()),

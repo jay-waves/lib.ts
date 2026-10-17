@@ -582,6 +582,7 @@ struct SetBookmarkRequest {
     path: String,
     bookmarked: bool,
     line: Option<u32>,
+    page: Option<repositories::BookmarkPage>,
 }
 
 #[derive(Deserialize)]
@@ -1024,10 +1025,13 @@ async fn set_bookmark(
             Err((status, error)) => return json_error(status, error).into_response(),
         }
     }
-    match state
-        .repositories
-        .set_bookmark(&repo.id, &request.path, request.bookmarked, request.line)
-    {
+    match state.repositories.set_position_bookmark(
+        &repo.id,
+        &request.path,
+        request.bookmarked,
+        request.line,
+        request.page,
+    ) {
         Ok(bookmarks) => Json(serde_json::json!({"bookmarks":bookmarks})).into_response(),
         Err(error) => json_error(StatusCode::BAD_REQUEST, error).into_response(),
     }

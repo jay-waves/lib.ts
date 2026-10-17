@@ -18,7 +18,7 @@ interface DocumentToolbarProps {
     modified?: string;
     lineCount?: number | null;
   };
-  status: { view: 'preview' | 'raw'; line?: number | null; pending?: boolean };
+  status: { view: 'preview' | 'raw'; line?: number | null; pending?: boolean; bookmarkPage?: import('./api/contracts').Bookmark['page'] };
   stuck: boolean;
   readerRef: RefObject<{
     switchView(view: 'preview' | 'raw'): void;
@@ -67,7 +67,7 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
         </ActionMenu.Anchor>
         <ActionMenu.Overlay>
           <ActionList>
-            <BookmarkMenu state={bookmarkState} path={document.path} />
+            <BookmarkMenu state={bookmarkState} path={document.path} line={status.line ?? 1} page={status.bookmarkPage} disabled={status.pending} />
             <ActionList.LinkItem href={fileUrl(document.path)} target="_blank" rel="noopener noreferrer">
               Open in new tab
             </ActionList.LinkItem>

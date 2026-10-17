@@ -5,7 +5,7 @@
 ## 浏览与阅读
 
 - **Files**：浏览目录；顶部提供最近浏览、折叠、定位当前文件、排序和搜索入口。点击搜索图标直接打开 Search 页面。
-- **Bookmarks**：按路径查找书签。通过文件菜单添加或删除书签。
+- **Bookmarks**：按路径查找书签。通过文件菜单按当前阅读位置添加或删除书签；文本使用行号，PDF 和图片使用页内位置。旧文件书签视为首行。
 - **Symbols**：跳转当前文档标题、PDF 书签或代码定义行。代码支持 Rust、JavaScript/TypeScript（含 JSX/TSX）、Python、Go、Java、C/C++、Lua、Shell（Bash/sh/zsh），仅列出当前文件定义。
 - **Repos**：切换仓库，或通过 Add repository 添加目录。
 - **Git**：查看暂存、未暂存及其他变更，点击文件查看 diff。

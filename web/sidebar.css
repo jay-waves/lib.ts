@@ -32,6 +32,7 @@
 .sidebar .sidebar-list-item,
 .file-tree-view .file-tree-item > .PRIVATE_TreeView-item-container {
   @apply relative box-border min-w-0 min-h-row rounded-ui;
+  margin-block: 2px;
 }
 .sidebar .sidebar-list-item:not([data-is-disabled]):hover {
   background: var(--control-transparent-bgColor-hover);
