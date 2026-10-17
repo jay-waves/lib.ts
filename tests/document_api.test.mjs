@@ -14,7 +14,9 @@ test('document contract accepts all formats and both raw and compiled Typst', ()
   const formats = [
     markdown,
     { ...identity, ...metadata, ...source, type: 'markdown' },
-    { ...identity, ...source, type: 'text' },
+    { ...identity, ...source, type: 'text', outline: [] },
+    { ...identity, type: 'text', source: 'class App { run() {} }', lineCount: 1,
+      outline: [{ name: 'App', level: 1, line: 1 }, { name: 'run', level: 2, line: 1 }] },
     { ...identity, ...metadata, ...source, type: 'html', url: '/notes/api/html?path=a.html' },
     { ...identity, ...metadata, type: 'image', mime: 'image/png', format: 'png', url: '/notes/api/asset?path=a.png' },
     { ...identity, ...metadata, type: 'binary', mime: 'application/octet-stream', url: '/notes/api/asset?path=a.bin' },
