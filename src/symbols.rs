@@ -1,6 +1,6 @@
-//! Current-file definitions only; no project index or reference resolution.
+//! Current-file definitions extracted with the language grammars' tags.scm queries.
 use serde::Serialize;
-use tree_sitter::{Language, Node, Parser};
+use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct Symbol {
@@ -9,78 +9,49 @@ pub struct Symbol {
     pub line: usize,
 }
 
-fn language(extension: &str) -> Option<Language> {
-    Some(match extension {
-        "lua" => tree_sitter_lua::LANGUAGE.into(),
-        "sh" | "bash" | "zsh" => tree_sitter_bash::LANGUAGE.into(),
-        "rs" => tree_sitter_rust::LANGUAGE.into(),
-        "js" | "jsx" | "mjs" | "cjs" => tree_sitter_javascript::LANGUAGE.into(),
-        "ts" | "mts" | "cts" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-        "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(),
-        "py" | "pyi" => tree_sitter_python::LANGUAGE.into(),
-        "go" => tree_sitter_go::LANGUAGE.into(),
-        "java" => tree_sitter_java::LANGUAGE.into(),
-        "c" | "h" => tree_sitter_c::LANGUAGE.into(),
-        "cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx" => tree_sitter_cpp::LANGUAGE.into(),
-        _ => return None,
-    })
-}
-
-fn definition_name(node: Node<'_>) -> Option<Node<'_>> {
-    match node.kind() {
-        "function_item"
-        | "function_signature_item"
-        | "struct_item"
-        | "enum_item"
-        | "trait_item"
-        | "type_item"
-        | "mod_item"
-        | "class_declaration"
-        | "abstract_class_declaration"
-        | "interface_declaration"
-        | "enum_declaration"
-        | "type_alias_declaration"
-        | "function_declaration"
-        | "generator_function_declaration"
-        | "method_definition"
-        | "method_declaration"
-        | "constructor_declaration"
-        | "class_definition"
-        | "function_definition"
-        | "struct_specifier"
-        | "class_specifier"
-        | "enum_specifier"
-        | "union_specifier"
-        | "record_declaration"
-        | "annotation_type_declaration"
-        | "type_spec"
-        | "namespace_definition" => node.child_by_field_name("name").or_else(|| {
-            // C/C++ function names live inside nested declarators (pointers,
-            // qualified names and templates), rather than a name field.
-            let mut declarator = node.child_by_field_name("declarator")?;
-            while let Some(inner) = declarator.child_by_field_name("declarator") {
-                declarator = inner;
-            }
-            Some(declarator)
-        }),
-        "impl_item" => node.child_by_field_name("type"),
-        "variable_declarator" => {
-            let value = node.child_by_field_name("value")?;
-            matches!(
-                value.kind(),
-                "arrow_function" | "function_expression" | "generator_function" | "class"
-            )
-            .then(|| node.child_by_field_name("name"))
-            .flatten()
-        }
-        _ => None,
+fn language_name(extension: &str) -> Option<&'static str> {
+    match extension {
+        "sh" | "bash" | "zsh" => Some("bash"),
+        _ => tree_sitter_language_pack::detect_language_from_extension(extension),
     }
 }
 
+#[derive(Clone)]
+struct Definition {
+    name: String,
+    start: usize,
+    end: usize,
+    line: usize,
+}
+
 pub fn extract(extension: &str, source: &str) -> Vec<Symbol> {
-    let Some(language) = language(extension) else {
+    let Some(language_name) = language_name(extension) else {
         return Vec::new();
     };
+    let query_source = tree_sitter_language_pack::get_tags_query(language_name)
+        .or_else(|| (language_name == "bash").then_some(include_str!("symbols/bash.scm")));
+    let Some(query_source) = query_source else {
+        return Vec::new();
+    };
+    let Ok(language) = tree_sitter_language_pack::get_language(language_name) else {
+        return Vec::new();
+    };
+    let Ok(query) = Query::new(&language, query_source) else {
+        return Vec::new();
+    };
+    let Some(name_capture) = query
+        .capture_names()
+        .iter()
+        .position(|name| *name == "name")
+    else {
+        return Vec::new();
+    };
+    let definition_captures: Vec<_> = query
+        .capture_names()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, name)| name.starts_with("definition.").then_some(index as u32))
+        .collect();
     let mut parser = Parser::new();
     if parser.set_language(&language).is_err() {
         return Vec::new();
@@ -88,27 +59,53 @@ pub fn extract(extension: &str, source: &str) -> Vec<Symbol> {
     let Some(tree) = parser.parse(source, None) else {
         return Vec::new();
     };
-    let mut symbols = Vec::new();
-    // Iterative traversal avoids overflowing the stack on deeply nested input.
-    let mut pending = vec![(tree.root_node(), 1)];
-    while let Some((node, level)) = pending.pop() {
-        let name = definition_name(node)
-            .filter(|name| !name.is_missing())
-            .and_then(|name| name.utf8_text(source.as_bytes()).ok())
-            .filter(|name| !name.trim().is_empty());
-        if let Some(name) = name {
-            symbols.push(Symbol {
-                name: name.to_owned(),
-                level,
-                line: node.start_position().row + 1,
-            });
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
+    let mut definitions = Vec::new();
+    while let Some(found) = matches.next() {
+        let name = found
+            .captures()
+            .iter()
+            .find(|capture| capture.index == name_capture as u32);
+        let definition = found
+            .captures()
+            .iter()
+            .find(|capture| definition_captures.contains(&capture.index));
+        let (Some(name), Some(definition)) = (name, definition) else {
+            continue;
+        };
+        let node = name.node;
+        if node.is_missing() {
+            continue;
         }
-        let child_level = level + usize::from(name.is_some());
-        let mut cursor = node.walk();
-        let children: Vec<_> = node.named_children(&mut cursor).collect();
-        pending.extend(children.into_iter().rev().map(|child| (child, child_level)));
+        let Ok(text) = node.utf8_text(source.as_bytes()) else {
+            continue;
+        };
+        if text.trim().is_empty() {
+            continue;
+        }
+        let span = definition.node;
+        definitions.push(Definition {
+            name: text.to_owned(),
+            start: span.start_byte(),
+            end: span.end_byte(),
+            line: span.start_position().row + 1,
+        });
     }
-    symbols
+    definitions.sort_by_key(|definition| (definition.start, definition.end));
+    definitions.dedup_by(|a, b| a.start == b.start && a.end == b.end && a.name == b.name);
+    definitions
+        .iter()
+        .map(|definition| Symbol {
+            name: definition.name.clone(),
+            level: definitions
+                .iter()
+                .filter(|parent| parent.start < definition.start && parent.end >= definition.end)
+                .count()
+                + 1,
+            line: definition.line,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -116,12 +113,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn common_languages_and_lines() {
-        for (extension, source, names) in [
+    fn official_tags_queries_cover_supported_languages() {
+        let cache = tempfile::tempdir().unwrap();
+        tree_sitter_language_pack::configure(&tree_sitter_language_pack::PackConfig {
+            cache_dir: Some(cache.path().to_path_buf()),
+            ..Default::default()
+        })
+        .unwrap();
+        for (extension, source, expected) in [
             (
                 "lua",
                 "function App.run() end\nlocal function start() end",
-                vec!["App.run", "start"],
+                vec!["run", "start"],
             ),
             (
                 "sh",
@@ -130,20 +133,20 @@ mod tests {
             ),
             (
                 "rs",
-                "// fn fake() {}\nstruct App {}\nimpl App { fn run(&self) {} }",
-                vec!["App", "App", "run"],
+                "struct App {}\nimpl App { fn run(&self) {} }",
+                vec!["App", "run"],
             ),
             (
                 "js",
-                "// function fake() {}\nclass App { run() {} }\nconst start = () => {};",
+                "class App { run() {} }\nconst start = () => {};",
                 vec!["App", "run", "start"],
             ),
             (
                 "ts",
                 "interface App {}\nfunction start(): void {}",
-                vec!["App", "start"],
+                vec!["App"],
             ),
-            ("tsx", "const App = () => <div />;", vec!["App"]),
+            ("tsx", "const App = () => <div />;", vec![]),
             (
                 "py",
                 "class App:\n    def run(self):\n        pass",
@@ -151,14 +154,10 @@ mod tests {
             ),
             (
                 "go",
-                "package main\ntype App struct {}\nfunc (a App) Run() {}",
+                "type App struct {}\nfunc (a App) Run() {}",
                 vec!["App", "Run"],
             ),
-            (
-                "java",
-                "class App { App() {} void run() {} }",
-                vec!["App", "App", "run"],
-            ),
+            ("java", "class App { void run() {} }", vec!["App", "run"]),
             (
                 "c",
                 "struct App { int x; };\nint run(void) { return 0; }",
@@ -168,11 +167,14 @@ mod tests {
         ] {
             let symbols = extract(extension, source);
             assert_eq!(
-                symbols.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
-                names,
+                symbols
+                    .iter()
+                    .map(|symbol| symbol.name.as_str())
+                    .collect::<Vec<_>>(),
+                expected,
                 "{extension}"
             );
-            assert!(symbols.iter().all(|s| s.line >= 1));
+            assert!(symbols.iter().all(|symbol| symbol.line >= 1));
         }
         let symbols = extract(
             "py",

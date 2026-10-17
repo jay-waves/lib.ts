@@ -23,12 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install frontend dependencies
@@ -38,7 +38,7 @@ jobs:
         run: npm run build
 
       - name: Upload frontend build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: dist/
@@ -49,7 +49,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Only restore the executable when all Rust build inputs match exactly.
       # Keep embedded assets here in sync with include_str!/include_bytes! in src/.
@@ -57,7 +57,7 @@ jobs:
       # Publishing/frontend workflow edits must not invalidate this cache.
       - name: Restore Windows executable
         id: executable-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/windows-executable
           key: windows-executable-v1-rust-1.99.0-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock', 'build.rs', '.cargo/**', 'rust-toolchain*', 'web/image-theme.css', 'fonts/manifest.json') }}
@@ -123,14 +123,14 @@ jobs:
       # Save immediately after staging, independently of later artifact uploads.
       - name: Save Windows executable
         if: github.ref == 'refs/heads/main' && steps.executable-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ runner.temp }}/windows-executable
           key: ${{ steps.executable-cache.outputs.cache-primary-key }}
 
       - name: Upload Rust build timings
         if: always() && github.event_name != 'pull_request' && steps.executable-cache.outputs.cache-hit != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rust-build-timings
           path: target/cargo-timings/
@@ -139,7 +139,7 @@ jobs:
 
       - name: Upload Windows executable
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-executable
           path: ${{ runner.temp }}/windows-executable/lib-ts.exe
@@ -152,16 +152,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download frontend build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: dist
 
       - name: Download Windows executable
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: windows-executable
           path: target/release
@@ -177,7 +177,7 @@ jobs:
           Copy-Item 'LICENSE' $stage
 
       - name: Upload Windows build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lib.ts
           path: ${{ runner.temp }}/lib.ts
@@ -198,7 +198,7 @@ jobs:
     steps:
       - name: Resolve release series
         id: series
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const version = context.ref.replace('refs/tags/', '');
@@ -224,7 +224,7 @@ jobs:
 
       - name: Find successful main build for this commit
         id: main-build
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -258,7 +258,7 @@ jobs:
             core.setFailed(`Timed out waiting for a successful main build for ${context.sha}.`);
 
       - name: Download Windows build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lib.ts
           path: ${{ runner.temp }}/lib.ts
@@ -277,7 +277,7 @@ jobs:
         working-directory: ${{ runner.temp }}
 
       - name: Publish rolling release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.series.outputs.tag }}
           target_commitish: ${{ steps.series.outputs.sha }}
@@ -291,7 +291,7 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Point rolling tag at the published version
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           ROLLING_TAG: ${{ steps.series.outputs.tag }}
           RELEASE_SHA: ${{ steps.series.outputs.sha }}

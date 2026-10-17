@@ -2077,6 +2077,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         app_directory.join(data_directory)
     };
+    tree_sitter_language_pack::configure(&tree_sitter_language_pack::PackConfig {
+        cache_dir: Some(data_directory.join("grammars")),
+        ..Default::default()
+    })?;
     let repositories = Arc::new(
         repositories::RepositoryStore::open(&data_directory, initial_root.as_deref())
             .map_err(std::io::Error::other)?,
