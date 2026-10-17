@@ -419,7 +419,7 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
     {syntax.error && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{syntax.error}</p>}
     {!syntax.error && !symbolResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">{symbols.length ? 'No matching symbols.' : 'No symbols in the current document.'}</p>}
     <ActionList variant="full">{symbolResults.map(symbol => <ActionList.Item className="search-result-item" key={symbol.id} onSelect={() => onSelectSymbol?.(symbol)}>
-      <ActionList.LeadingVisual><SymbolLevelIcon level={symbol.level} /></ActionList.LeadingVisual>
+      <ActionList.LeadingVisual><SymbolLevelIcon level={symbol.level} kind={symbol.kind} /></ActionList.LeadingVisual>
       <span>{symbol.name}</span>
       <ActionList.Description>{symbol.page ? `Page ${symbol.page}` : `Line ${symbol.line}`}</ActionList.Description>
     </ActionList.Item>)}</ActionList>

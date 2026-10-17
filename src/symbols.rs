@@ -2,9 +2,79 @@
 use serde::Serialize;
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
+const BIBTEX_TAGS_QUERY: &str = r#"
+(key_brace) @name @definition.entry
+(key_paren) @name @definition.entry
+"#;
+
+const JSON_TAGS_QUERY: &str = r#"
+(pair
+  key: (string) @name) @definition.property
+"#;
+
+const YAML_TAGS_QUERY: &str = r#"
+(block_mapping_pair
+  key: (flow_node
+    (plain_scalar
+      (string_scalar) @name))) @definition.property
+(block_mapping_pair
+  key: (flow_node
+    (double_quote_scalar) @name)) @definition.property
+(block_mapping_pair
+  key: (flow_node
+    (single_quote_scalar) @name)) @definition.property
+(flow_pair
+  key: (flow_node
+    (plain_scalar
+      (string_scalar) @name))) @definition.property
+(flow_pair
+  key: (flow_node
+    (double_quote_scalar) @name)) @definition.property
+(flow_pair
+  key: (flow_node
+    (single_quote_scalar) @name)) @definition.property
+"#;
+
+const TOML_TAGS_QUERY: &str = r#"
+(table
+  (bare_key) @name) @definition.module
+(table
+  (dotted_key) @name) @definition.module
+(table_array_element
+  (bare_key) @name) @definition.module
+(table_array_element
+  (dotted_key) @name) @definition.module
+(pair
+  (bare_key) @name) @definition.property
+(pair
+  (dotted_key) @name) @definition.property
+"#;
+
+const SQL_TAGS_QUERY: &str = r#"
+(create_table
+  (object_reference
+    name: (identifier) @name)) @definition.class
+(create_view
+  (object_reference
+    name: (identifier) @name)) @definition.class
+(create_materialized_view
+  (object_reference
+    name: (identifier) @name)) @definition.class
+(create_function
+  (object_reference
+    name: (identifier) @name)) @definition.function
+(create_procedure
+  (object_reference
+    name: (identifier) @name)) @definition.procedure
+(create_type
+  (object_reference
+    name: (identifier) @name)) @definition.type
+"#;
+
 #[derive(Debug, Serialize, PartialEq)]
 pub struct Symbol {
     pub name: String,
+    pub kind: String,
     pub level: usize,
     pub line: usize,
 }
@@ -19,6 +89,7 @@ fn language_name(extension: &str) -> Option<&'static str> {
 #[derive(Clone)]
 struct Definition {
     name: String,
+    kind: String,
     start: usize,
     end: usize,
     line: usize,
@@ -29,7 +100,16 @@ pub fn extract(extension: &str, source: &str) -> Vec<Symbol> {
         return Vec::new();
     };
     let query_source = tree_sitter_language_pack::get_tags_query(language_name)
-        .or_else(|| (language_name == "bash").then_some(include_str!("symbols/bash.scm")));
+        .filter(|query| !query.trim().is_empty())
+        .or_else(|| match language_name {
+            "bash" => Some(include_str!("symbols/bash.scm")),
+            "bibtex" => Some(BIBTEX_TAGS_QUERY),
+            "json" => Some(JSON_TAGS_QUERY),
+            "yaml" => Some(YAML_TAGS_QUERY),
+            "toml" => Some(TOML_TAGS_QUERY),
+            "sql" => Some(SQL_TAGS_QUERY),
+            _ => None,
+        });
     let Some(query_source) = query_source else {
         return Vec::new();
     };
@@ -74,6 +154,13 @@ pub fn extract(extension: &str, source: &str) -> Vec<Symbol> {
         let (Some(name), Some(definition)) = (name, definition) else {
             continue;
         };
+        let Some(kind) = query
+            .capture_names()
+            .get(definition.index as usize)
+            .and_then(|capture| capture.strip_prefix("definition."))
+        else {
+            continue;
+        };
         let node = name.node;
         if node.is_missing() {
             continue;
@@ -81,12 +168,19 @@ pub fn extract(extension: &str, source: &str) -> Vec<Symbol> {
         let Ok(text) = node.utf8_text(source.as_bytes()) else {
             continue;
         };
+        let text = match (language_name, text) {
+            ("json", text) => {
+                serde_json::from_str::<String>(text).unwrap_or_else(|_| text.to_owned())
+            }
+            (_, text) => text.to_owned(),
+        };
         if text.trim().is_empty() {
             continue;
         }
         let span = definition.node;
         definitions.push(Definition {
-            name: text.to_owned(),
+            name: text,
+            kind: kind.to_owned(),
             start: span.start_byte(),
             end: span.end_byte(),
             line: span.start_position().row + 1,
@@ -98,6 +192,7 @@ pub fn extract(extension: &str, source: &str) -> Vec<Symbol> {
         .iter()
         .map(|definition| Symbol {
             name: definition.name.clone(),
+            kind: definition.kind.clone(),
             level: definitions
                 .iter()
                 .filter(|parent| parent.start < definition.start && parent.end >= definition.end)
@@ -125,6 +220,32 @@ mod tests {
                 "lua",
                 "function App.run() end\nlocal function start() end",
                 vec!["run", "start"],
+            ),
+            (
+                "bib",
+                "@article{doe2024, title={A Paper}, author={Doe}}
+@book(keyparen, title={A Book})",
+                vec!["doe2024", "keyparen"],
+            ),
+            (
+                "json",
+                r#"{"name": "App", "nested": {"enabled": true}}"#,
+                vec!["name", "nested", "enabled"],
+            ),
+            (
+                "yaml",
+                "name: App\nnested:\n  enabled: true\n",
+                vec!["name", "nested", "enabled"],
+            ),
+            (
+                "toml",
+                "[server]\nname = \"App\"\n[server.tls]\nenabled = true\n",
+                vec!["server", "name", "server.tls", "enabled"],
+            ),
+            (
+                "sql",
+                "CREATE TABLE users (id INT);\nCREATE VIEW active_users AS SELECT id FROM users;",
+                vec!["users", "active_users"],
             ),
             (
                 "sh",

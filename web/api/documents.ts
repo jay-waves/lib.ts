@@ -20,7 +20,7 @@ export const documentSchema = z.discriminatedUnion('type', [
   z.object({ ...identity, ...metadata, type: z.literal('binary'), mime: z.string(), format: z.string().optional(), url: z.string() }),
   z.object({ ...identity, ...metadata, ...source, type: z.literal('markdown'), html: z.string().optional() }),
   z.object({ ...identity, ...source, type: z.literal('text'),
-    outline: z.array(z.object({ name: z.string(), level: z.number().int().positive(),
+    outline: z.array(z.object({ name: z.string(), kind: z.string().optional(), level: z.number().int().positive(),
       line: z.number().int().positive() })),
   }),
   z.object({ ...identity, ...metadata, type: z.literal('pdf'), revision: z.string(), pages: z.array(pageSchema),

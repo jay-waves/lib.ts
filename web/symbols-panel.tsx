@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { TreeView } from '@primer/react';
+import { CodeIcon, KeyIcon, PackageIcon, WorkflowIcon } from '@primer/octicons-react';
 import { buildSymbolTree, symbolBranch, type SymbolTreeNode } from './symbol-tree';
 import { isPlainTreeActivation } from './file-tree.mjs';
 import { activeSymbolId, revealSymbolVertically } from './active-symbol.mjs';
@@ -15,10 +16,20 @@ interface OutlineItem {
 
 export interface DocumentSymbol extends OutlineItem {
   id: string;
+  kind?: string;
   group?: boolean;
 }
 
-export function SymbolLevelIcon({ level }: { level?: number }) {
+export function SymbolLevelIcon({ level, kind }: { level?: number; kind?: string }) {
+  switch (kind) {
+    case 'function': case 'method': return <CodeIcon size={16} aria-hidden="true" />;
+    case 'procedure': return <WorkflowIcon size={16} aria-hidden="true" />;
+    case 'variable': case 'parameter': case 'constant': case 'property': case 'field': case 'entry':
+      return <KeyIcon size={16} aria-hidden="true" />;
+    case 'class': case 'type': case 'interface': case 'module': case 'namespace':
+      return <PackageIcon size={16} aria-hidden="true" />;
+    default: if (kind) return <CodeIcon size={16} aria-hidden="true" />;
+  }
   return <span className="inline-flex size-3.5 shrink-0 items-center justify-center text-[11px] leading-none font-semibold tracking-[-.04em] text-muted" aria-hidden="true">H{Math.max(1, Number(level) || 1)}</span>;
 }
 
@@ -80,7 +91,7 @@ export function SymbolsPanel({ symbols, status, onSelect, hidden, visible }: Sym
         }
         if (!symbol.group) onSelect(symbol);
       }}>
-      <TreeView.LeadingVisual><SymbolLevelIcon level={symbol.level} /></TreeView.LeadingVisual>
+      <TreeView.LeadingVisual><SymbolLevelIcon level={symbol.level} kind={symbol.kind} /></TreeView.LeadingVisual>
       <span className="file-tree-link symbol-tree-label">{symbol.name}</span>
       {children.length > 0 && <TreeView.SubTree>{children.map(renderNode)}</TreeView.SubTree>}
     </TreeView.Item>;
