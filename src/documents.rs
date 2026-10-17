@@ -48,6 +48,8 @@ struct DocumentResponse {
     path: String,
     absolute_path: String,
     name: String,
+    size: u64,
+    modified: String,
     #[serde(flatten)]
     content: DocumentContent,
 }
@@ -60,50 +62,38 @@ struct DocumentResponse {
 )]
 enum DocumentContent {
     Html {
-        size: u64,
-        modified: String,
         line_count: usize,
         source: String,
         url: String,
     },
     Image {
-        size: u64,
-        modified: String,
         mime: &'static str,
         format: String,
         url: String,
     },
     Pdf {
-        size: u64,
-        modified: String,
         revision: String,
         outline: Vec<pdf::OutlineItem>,
-        pages: Vec<PdfDocumentPage>,
+        pages: Vec<DocumentPage>,
     },
     Binary {
-        size: u64,
-        modified: String,
         mime: &'static str,
         #[serde(skip_serializing_if = "Option::is_none")]
         format: Option<String>,
         url: String,
     },
     Markdown {
-        size: usize,
-        modified: String,
         line_count: usize,
         source: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         html: Option<String>,
     },
     Typst {
-        size: usize,
-        modified: String,
         line_count: usize,
         source: String,
         outline: Vec<typst::OutlineItem>,
         anchors: Vec<typst::SourceAnchor>,
-        pages: Vec<TypstDocumentPage>,
+        pages: Vec<DocumentPage>,
         compile: Option<TypstCompilation>,
     },
     Text {
@@ -115,15 +105,7 @@ enum DocumentContent {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PdfDocumentPage {
-    url: String,
-    width: f64,
-    height: f64,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TypstDocumentPage {
+struct DocumentPage {
     url: String,
     width: f64,
     height: f64,
@@ -233,8 +215,6 @@ fn load_document(
         let source = String::from_utf8(read_document_source(&path)?)
             .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
         DocumentContent::Html {
-            size,
-            modified,
             line_count: source.split('\n').count(),
             source,
             url: format!(
@@ -244,8 +224,6 @@ fn load_document(
         }
     } else if mime.starts_with("image/") {
         DocumentContent::Image {
-            size,
-            modified,
             mime,
             format: detected.format,
             url: format!(
@@ -263,7 +241,7 @@ fn load_document(
             .pages
             .iter()
             .enumerate()
-            .map(|(index, page)| PdfDocumentPage {
+            .map(|(index, page)| DocumentPage {
                 url: format!(
                     "{api_prefix}/api/pdf/page?path={}&page={}",
                     encode_query_component(&requested_path),
@@ -274,16 +252,12 @@ fn load_document(
             })
             .collect();
         DocumentContent::Pdf {
-            size,
-            modified,
             revision,
             outline: info.outline,
             pages,
         }
     } else if detected.binary {
         DocumentContent::Binary {
-            size,
-            modified,
             mime,
             format: Some(detected.format),
             url: format!(
@@ -295,8 +269,6 @@ fn load_document(
         let bytes = read_document_source(&path)?;
         if !file_kind::is_text(&bytes) {
             DocumentContent::Binary {
-                size,
-                modified,
                 mime: "application/octet-stream",
                 format: None,
                 url: format!(
@@ -318,16 +290,12 @@ fn load_document(
                         )
                     };
                     DocumentContent::Markdown {
-                        size: source.len(),
-                        modified,
                         line_count,
                         source,
                         html,
                     }
                 }
                 "typ" => DocumentContent::Typst {
-                    size: source.len(),
-                    modified,
                     line_count,
                     source,
                     outline: Vec::new(),
@@ -347,6 +315,8 @@ fn load_document(
         path: requested_path.to_owned(),
         absolute_path,
         name,
+        size,
+        modified,
         content: response,
     })
 }
@@ -382,7 +352,7 @@ async fn compile_document(
                 .pages
                 .iter()
                 .enumerate()
-                .map(|(index, page)| TypstDocumentPage {
+                .map(|(index, page)| DocumentPage {
                     url: format!(
                         "{api_prefix}/api/typst/page?id={}&page={}",
                         compiled.id,
@@ -422,4 +392,39 @@ async fn compile_document(
         }
     }
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn document_metadata_stays_flat_with_typed_content() {
+        let response = DocumentResponse {
+            path: "example.ts".into(),
+            absolute_path: "/notes/example.ts".into(),
+            name: "example.ts".into(),
+            size: 0,
+            modified: "2026-10-17T00:00:00Z".into(),
+            content: DocumentContent::Text {
+                outline: Vec::new(),
+                line_count: 0,
+                source: String::new(),
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            serde_json::json!({
+                "path": "example.ts",
+                "absolutePath": "/notes/example.ts",
+                "name": "example.ts",
+                "size": 0,
+                "modified": "2026-10-17T00:00:00Z",
+                "type": "text",
+                "outline": [],
+                "lineCount": 0,
+                "source": "",
+            })
+        );
+    }
 }

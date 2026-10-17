@@ -11,23 +11,23 @@ const diagnosticSchema = z.object({
   range: z.object({ start: diagnosticPositionSchema, end: diagnosticPositionSchema }).nullable(),
 });
 const identity = { path: z.string(), absolutePath: z.string(), name: z.string() };
-const metadata = { size: z.number().int().nonnegative(), modified: z.string() };
+const documentBase = z.object({ ...identity, size: z.number().int().nonnegative(), modified: z.string() });
 const source = { lineCount: z.number().int().nonnegative(), source: z.string() };
 
 export const documentSchema = z.discriminatedUnion('type', [
-  z.object({ ...identity, ...metadata, ...source, type: z.literal('html'), url: z.string() }),
-  z.object({ ...identity, ...metadata, type: z.literal('image'), mime: z.string(), format: z.string(), url: z.string() }),
-  z.object({ ...identity, ...metadata, type: z.literal('binary'), mime: z.string(), format: z.string().optional(), url: z.string() }),
-  z.object({ ...identity, ...metadata, ...source, type: z.literal('markdown'), html: z.string().optional() }),
-  z.object({ ...identity, ...source, type: z.literal('text'),
+  documentBase.extend({ ...source, type: z.literal('html'), url: z.string() }),
+  documentBase.extend({ type: z.literal('image'), mime: z.string(), format: z.string(), url: z.string() }),
+  documentBase.extend({ type: z.literal('binary'), mime: z.string(), format: z.string().optional(), url: z.string() }),
+  documentBase.extend({ ...source, type: z.literal('markdown'), html: z.string().optional() }),
+  documentBase.extend({ ...source, type: z.literal('text'),
     outline: z.array(z.object({ name: z.string(), kind: z.string().optional(), level: z.number().int().positive(),
       line: z.number().int().positive() })),
   }),
-  z.object({ ...identity, ...metadata, type: z.literal('pdf'), revision: z.string(), pages: z.array(pageSchema),
+  documentBase.extend({ type: z.literal('pdf'), revision: z.string(), pages: z.array(pageSchema),
     outline: z.array(z.object({ name: z.string(), level: z.number().int().nonnegative(),
       page: z.number().int().positive().optional(), y: z.number().optional() })),
   }),
-  z.object({ ...identity, ...metadata, ...source, type: z.literal('typst'), pages: z.array(pageSchema),
+  documentBase.extend({ ...source, type: z.literal('typst'), pages: z.array(pageSchema),
     outline: z.array(z.object({ name: z.string(), level: z.number().int().nonnegative(),
       line: z.number().int().positive(), position: positionSchema.nullable() })),
     anchors: z.array(z.object({ line: z.number().int().positive(), page: z.number().int().positive(),

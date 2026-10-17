@@ -6,16 +6,12 @@ import { BookmarkMenu } from './bookmarks';
 import { apiBase, fileUrl } from './urls.mjs';
 import { hasDocumentViewport } from './preview-kind.mjs';
 import { formatRelativeModified } from './time-labels.mjs';
+import type { LibraryDocument } from './api/documents';
 import type { BookmarkState } from './bookmarks';
 import { useClipboard } from './use-clipboard';
 
 interface DocumentToolbarProps {
-  document: {
-    path: string;
-    absolutePath?: string;
-    type: string;
-    size: number;
-    modified?: string;
+  document: Pick<LibraryDocument, 'path' | 'absolutePath' | 'type' | 'size' | 'modified'> & {
     lineCount?: number | null;
   };
   status: { view: 'preview' | 'raw'; line?: number | null; pending?: boolean; bookmarkPage?: import('./api/contracts').Bookmark['page'] };

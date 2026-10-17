@@ -14,8 +14,8 @@ test('document contract accepts all formats and both raw and compiled Typst', ()
   const formats = [
     markdown,
     { ...identity, ...metadata, ...source, type: 'markdown' },
-    { ...identity, ...source, type: 'text', outline: [] },
-    { ...identity, type: 'text', source: 'class App { run() {} }', lineCount: 1,
+    { ...identity, ...metadata, ...source, type: 'text', outline: [] },
+    { ...identity, ...metadata, type: 'text', source: 'class App { run() {} }', lineCount: 1,
       outline: [{ name: 'App', level: 1, line: 1 }, { name: 'run', level: 2, line: 1 }] },
     { ...identity, ...metadata, ...source, type: 'html', url: '/notes/api/html?path=a.html' },
     { ...identity, ...metadata, type: 'image', mime: 'image/png', format: 'png', url: '/notes/api/asset?path=a.png' },
@@ -33,7 +33,14 @@ test('document contract accepts all formats and both raw and compiled Typst', ()
         range: { start: { line: 1, column: 1 }, end: { line: 1, column: 2 } } },
     ] } },
   ];
-  for (const format of formats) assert.deepEqual(documentSchema.parse(format), format);
+  for (const format of formats) {
+    assert.deepEqual(documentSchema.parse(format), format);
+    for (const key of ['path', 'absolutePath', 'name', 'size', 'modified']) {
+      const missing = { ...format };
+      delete missing[key];
+      assert.equal(documentSchema.safeParse(missing).success, false, `${format.type} requires ${key}`);
+    }
+  }
   const { lineCount, ...wrongField } = markdown;
   assert.equal(documentSchema.safeParse({ ...wrongField, line_count: lineCount }).success, false);
   assert.equal(documentSchema.safeParse({ ...markdown, type: 'unknown' }).success, false);
@@ -99,4 +106,18 @@ test('document SSE validates payloads, preserves assets and reconnects after vis
   assert.deepEqual(received.at(-1), ['connected', { modified: 'new revision' }]);
   subscription.close();
   assert.equal(streams[1].closed, true);
+});
+
+
+test('text documents preserve byte size and require file metadata', () => {
+  for (const content of ['', 'const 名称 = "你好";\n']) {
+    const text = { ...identity, ...metadata, type: 'text', source: content,
+      size: Buffer.byteLength(content), lineCount: content ? 1 : 0, outline: [] };
+    assert.deepEqual(documentSchema.parse(text), text);
+    for (const key of ['size', 'modified']) {
+      const missing = { ...text };
+      delete missing[key];
+      assert.equal(documentSchema.safeParse(missing).success, false);
+    }
+  }
 });
