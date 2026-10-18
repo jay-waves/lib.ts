@@ -48,6 +48,11 @@ export type DirectoryListing = z.infer<typeof directoryListingSchema>;
 
 export const openDirectoryResponseSchema = z.object({ ok: z.literal(true) });
 
+export const mediaDimensionsResponseSchema = z.object({
+  dimensions: z.record(z.string(), z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).nullable()),
+});
+export type MediaDimensionsResponse = z.infer<typeof mediaDimensionsResponseSchema>;
+
 export const repositoryMetadataSchema = z.object({
   id: z.string(),
   slug: z.string(),

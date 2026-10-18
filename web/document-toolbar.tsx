@@ -9,6 +9,7 @@ import { formatRelativeModified } from './time-labels.mjs';
 import type { LibraryDocument } from './api/documents';
 import type { BookmarkState } from './bookmarks';
 import { useClipboard } from './use-clipboard';
+import { FileToolbar } from './file-toolbar';
 
 interface DocumentToolbarProps {
   document: Pick<LibraryDocument, 'path' | 'absolutePath' | 'type' | 'size' | 'modified'> & {
@@ -36,8 +37,7 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
   const { copied, error, copy } = useClipboard();
   return <>
     {error && <div className="action-error" role="alert">{error}</div>}
-    <div className="pointer-events-none h-px flex-none -mb-px" ref={sentinelRef} aria-hidden="true" />
-    <div className="file-toolbar ui-toolbar flex-none items-stretch gap-2">
+    <FileToolbar sentinelRef={sentinelRef} className="items-stretch gap-2">
       <div className="-mb-px flex flex-none items-stretch gap-2 @max-reader-sm/reader:mb-0 @max-reader-sm/reader:min-h-8" role="tablist" aria-label="File view">
         {document.type !== 'text' && <button className="ui-tab" role="tab"
           aria-selected={status.view === 'preview'} onClick={() => readerRef.current?.switchView('preview')}>Preview</button>}
@@ -82,6 +82,6 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
       </ActionMenu>
 
       </div>
-    </div>
+    </FileToolbar>
   </>;
 }

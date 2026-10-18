@@ -120,6 +120,9 @@ export function restorePagePosition(panel, saved, x, y) {
   const page = panel.querySelectorAll('.document-page[data-page]')[saved?.index];
   if (!page) return;
   const rect = page.getBoundingClientRect();
-  panel.scrollBy({ left: rect.left + saved.x * rect.width - x,
+  const horizontal = panel.querySelector?.('.document-viewer') || panel;
+  const left = rect.left + saved.x * rect.width - x;
+  if (horizontal !== panel) horizontal.scrollBy({ left, behavior: 'instant' });
+  panel.scrollBy({ left: horizontal === panel ? left : 0,
     top: rect.top + saved.y * rect.height - y, behavior: 'instant' });
 }

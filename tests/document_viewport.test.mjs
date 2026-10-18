@@ -18,6 +18,7 @@ function fixture(options = {}) {
   const captures = new Set(), zooms = [];
   let scale = .8;
   const viewport = Object.assign(new EventTarget(), {
+    ownerDocument: new EventTarget(), contains: target => target === viewport, matches: () => false,
     scrollLeft: 250, scrollTop: 400, clientWidth: 800, clientHeight: 600,
     classList: { add() {}, remove() {} }, focus() {},
     getBoundingClientRect: () => ({ left: 20, top: 30 }),
@@ -25,6 +26,7 @@ function fixture(options = {}) {
     releasePointerCapture: id => captures.delete(id),
     scrollTo: value => { viewport.scrollLeft = value.left; viewport.scrollTop = value.top; },
   });
+  viewport.ownerDocument.activeElement = viewport;
   const dispose = bindViewportGestures(viewport, {
     getScale: () => scale,
     zoom: (next, point, previous) => { scale = next; zooms.push({ next, point, previous }); },
@@ -34,7 +36,11 @@ function fixture(options = {}) {
     const event = new Event(type, { cancelable: true });
     Object.assign(event, { pointerId: 1, pointerType: 'mouse', button: 1, clientX: 300, clientY: 200,
       deltaMode: 0, deltaY: -100, ...props });
-    viewport.dispatchEvent(event); return event;
+    if (type === 'keydown') {
+      Object.defineProperty(event, 'target', { value: viewport });
+      viewport.ownerDocument.dispatchEvent(event);
+    } else viewport.dispatchEvent(event);
+    return event;
   }
   return { viewport, zooms, captures, send, dispose };
 }
@@ -140,5 +146,17 @@ test('PathBar links and toolbar controls do not start a document pan', () => {
   assert.equal(f.send('pointerdown').defaultPrevented, false);
   assert.equal(f.send('pointerdown', { pointerType: 'touch' }).defaultPrevented, false);
   assert.equal(f.captures.size, 0);
+  f.dispose();
+});
+
+
+test('panning keeps horizontal movement inside the canvas and vertical movement on the page', () => {
+  const horizontal = { scrollLeft: 250, scrollTo(value) { this.scrollLeft = value.left; } };
+  const f = fixture({ horizontalViewport: horizontal });
+  f.send('pointerdown');
+  f.send('pointermove', { clientX: 350, clientY: 240 });
+  assert.equal(horizontal.scrollLeft, 200);
+  assert.equal(f.viewport.scrollLeft, 0);
+  assert.equal(f.viewport.scrollTop, 360);
   f.dispose();
 });

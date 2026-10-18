@@ -13,6 +13,7 @@
     "highlight.js": "11.11.1",
     "katex": "0.16.28",
     "lru-cache": "11.5.3",
+    "react-photo-album": "^3.6.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {

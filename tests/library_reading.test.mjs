@@ -140,3 +140,14 @@ test('a visible page joins its existing prefetch without aborting or sending ano
   release(); assert.equal(await foreground, '<svg/>');
   assert.equal(requests, 1);
 });
+
+
+test('zoom compensation moves the canvas horizontally without moving the outer frame', () => {
+  const horizontal = [], vertical = [];
+  const canvas = { scrollBy: value => horizontal.push(value) };
+  const page = { getBoundingClientRect: () => ({ left: 20, top: 50, width: 1200, height: 1800 }) };
+  const panel = { querySelectorAll: () => [page], querySelector: () => canvas, scrollBy: value => vertical.push(value) };
+  restorePagePosition(panel, { index: 0, x: .5, y: .25 }, 300, 350);
+  assert.deepEqual(horizontal, [{ left: 320, behavior: 'instant' }]);
+  assert.deepEqual(vertical, [{ left: 0, top: 150, behavior: 'instant' }]);
+});

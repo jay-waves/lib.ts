@@ -79,6 +79,7 @@ struct AppState {
     dist: Arc<PathBuf>,
     document_workers: worker::WorkerPool,
     media_workers: worker::WorkerPool,
+    media_metadata: Arc<media::MetadataService>,
     rendering: Arc<render::RenderService>,
     shutdown: tokio::sync::watch::Sender<bool>,
     html: html::Service,
@@ -1588,6 +1589,57 @@ async fn serve_media_path(path: PathBuf, request: Request) -> Response {
 }
 
 #[derive(Deserialize)]
+struct MediaDimensionsRequest {
+    paths: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct MediaDimensionsResponse {
+    dimensions: std::collections::HashMap<String, Option<media::Dimensions>>,
+}
+
+async fn media_dimensions(
+    State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+    Json(request): Json<MediaDimensionsRequest>,
+) -> Response {
+    if request.paths.len() > 512 {
+        return json_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "At most 512 media paths are allowed",
+        )
+        .into_response();
+    }
+    let root = state.root_for_uri(uri.path());
+    let private = state.data_directory.clone();
+    let mut paths = Vec::with_capacity(request.paths.len());
+    for value in request.paths {
+        let path = match checked_library_path(&root, &value, &private) {
+            Ok(path) => path,
+            Err((status, message)) => return json_error(status, message).into_response(),
+        };
+        if !path.is_file() {
+            return json_error(StatusCode::BAD_REQUEST, "Media path is not a file").into_response();
+        }
+        paths.push((value, path));
+    }
+    let metadata = state.media_metadata.clone();
+    match state
+        .media_workers
+        .run(move || {
+            paths
+                .into_iter()
+                .map(|(key, path)| (key, metadata.dimensions(&path)))
+                .collect::<std::collections::HashMap<_, _>>()
+        })
+        .await
+    {
+        Ok(dimensions) => Json(MediaDimensionsResponse { dimensions }).into_response(),
+        Err(error) => worker_error(error),
+    }
+}
+
+#[derive(Deserialize)]
 struct ThumbnailQuery {
     path: String,
     #[serde(default)]
@@ -2071,6 +2123,7 @@ fn build_router(state: AppState) -> Router {
         .route("/html-resource/{token}/{*path}", get(html::html_resource))
         .route("/asset", get(asset))
         .route("/thumbnail", get(media_thumbnail))
+        .route("/media/dimensions", axum::routing::post(media_dimensions))
         .route("/media", get(media_file))
         .route("/pdf/page", get(pdf_page))
         .route("/typst/page", get(typst_page))
@@ -2194,6 +2247,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState {
         document_workers: worker::WorkerPool::new("document", 1, 16),
         media_workers: worker::WorkerPool::new("media", 1, 256),
+        media_metadata: Arc::new(media::MetadataService::default()),
         rendering: Arc::new(render::RenderService::default()),
         shutdown: tokio::sync::watch::channel(false).0,
         root: Arc::new(root),

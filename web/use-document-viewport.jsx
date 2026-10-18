@@ -7,8 +7,11 @@ import { useReader } from './reader-context.jsx';
 export function useDocumentViewport(layout) {
   const { viewport: { scale, onScale, fitRequest } } = useReader();
   const { pageCount, initialFit } = layout;
-  const ref = useRef(null), pending = useRef(null), current = useRef(null);
-  const attach = useCallback(element => { ref.current = element?.closest('.main-panel') || null; }, []);
+  const ref = useRef(null), canvas = useRef(null), pending = useRef(null), current = useRef(null);
+  const attach = useCallback(element => {
+    canvas.current = element;
+    ref.current = element?.closest('.main-panel') || null;
+  }, []);
   const active = useContext(SessionActivity);
   const initiallyFitted = useRef(false);
   const lastFitRequest = useRef(fitRequest);
@@ -71,9 +74,8 @@ export function useDocumentViewport(layout) {
     return () => cancelAnimationFrame(frame);
   }, [initialFit, active, pageCount, fitAndRecenter]);
   useLayoutEffect(() => {
-    const viewport = ref.current;
-    // The shell is the native two-axis viewport; the document's scaled width
-    // expands its content without introducing a nested vertical scroller.
+    const viewport = canvas.current;
+    // Only the canvas expands; the page frame and toolbar retain their width.
     viewport.style.setProperty('--document-width', `${layout.contentWidth * scale + 48}px`);
     return () => viewport.style.removeProperty('--document-width');
   }, [layout.contentWidth, scale]);
@@ -91,7 +93,7 @@ export function useDocumentViewport(layout) {
     pending.current = null;
   }, [scale, revision]);
   useEffect(() => bindViewportGestures(ref.current, {
-    zoom, getScale: () => current.current.scale,
+    zoom, getScale: () => current.current.scale, horizontalViewport: canvas.current,
     isEnabled: () => ref.current?.classList.contains('document-viewport'),
   }), []);
   return { ref: attach, scale };

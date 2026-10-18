@@ -1,3 +1,5 @@
+import { bindZoomInput } from './zoom-input.mjs';
+
 export const clampScale = scale => Math.min(4, Math.max(.2, scale));
 
 export function fitDocumentPage(width, height, viewportWidth, viewportHeight) {
@@ -9,8 +11,8 @@ export function fitDocumentPage(width, height, viewportWidth, viewportHeight) {
   return { mode, scale: clampScale(mode === 'page' ? fitPage : fitWidth) };
 }
 
-// All gestures operate on the same native two-axis scroll viewport.
-export function bindViewportGestures(viewport, { zoom, getScale, isEnabled = () => true }) {
+// Vertical movement scrolls the page; horizontal movement stays inside the canvas.
+export function bindViewportGestures(viewport, { zoom, getScale, isEnabled = () => true, horizontalViewport = viewport }) {
   const pointers = new Map();
   let pan = null, pinch = null, suppressClick = false;
   const center = () => {
@@ -20,14 +22,6 @@ export function bindViewportGestures(viewport, { zoom, getScale, isEnabled = () 
   const pair = () => {
     const [a, b] = [...pointers.values()];
     return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.hypot(a.x - b.x, a.y - b.y) };
-  };
-  const wheel = event => {
-    if (!isEnabled()) return;
-    if (!(event.ctrlKey || event.metaKey)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1;
-    zoom(clampScale(getScale() * Math.exp(-event.deltaY * unit * .0005)), { x: event.clientX, y: event.clientY });
   };
   const down = event => {
     if (!isEnabled()) return;
@@ -44,7 +38,7 @@ export function bindViewportGestures(viewport, { zoom, getScale, isEnabled = () 
     viewport.setPointerCapture(event.pointerId);
     suppressClick = false;
     if (pointers.size === 2) { pinch = { ...pair(), scale: getScale() }; pan = null; }
-    else pan = { x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+    else pan = { x: event.clientX, y: event.clientY, left: horizontalViewport.scrollLeft, top: viewport.scrollTop };
   };
   const move = event => {
     if (!pointers.has(event.pointerId)) return;
@@ -61,7 +55,8 @@ export function bindViewportGestures(viewport, { zoom, getScale, isEnabled = () 
       if (!suppressClick && Math.hypot(dx, dy) < 3) return;
       suppressClick = true;
       viewport.classList.add('is-panning');
-      viewport.scrollTo({ left: pan.left - dx, top: pan.top - dy, behavior: 'instant' });
+      if (horizontalViewport !== viewport) horizontalViewport.scrollTo({ left: pan.left - dx, behavior: 'instant' });
+      viewport.scrollTo({ left: horizontalViewport === viewport ? pan.left - dx : 0, top: pan.top - dy, behavior: 'instant' });
     }
   };
   const end = event => {
@@ -72,7 +67,7 @@ export function bindViewportGestures(viewport, { zoom, getScale, isEnabled = () 
     if (pointers.size >= 2) pinch = { ...pair(), scale: getScale() };
     else if (pointers.size === 1) {
       const point = [...pointers.values()][0];
-      pan = { ...point, left: viewport.scrollLeft, top: viewport.scrollTop };
+      pan = { ...point, left: horizontalViewport.scrollLeft, top: viewport.scrollTop };
     }
   };
   const click = event => {
@@ -80,20 +75,20 @@ export function bindViewportGestures(viewport, { zoom, getScale, isEnabled = () 
     suppressClick = false;
     event.preventDefault(); event.stopPropagation();
   };
-  const key = event => {
-    if (!isEnabled()) return;
-    if (!(event.ctrlKey || event.metaKey)) return;
-    if (event.altKey) return;
-    const direction = ['+', '=', 'Add'].includes(event.key) ? 1 : ['-', '_', 'Subtract'].includes(event.key) ? -1 : 0;
-    if (!direction && event.key !== '0') return;
-    event.preventDefault(); event.stopPropagation();
-    zoom(event.key === '0' ? 1 : clampScale(getScale() * Math.pow(1.05, direction)), center());
-  };
-  const listeners = { wheel, pointerdown: down, pointermove: move, pointerup: end,
-    pointercancel: end, lostpointercapture: end, click, auxclick: click, keydown: key };
+  const unbindZoom = bindZoomInput(viewport, {
+    isEnabled,
+    wheel: event => {
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1;
+      zoom(clampScale(getScale() * Math.exp(-event.deltaY * unit * .0005)), { x: event.clientX, y: event.clientY });
+    },
+    key: (direction, reset) => zoom(reset ? 1 : clampScale(getScale() * Math.pow(1.05, direction)), center()),
+  });
+  const listeners = { pointerdown: down, pointermove: move, pointerup: end,
+    pointercancel: end, lostpointercapture: end, click, auxclick: click };
   for (const [type, handler] of Object.entries(listeners))
     viewport.addEventListener(type, handler, { passive: false, capture: type === 'click' || type === 'auxclick' });
   return () => {
+    unbindZoom();
     for (const [type, handler] of Object.entries(listeners)) viewport.removeEventListener(type, handler, type === 'click' || type === 'auxclick');
     viewport.classList.remove('is-panning');
     for (const id of pointers.keys()) if (viewport.hasPointerCapture(id)) viewport.releasePointerCapture(id);
