@@ -238,6 +238,10 @@ jobs:
                 head_sha: '${{ steps.series.outputs.sha }}',
                 per_page: 100,
               });
+              if (data.workflow_runs.length === 0) {
+                core.setFailed(`No main build exists for ${{ steps.series.outputs.sha }}. Run the main build before publishing this tag.`);
+                return;
+              }
               const successful = data.workflow_runs
                 .filter(run => run.status === 'completed' && run.conclusion === 'success')
                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './html-preview.css';
 import { DocumentPreview } from './document-preview.jsx';
 import { MarkdownPreview } from './markdown/preview.jsx';
@@ -7,6 +7,8 @@ import { PdfPages } from './pdf/pdf-view.jsx';
 import { ImagePreview } from './image-view.jsx';
 import { pagedDocumentLayout } from './document-preview.mjs';
 import { useReader } from './reader-context.jsx';
+import { isGalleryVideo } from './gallery-images';
+import { apiBase } from './urls.mjs';
 
 function diagnosticExcerpt(source, range) {
   const start = Number(range?.start?.line);
@@ -48,6 +50,17 @@ function TypstPreview() {
   </DocumentPreview>;
 }
 
+function VideoPreview({ document }) {
+  const [error, setError] = useState(false);
+  return <div className="p-4">
+    <video className="w-full max-h-[80vh]" controls playsInline preload="metadata"
+      onError={() => setError(true)}
+      src={`${apiBase}/media?${new URLSearchParams({ path: document.path, v: document.modified })}`} />
+    {error && <p role="alert">Could not play this video. Its encoding may not be supported by your browser.</p>}
+    <a href={document.url} download={document.name}>Download video</a>
+  </div>;
+}
+
 export function Preview() {
   const { document, viewport } = useReader();
   if (document.type === 'markdown') return <MarkdownPreview />;
@@ -57,6 +70,7 @@ export function Preview() {
       scale={viewport.scale} modified={document.modified} revision={document.revision || document.modified} />
   </DocumentPreview>;
   if (document.type === 'image') return <ImagePreview />;
+  if (document.type === 'binary' && isGalleryVideo(document.name)) return <VideoPreview key={document.path} document={document} />;
   if (document.type === 'html') return <iframe className="html-preview" aria-label={document.name}
     sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer"
     src={`${document.url}&v=${encodeURIComponent(document.modified)}`} />;

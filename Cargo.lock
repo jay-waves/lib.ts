@@ -1863,6 +1863,7 @@ dependencies = [
  "grep-searcher",
  "hayro-svg",
  "ignore",
+ "image",
  "infer",
  "lru",
  "mime_guess",

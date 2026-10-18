@@ -117,6 +117,7 @@ fn test_state(temporary: &tempfile::TempDir) -> (AppState, String) {
             service_root: Arc::new(root.clone()),
             dist: Arc::new(web),
             document_workers: worker::WorkerPool::new("document", 1, 16),
+            media_workers: worker::WorkerPool::new("media", 1, 256),
             rendering: Arc::new(render::RenderService::default()),
             shutdown: tokio::sync::watch::channel(false).0,
             html: html::Service::new().unwrap(),

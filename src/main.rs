@@ -60,6 +60,7 @@ mod file_kind;
 mod git;
 mod html;
 mod markdown;
+mod media;
 mod pdf;
 mod reading;
 mod render;
@@ -77,6 +78,7 @@ struct AppState {
     service_root: Arc<PathBuf>,
     dist: Arc<PathBuf>,
     document_workers: worker::WorkerPool,
+    media_workers: worker::WorkerPool,
     rendering: Arc<render::RenderService>,
     shutdown: tokio::sync::watch::Sender<bool>,
     html: html::Service,
@@ -1559,6 +1561,68 @@ async fn search(
     }
 }
 
+async fn media_file(
+    State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+    Query(query): Query<PathQuery>,
+    request: Request,
+) -> Response {
+    let root = state.root_for_uri(uri.path());
+    let path = match checked_library_path(&root, &query.path, &state.data_directory) {
+        Ok(path) => path,
+        Err((status, message)) => return json_error(status, message).into_response(),
+    };
+    serve_media_path(path, request).await
+}
+
+async fn serve_media_path(path: PathBuf, request: Request) -> Response {
+    match tower_http::services::ServeFile::new(path)
+        .try_call(request)
+        .await
+    {
+        Ok(response) => response.map(Body::new),
+        Err(error) => {
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ThumbnailQuery {
+    path: String,
+    #[serde(default)]
+    preview: bool,
+}
+
+async fn media_thumbnail(
+    State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+    Query(query): Query<ThumbnailQuery>,
+    request: Request,
+) -> Response {
+    let root = state.root_for_uri(uri.path());
+    let path = match checked_library_path(&root, &query.path, &state.data_directory) {
+        Ok(path) => path,
+        Err((status, message)) => return json_error(status, message).into_response(),
+    };
+    let data = state.data_directory.clone();
+    match state
+        .media_workers
+        .run(move || {
+            if query.preview {
+                media::preview(&path, &data)
+            } else {
+                media::thumbnail(&path, &data)
+            }
+        })
+        .await
+    {
+        Ok(Ok(path)) => serve_media_path(path, request).await,
+        Ok(Err(message)) => json_error(StatusCode::UNPROCESSABLE_ENTITY, message).into_response(),
+        Err(error) => worker_error(error),
+    }
+}
+
 async fn asset(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -2006,6 +2070,8 @@ fn build_router(state: AppState) -> Router {
         .route("/html", get(html::html_document))
         .route("/html-resource/{token}/{*path}", get(html::html_resource))
         .route("/asset", get(asset))
+        .route("/thumbnail", get(media_thumbnail))
+        .route("/media", get(media_file))
         .route("/pdf/page", get(pdf_page))
         .route("/typst/page", get(typst_page))
         .with_state(state.clone());
@@ -2127,6 +2193,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     let state = AppState {
         document_workers: worker::WorkerPool::new("document", 1, 16),
+        media_workers: worker::WorkerPool::new("media", 1, 256),
         rendering: Arc::new(render::RenderService::default()),
         shutdown: tokio::sync::watch::channel(false).0,
         root: Arc::new(root),
@@ -2184,6 +2251,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     maintenance.abort();
     let _ = maintenance.await;
     state.document_workers.shutdown().await;
+    state.media_workers.shutdown().await;
     state.rendering.close().await;
     served?;
     Ok(())
