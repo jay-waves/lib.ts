@@ -1591,11 +1591,15 @@ async fn serve_media_path(path: PathBuf, request: Request) -> Response {
 #[derive(Deserialize)]
 struct MediaDimensionsRequest {
     paths: Vec<String>,
+    #[serde(default, rename = "includeCaptureTime")]
+    include_capture_time: bool,
 }
 
 #[derive(Serialize)]
 struct MediaDimensionsResponse {
     dimensions: std::collections::HashMap<String, Option<media::Dimensions>>,
+    #[serde(rename = "capturedAt")]
+    captured_at: std::collections::HashMap<String, Option<i64>>,
 }
 
 async fn media_dimensions(
@@ -1627,14 +1631,31 @@ async fn media_dimensions(
     match state
         .media_workers
         .run(move || {
-            paths
-                .into_iter()
-                .map(|(key, path)| (key, metadata.dimensions(&path)))
-                .collect::<std::collections::HashMap<_, _>>()
+            let mut dimensions = std::collections::HashMap::new();
+            let mut captured_at = std::collections::HashMap::new();
+            for (key, path) in paths {
+                if request.include_capture_time
+                    && !media::is_video(&path)
+                    && !path
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+                {
+                    let value = metadata.image_metadata(&path);
+                    captured_at.insert(key.clone(), value.captured_at);
+                    dimensions.insert(key, value.dimensions);
+                } else {
+                    captured_at.insert(key.clone(), None);
+                    dimensions.insert(key, metadata.dimensions(&path));
+                }
+            }
+            MediaDimensionsResponse {
+                dimensions,
+                captured_at,
+            }
         })
         .await
     {
-        Ok(dimensions) => Json(MediaDimensionsResponse { dimensions }).into_response(),
+        Ok(response) => Json(response).into_response(),
         Err(error) => worker_error(error),
     }
 }

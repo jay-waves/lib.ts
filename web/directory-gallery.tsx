@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { BroadcastIcon, ImageIcon, PlayIcon } from '@primer/octicons-react';
+import { BroadcastIcon, ImageIcon, TriangleRightIcon } from '@primer/octicons-react';
 import type { GalleryImage } from './gallery-images';
 import { StaticPhotoAlbum, type Photo } from 'react-photo-album';
 import 'react-photo-album/rows.css';
@@ -79,7 +79,7 @@ function ImageCard({ node, autoplayVideos, navigate, style, onDimensions }: {
         <span>{video && !node.liveVideo ? 'Could not load video cover' : 'Could not display image'}</span>
       </span>}
       {video && <span className="gallery-video-badge" role="img" aria-label={videoLabel} title={videoLabel}>
-        {node.liveVideo ? <BroadcastIcon size={14} /> : <PlayIcon size={14} />}
+        {node.liveVideo ? <BroadcastIcon size={14} /> : <TriangleRightIcon size={14} />}
       </span>}
       {video && playing && <video ref={player} className={`gallery-video${videoReady ? ' gallery-video-ready' : ''}`} src={`${apiBase}/media?${videoQuery}`}
         muted loop playsInline onPlaying={() => setVideoReady(true)}

@@ -70,6 +70,8 @@ enum DocumentContent {
         mime: &'static str,
         format: String,
         url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        image_metadata: Option<crate::media::ImageMetadata>,
     },
     Pdf {
         revision: String,
@@ -147,6 +149,7 @@ pub(super) async fn document(
         .unwrap_or("")
         .to_owned();
     let compile_prefix = api_prefix.clone();
+    let media_metadata = state.media_metadata.clone();
     let result = state
         .document_workers
         .run_cancellable(0, move |cancellation| {
@@ -157,6 +160,7 @@ pub(super) async fn document(
                 &private,
                 &api_prefix,
                 &pdf_renderer,
+                &media_metadata,
                 &cancellation,
             )
         })
@@ -190,6 +194,7 @@ fn load_document(
     private: &Path,
     api_prefix: &str,
     pdf_renderer: &pdf::NativePdfRenderer,
+    media_metadata: &crate::media::MetadataService,
     cancellation: &resources::Cancellation,
 ) -> Result<DocumentResponse, (StatusCode, String)> {
     let path = checked_library_path(&root, &requested_path, &private)?;
@@ -226,6 +231,7 @@ fn load_document(
         DocumentContent::Image {
             mime,
             format: detected.format,
+            image_metadata: (mime != "image/svg+xml").then(|| media_metadata.image_metadata(&path)),
             url: format!(
                 "{api_prefix}/api/asset?path={}",
                 encode_query_component(&requested_path)

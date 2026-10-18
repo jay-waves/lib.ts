@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { galleryImages, isGalleryVideo, sortDirectoryNodes } from '../web/gallery-images.ts';
+import { galleryImages, isGalleryVideo, mediaKey, sortDirectoryNodes } from '../web/gallery-images.ts';
 
 const file = (name, path = name) => ({ name, path, type: 'file', modified: '' });
 
@@ -22,6 +22,32 @@ test('directory sorting supports natural names and modification times without mu
   assert.deepEqual(sortDirectoryNodes(nodes, 'time-asc'), [older, newer, unknown]);
   assert.deepEqual(sortDirectoryNodes(nodes, 'time-desc'), [newer, older, unknown]);
   assert.deepEqual(nodes, [older, newer, unknown]);
+});
+
+test('capture date sorting uses EXIF dates and falls back to modification times', () => {
+  const first = { ...file('first.jpg'), modified: '2026-10-01T00:00:00Z' };
+  const last = { ...file('last.jpg'), modified: '2026-01-01T00:00:00Z' };
+  const fallback = { ...file('fallback.png'), modified: '2026-05-01T00:00:00Z' };
+  const unknown = file('unknown.svg');
+  const dates = {
+    [mediaKey(first)]: Date.parse('2026-02-01T00:00:00Z'),
+    [mediaKey(last)]: Date.parse('2026-09-01T00:00:00Z'),
+    [mediaKey(fallback)]: null,
+  };
+  const nodes = [last, unknown, fallback, first];
+  assert.deepEqual(sortDirectoryNodes(nodes, 'taken-asc', dates), [first, fallback, last, unknown]);
+  assert.deepEqual(sortDirectoryNodes(nodes, 'taken-desc', dates), [last, fallback, first, unknown]);
+  assert.deepEqual(sortDirectoryNodes(nodes, 'time-asc', dates), [last, fallback, first, unknown]);
+  assert.deepEqual(nodes, [last, unknown, fallback, first]);
+});
+
+test('capture dates are revision-specific and ties use natural names', () => {
+  const a = { ...file('photo2.jpeg'), modified: '2026-05-01T00:00:00Z', liveVideo: file('photo2.mov') };
+  const b = { ...file('photo10.jpeg'), modified: a.modified };
+  const dates = { [mediaKey(a)]: 0, [mediaKey(b)]: 0 };
+  assert.deepEqual(sortDirectoryNodes([b, a], 'taken-desc', dates), [a, b]);
+  const updated = { ...a, modified: '2026-10-01T00:00:00Z' };
+  assert.deepEqual(sortDirectoryNodes([b, updated], 'taken-asc', dates), [b, updated]);
 });
 
 test('gallery selects image filenames case-insensitively without treating folders as images', () => {

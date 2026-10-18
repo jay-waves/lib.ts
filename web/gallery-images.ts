@@ -7,23 +7,34 @@ export const isGalleryVideo = (name: string) => /\.(?:mp4|m4v|mov|webm|ogv)$/i.t
 export const directorySortOptions = {
   'name-asc': 'Name: A–Z',
   'name-desc': 'Name: Z–A',
-  'time-desc': 'Time: Newest first',
-  'time-asc': 'Time: Oldest first',
+  'time-desc': 'Modified: Newest',
+  'time-asc': 'Modified: Oldest',
 } as const;
-export type DirectorySort = keyof typeof directorySortOptions;
+export const gallerySortOptions = {
+  ...directorySortOptions,
+  'taken-desc': 'Captured: Newest',
+  'taken-asc': 'Captured: Oldest',
+} as const;
+export type DirectorySort = keyof typeof gallerySortOptions;
 export type GalleryImage = TreeNode & { liveVideo?: TreeNode };
 export const mediaKey = (node: GalleryImage) => `${node.path}:${node.modified}${node.liveVideo ? `:${node.liveVideo.path}:${node.liveVideo.modified}` : ''}`;
 
 const names = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-export function sortDirectoryNodes<T extends TreeNode>(nodes: readonly T[], sort: DirectorySort): T[] {
+export function sortDirectoryNodes<T extends TreeNode>(nodes: readonly T[], sort: DirectorySort,
+  capturedAt: Readonly<Record<string, number | null>> = {}): T[] {
   return [...nodes].sort((a, b) => {
     const byName = names.compare(a.name, b.name) || names.compare(a.path, b.path);
     if (sort === 'name-asc') return byName;
     if (sort === 'name-desc') return -byName;
-    const aTime = Date.parse(a.modified), bTime = Date.parse(b.modified);
+    const timestamp = (node: T) => {
+      const taken = capturedAt[mediaKey(node)];
+      return sort.startsWith('taken-') && typeof taken === 'number' && Number.isFinite(taken)
+        ? taken : Date.parse(node.modified);
+    };
+    const aTime = timestamp(a), bTime = timestamp(b);
     if (!Number.isFinite(aTime)) return Number.isFinite(bTime) ? 1 : byName;
     if (!Number.isFinite(bTime)) return -1;
-    return (sort === 'time-asc' ? aTime - bTime : bTime - aTime) || byName;
+    return (sort.endsWith('-asc') ? aTime - bTime : bTime - aTime) || byName;
   });
 }
 

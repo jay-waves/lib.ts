@@ -16,7 +16,13 @@ const source = { lineCount: z.number().int().nonnegative(), source: z.string() }
 
 export const documentSchema = z.discriminatedUnion('type', [
   documentBase.extend({ ...source, type: z.literal('html'), url: z.string() }),
-  documentBase.extend({ type: z.literal('image'), mime: z.string(), format: z.string(), url: z.string() }),
+  documentBase.extend({ type: z.literal('image'), mime: z.string(), format: z.string(), url: z.string(),
+    imageMetadata: z.object({
+      dimensions: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
+      exif: z.array(z.string()),
+      capturedAt: z.number().int().optional(),
+    }).optional(),
+  }),
   documentBase.extend({ type: z.literal('binary'), mime: z.string(), format: z.string().optional(), url: z.string() }),
   documentBase.extend({ ...source, type: z.literal('markdown'), html: z.string().optional() }),
   documentBase.extend({ ...source, type: z.literal('text'),

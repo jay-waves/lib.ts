@@ -14,6 +14,7 @@ import { FileToolbar, MoveToTopButton } from './file-toolbar';
 interface DocumentToolbarProps {
   document: Pick<LibraryDocument, 'path' | 'absolutePath' | 'type' | 'size' | 'modified'> & {
     lineCount?: number | null;
+    imageMetadata?: Extract<LibraryDocument, { type: 'image' }>['imageMetadata'];
   };
   status: { view: 'preview' | 'raw'; line?: number | null; pending?: boolean; bookmarkPage?: import('./api/contracts').Bookmark['page'] };
   stuck: boolean;
@@ -35,6 +36,7 @@ function sizeLabel(bytes: number) {
 
 export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRef, bookmarkState, sidebarToggle }: DocumentToolbarProps) {
   const { copied, error, copy } = useClipboard();
+  const imageMetadata = document.type === 'image' ? document.imageMetadata : undefined;
   return <>
     {error && <div className="action-error" role="alert">{error}</div>}
     <FileToolbar sentinelRef={sentinelRef} className="items-stretch gap-2">
@@ -44,12 +46,20 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
         {!['image', 'pdf', 'binary'].includes(document.type) && <button className="ui-tab" role="tab"
           aria-selected={status.view === 'raw'} onClick={() => readerRef.current?.switchView('raw')}>Raw</button>}
       </div>
-      <span className="ms-3 min-w-0 self-center truncate font-code text-ui leading-5 text-muted tabular-nums tracking-[-.15px] @max-reader-sm/reader:ms-0 @max-reader-sm/reader:order-3 @max-reader-sm/reader:basis-full" aria-busy={document.lineCount != null && status.pending}>
+      <span className="ms-3 min-w-0 self-center truncate font-code text-ui leading-5 text-muted tabular-nums tracking-[-.15px] @max-reader-sm/reader:ms-0 @max-reader-sm/reader:order-3 @max-reader-sm/reader:basis-full" aria-busy={document.lineCount != null && status.pending}
+        title={imageMetadata ? [
+          ...(imageMetadata.dimensions ? [`${imageMetadata.dimensions.width} × ${imageMetadata.dimensions.height} px`] : []),
+          ...imageMetadata.exif,
+        ].join(' · ') : undefined}>
         {document.lineCount != null && <>{`${status.line ?? '—'} / ${document.lineCount} lines · `}</>}
         {sizeLabel(document.size)}
         {document.modified && <>{' · '}<time dateTime={document.modified}>
           {formatRelativeModified(document.modified)}
         </time></>}
+        {imageMetadata?.dimensions && <>{' · '}{imageMetadata.dimensions.width} × {imageMetadata.dimensions.height} px</>}
+        {!!imageMetadata?.exif.length && <span>
+          {' · '}{imageMetadata.exif.join(' · ')}
+        </span>}
       </span>
       <div className="ms-auto flex flex-none items-center gap-1" role="group" aria-label="Page actions">
         {stuck && <MoveToTopButton onClick={() => readerRef.current?.toTop()} />}

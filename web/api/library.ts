@@ -46,10 +46,10 @@ export function openDirectory(apiBase: string, path = '') {
   });
 }
 
-export function getMediaDimensions(apiBase: string, paths: string[], signal?: AbortSignal) {
+export function getMediaDimensions(apiBase: string, paths: string[], signal?: AbortSignal, includeCaptureTime = false) {
   return requestJson(`${apiBase}/media/dimensions`, mediaDimensionsResponseSchema, {
     method: 'POST', signal,
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ paths }),
+    body: JSON.stringify({ paths, includeCaptureTime }),
   });
 }

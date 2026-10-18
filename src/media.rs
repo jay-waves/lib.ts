@@ -20,15 +20,175 @@ pub struct Dimensions {
     pub height: u32,
 }
 
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<Dimensions>,
+    exif: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub captured_at: Option<i64>,
+}
+
+fn capture_time(exif: &exif::Exif) -> Option<i64> {
+    use exif::{In, Tag, Value};
+    let ascii = |tag| match &exif.get_field(tag, In::PRIMARY)?.value {
+        Value::Ascii(values) => values.first().map(Vec::as_slice),
+        _ => None,
+    };
+    let mut date = exif::DateTime::from_ascii(ascii(Tag::DateTimeOriginal)?).ok()?;
+    if let Some(offset) = ascii(Tag::OffsetTimeOriginal) {
+        date.parse_offset(offset).ok()?;
+    }
+    if let Some(subsec) = ascii(Tag::SubSecTimeOriginal) {
+        let _ = date.parse_subsec(subsec);
+    }
+    let day =
+        time::Date::from_calendar_date(date.year.into(), date.month.try_into().ok()?, date.day)
+            .ok()?;
+    let time = time::Time::from_hms_nano(
+        date.hour,
+        date.minute,
+        date.second,
+        date.nanosecond.unwrap_or(0),
+    )
+    .ok()?;
+    // Interpret unzoned EXIF wall-clock values as UTC so sorting is independent of the host zone.
+    let offset =
+        time::UtcOffset::from_whole_seconds(i32::from(date.offset.unwrap_or(0)) * 60).ok()?;
+    Some(
+        (day.with_time(time)
+            .assume_offset(offset)
+            .unix_timestamp_nanos()
+            / 1_000_000) as i64,
+    )
+}
+
+pub fn image_metadata(path: &Path) -> ImageMetadata {
+    use exif::{In, Tag, Value};
+    let exif = fs::File::open(path).ok().and_then(|file| {
+        exif::Reader::new()
+            .continue_on_error(true)
+            .read_from_container(&mut std::io::BufReader::new(file))
+            .or_else(|error| error.distill_partial_result(|_| {}))
+            .ok()
+    });
+    let mut summary = Vec::new();
+    let mut size = read_dimensions(path);
+    let captured_at = exif.as_ref().and_then(capture_time);
+    if let Some(exif) = exif {
+        let text = |tag| {
+            let Value::Ascii(values) = &exif.get_field(tag, In::PRIMARY)?.value else {
+                return None;
+            };
+            let value = String::from_utf8_lossy(values.first()?)
+                .trim_matches('\0')
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            (!value.is_empty()).then(|| value.chars().take(120).collect::<String>())
+        };
+        let make = text(Tag::Make);
+        let model = text(Tag::Model);
+        if let Some(camera) = match (make, model) {
+            (Some(make), Some(model))
+                if !model.to_lowercase().starts_with(&make.to_lowercase()) =>
+            {
+                Some(format!("{make} {model}"))
+            }
+            (_, Some(model)) => Some(model),
+            (make, None) => make,
+        } {
+            summary.push(camera);
+        }
+        for tag in [
+            Tag::FocalLength,
+            Tag::FNumber,
+            Tag::ExposureTime,
+            Tag::PhotographicSensitivity,
+        ] {
+            if let Some(field) = exif.get_field(tag, In::PRIMARY) {
+                let value = field.display_value().with_unit(&exif).to_string();
+                summary.push(if tag == Tag::PhotographicSensitivity {
+                    format!("ISO {value}")
+                } else {
+                    value
+                });
+            }
+        }
+        if size.is_none() {
+            let number = |tag| exif.get_field(tag, In::PRIMARY)?.value.get_uint(0);
+            size = number(Tag::PixelXDimension)
+                .zip(number(Tag::PixelYDimension))
+                .or_else(|| number(Tag::ImageWidth).zip(number(Tag::ImageLength)))
+                .and_then(|(width, height)| {
+                    let rotated =
+                        number(Tag::Orientation).is_some_and(|value| (5..=8).contains(&value));
+                    if rotated {
+                        dimensions(height, width)
+                    } else {
+                        dimensions(width, height)
+                    }
+                });
+        }
+    }
+    ImageMetadata {
+        dimensions: size,
+        exif: summary,
+        captured_at,
+    }
+}
+
 #[derive(Default)]
 pub struct MetadataService {
     cache: Mutex<HashMap<PathBuf, (u64, SystemTime, Option<Dimensions>)>>,
+    photos: Mutex<Option<lru::LruCache<PathBuf, (u64, SystemTime, ImageMetadata)>>>,
 }
 
 impl MetadataService {
+    pub fn image_metadata(&self, path: &Path) -> ImageMetadata {
+        let Ok(metadata) = fs::metadata(path) else {
+            return ImageMetadata::default();
+        };
+        let Ok(modified) = metadata.modified() else {
+            return image_metadata(path);
+        };
+        {
+            let mut photos = self.photos.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some((_, _, value)) = photos
+                .as_mut()
+                .and_then(|cache| cache.get(path))
+                .filter(|(size, time, _)| *size == metadata.len() && *time == modified)
+            {
+                return value.clone();
+            }
+        }
+        let value = image_metadata(path);
+        let mut photos = self.photos.lock().unwrap_or_else(|e| e.into_inner());
+        photos
+            .get_or_insert_with(|| {
+                lru::LruCache::new(std::num::NonZeroUsize::new(METADATA_CACHE_LIMIT).unwrap())
+            })
+            .put(
+                path.to_path_buf(),
+                (metadata.len(), modified, value.clone()),
+            );
+        value
+    }
+
     pub fn dimensions(&self, path: &Path) -> Option<Dimensions> {
         let metadata = fs::metadata(path).ok()?;
         let modified = metadata.modified().ok()?;
+        if let Some((_, _, value)) = self
+            .photos
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_mut()
+            .and_then(|cache| cache.get(path))
+            .filter(|(size, time, _)| *size == metadata.len() && *time == modified)
+        {
+            return value.dimensions;
+        }
         if let Some((_, _, dimensions)) = self
             .cache
             .lock()
@@ -326,6 +486,162 @@ fn generate(path: &Path, data: &Path, full: bool) -> Result<PathBuf, Box<dyn std
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn image_metadata_handles_missing_exif_and_invalid_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("photo.png");
+        image::RgbImage::new(40, 20).save(&source).unwrap();
+        let metadata = image_metadata(&source);
+        assert_eq!(metadata.dimensions, dimensions(40, 20));
+        assert!(metadata.exif.is_empty());
+        assert!(metadata.captured_at.is_none());
+        fs::write(&source, b"invalid image").unwrap();
+        let metadata = image_metadata(&source);
+        assert!(metadata.dimensions.is_none());
+        assert!(metadata.exif.is_empty());
+        assert!(metadata.captured_at.is_none());
+    }
+
+    #[test]
+    fn capture_dates_validate_calendar_and_support_offsets_and_subseconds() {
+        use exif::{Field, In, Tag, Value};
+        let parse = |date: &str, offset: Option<&str>, subsec: Option<&str>| {
+            let mut fields = vec![Field {
+                tag: Tag::DateTimeOriginal,
+                ifd_num: In::PRIMARY,
+                value: Value::Ascii(vec![date.as_bytes().to_vec()]),
+            }];
+            for (tag, value) in [
+                (Tag::OffsetTimeOriginal, offset),
+                (Tag::SubSecTimeOriginal, subsec),
+            ] {
+                if let Some(value) = value {
+                    fields.push(Field {
+                        tag,
+                        ifd_num: In::PRIMARY,
+                        value: Value::Ascii(vec![value.as_bytes().to_vec()]),
+                    });
+                }
+            }
+            let mut writer = exif::experimental::Writer::new();
+            for field in &fields {
+                writer.push_field(field);
+            }
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            writer.write(&mut bytes, true).unwrap();
+            capture_time(&exif::Reader::new().read_raw(bytes.into_inner()).unwrap())
+        };
+        assert_eq!(
+            parse("1970:01:01 08:00:01", Some("+08:00"), Some("123456")),
+            Some(1123)
+        );
+        assert_eq!(parse("1970:01:01 00:00:01", None, None), Some(1000));
+        assert_eq!(parse("2026:02:30 12:00:00", None, None), None);
+        assert_eq!(parse("0000:00:00 00:00:00", None, None), None);
+        assert_eq!(parse("invalid", None, None), None);
+    }
+
+    #[test]
+    fn photo_metadata_cache_reuses_results_and_invalidates_on_size_or_time_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("photo.bmp");
+        let service = MetadataService::default();
+        image::RgbImage::new(40, 20).save(&source).unwrap();
+        assert_eq!(
+            service.image_metadata(&source).dimensions,
+            dimensions(40, 20)
+        );
+        assert_eq!(
+            service.image_metadata(&source).dimensions,
+            service.dimensions(&source)
+        );
+        assert_eq!(service.photos.lock().unwrap().as_ref().unwrap().len(), 1);
+        let modified = fs::metadata(&source).unwrap().modified().unwrap();
+        // Equal byte size, changed orientation and mtime.
+        image::RgbImage::new(20, 40).save(&source).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&source)
+            .unwrap()
+            .set_modified(modified + std::time::Duration::from_secs(2))
+            .unwrap();
+        assert_eq!(
+            service.image_metadata(&source).dimensions,
+            dimensions(20, 40)
+        );
+        let modified = fs::metadata(&source).unwrap().modified().unwrap();
+        image::RgbImage::new(30, 10).save(&source).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&source)
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
+        assert_eq!(
+            service.image_metadata(&source).dimensions,
+            dimensions(30, 10)
+        );
+        fs::write(&source, b"invalid image").unwrap();
+        assert!(service.image_metadata(&source).dimensions.is_none());
+        assert!(service.image_metadata(&source).captured_at.is_none());
+        assert!(service.dimensions(&source).is_none());
+    }
+
+    #[test]
+    fn image_metadata_summarizes_exposure_and_respects_orientation() {
+        use exif::{Field, In, Tag, Value};
+        let fields = [
+            (Tag::Make, Value::Ascii(vec![b"Example".to_vec()])),
+            (Tag::Model, Value::Ascii(vec![b"Example Camera".to_vec()])),
+            (Tag::Orientation, Value::Short(vec![6])),
+            (Tag::FocalLength, Value::Rational(vec![(50, 1).into()])),
+            (Tag::FNumber, Value::Rational(vec![(28, 10).into()])),
+            (Tag::ExposureTime, Value::Rational(vec![(1, 125).into()])),
+            (Tag::PhotographicSensitivity, Value::Short(vec![400])),
+            (
+                Tag::DateTimeOriginal,
+                Value::Ascii(vec![b"2026:10:18 12:34:56".to_vec()]),
+            ),
+        ]
+        .map(|(tag, value)| Field {
+            tag,
+            ifd_num: In::PRIMARY,
+            value,
+        });
+        let mut writer = exif::experimental::Writer::new();
+        for field in &fields {
+            writer.push_field(field);
+        }
+        let mut exif = std::io::Cursor::new(Vec::new());
+        writer.write(&mut exif, true).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("photo.png");
+        let mut file = fs::File::create(&source).unwrap();
+        let mut encoder = image::codecs::png::PngEncoder::new(&mut file);
+        encoder.set_exif_metadata(exif.into_inner()).unwrap();
+        encoder
+            .write_image(
+                &vec![0; 40 * 20 * 3],
+                40,
+                20,
+                image::ExtendedColorType::Rgb8,
+            )
+            .unwrap();
+        drop(file);
+        let metadata = image_metadata(&source);
+        assert_eq!(metadata.dimensions, dimensions(20, 40));
+        let expected = time::OffsetDateTime::parse(
+            "2026-10-18T12:34:56Z",
+            &time::format_description::well_known::Rfc3339,
+        )
+        .unwrap();
+        assert_eq!(metadata.captured_at, Some(expected.unix_timestamp() * 1000));
+        assert_eq!(
+            metadata.exif,
+            ["Example Camera", "50 mm", "f/2.8", "1/125 s", "ISO 400"]
+        );
+    }
 
     #[test]
     fn byte_threshold_creates_jpeg_without_upscaling_and_revision_changes_cache() {
