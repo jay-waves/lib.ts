@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { getDocument, type DocumentView, type LibraryDocument } from './api/documents.ts';
 import { loadPosition, readingKey } from './reading-state.mjs';
+import { sameDocumentContent } from './document-content.ts';
 
 interface DocumentOptions {
   apiBase: string;
@@ -25,19 +26,6 @@ function hasContent(document: LibraryDocument, view: DocumentView | null) {
   return true;
 }
 
-function sameContent(previous: LibraryDocument, next: LibraryDocument) {
-  // Text responses have no revision; compare their source explicitly.
-  if (previous.type === 'text' || next.type === 'text') {
-    return previous.type === 'text' && next.type === 'text' && previous.path === next.path
-      && previous.absolutePath === next.absolutePath && previous.name === next.name
-      && previous.source === next.source;
-  }
-  return previous.path === next.path && previous.type === next.type
-    && previous.modified === next.modified
-    && (previous.type !== 'typst' || next.type !== 'typst' || previous.compile?.id === next.compile?.id)
-    && (previous.type !== 'markdown' || next.type !== 'markdown' || previous.html === next.html);
-}
-
 export function useDocument(options: DocumentOptions) {
   const { apiBase, pageBase, path, active, treeReady, treeLoading, node, revision, theme, request } = options;
   const [document, setDocument] = useState<LibraryDocument | null>(null);
@@ -53,14 +41,22 @@ export function useDocument(options: DocumentOptions) {
   const waitingForTree = Boolean(path && !node && treeLoading);
 
   useEffect(() => {
-    if (!active || !apiBase) {
+    if (document?.path !== path) {
+      setDocument(null); setError('');
+    }
+    if (!apiBase) {
       loadedRequest.current = null;
       setDocument(null); setLoading(false); setError('');
       return;
     }
+    if (!active) {
+      // Visibility suspends work, never the current content.
+      setLoading(false);
+      return;
+    }
     if (!treeReady) return;
     if (waitingForTree) {
-      setLoading(true); setDocument(null); setError('');
+      setLoading(true); setError('');
       return;
     }
     // Direct links and search results may refer to files omitted from the tree.
@@ -74,9 +70,7 @@ export function useDocument(options: DocumentOptions) {
       return;
     }
     const controller = new AbortController();
-    if (document?.path === path && document.type === 'typst') capture();
     setLoading(true); setError('');
-    if (document?.path !== path) setDocument(null);
     async function load() {
       const savedView = view || (await loadPosition(readingKey(pageBase, path), apiBase, path)).view;
       const fetchedView: DocumentView = savedView === 'raw' ? 'raw' : 'preview';
@@ -84,7 +78,8 @@ export function useDocument(options: DocumentOptions) {
       const value = await getDocument(apiBase, path, fetchedView, theme, controller.signal);
       if (controller.signal.aborted) return;
       loadedRequest.current = key;
-      if (document && sameContent(document, value)) return;
+      if (document && sameDocumentContent(document, value)) return;
+      if (document?.path === value.path) capture();
       if (document?.path !== value.path) onOpen(fetchedView);
       setDocument(value);
     }
@@ -96,5 +91,5 @@ export function useDocument(options: DocumentOptions) {
     return () => controller.abort();
     // Document updates are results, rather than new request triggers.
   }, [apiBase, pageBase, active, treeReady, path, nodePath, nodeType, revision, view, theme, waitingForTree]);
-  return { document, loading, error, setError };
+  return { document: document?.path === path ? document : null, loading, error, setError };
 }

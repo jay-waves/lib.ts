@@ -138,7 +138,9 @@ export const gitDiffResponseSchema = z.object({
 export type GitDiffResponse = z.infer<typeof gitDiffResponseSchema>;
 
 export const treeRevisionEventSchema = z.object({ revision: z.string().regex(/^\d+$/) });
-export const documentConnectedEventSchema = z.object({ modified: z.string() });
+export const documentConnectedEventSchema = z.object({
+  modified: z.string(), assets: z.record(z.string(), z.string().nullable()),
+});
 export const assetsChangedEventSchema = z.object({ paths: z.array(z.string()) });
 
 export const treeEvents = {

@@ -125,7 +125,7 @@ function App() {
     capture: () => readerRef.current?.capture(),
     onOpen: view => setReaderStatus({ view, line: null, page: null, pending: true }),
   });
-  const recentState = useRecentFiles(active && Boolean(apiBase), !error && document?.path === selected ? selected : null);
+  const recentState = useRecentFiles(active && Boolean(apiBase), document?.path === selected ? selected : null);
   const activeView = document?.type === 'text' ? 'raw' : document?.type === 'binary' ? 'preview' : readerStatus.view;
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 960px)').matches);
   const [filesVisible, setFilesVisible] = useState(() => initialSidebar.filesVisible ?? !narrow);
@@ -152,7 +152,7 @@ function App() {
     if (element) element.scrollTop = filesScrollTop.current;
   }, []);
   const searchMode = sidebarTab === 'search';
-  const { stuck: toolbarStuck, sentinelRef: toolbarSentinelRef } = useToolbarStuck(!searchMode && gitPath === null && !error);
+  const { stuck: toolbarStuck, sentinelRef: toolbarSentinelRef } = useToolbarStuck(!searchMode && gitPath === null && Boolean(document));
   const mainPanelRef = useRef(null);
 
   useEffect(() => {
@@ -160,7 +160,6 @@ function App() {
   }, [document?.path]);
 
   function reloadDocument() {
-    readerRef.current?.capture();
     setDocumentRevision(value => value + 1);
   }
 
@@ -378,7 +377,7 @@ function App() {
             const width = Math.max(180, Math.min(480, sidebarWidth + (event.key === 'ArrowRight' ? 10 : -10)));
             setSidebarWidth(width);
           }} />
-        <main className={`main-panel col-start-4 row-start-1 h-dvh max-h-dvh min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-none bg-surface${gitPath === null && !searchMode && !error && activeView === 'preview' && hasDocumentViewport(document) ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}>
+        <main className={`main-panel col-start-4 row-start-1 h-dvh max-h-dvh min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-none bg-surface${gitPath === null && !searchMode && activeView === 'preview' && hasDocumentViewport(document) ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}>
           {(!searchMode || narrow) && <div className="page-header mx-auto flex h-toolbar min-h-0 w-[var(--content-width)] flex-none box-border items-center gap-2 p-0 text-ui">
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2.5 [&>nav]:min-w-0 [&>nav]:flex-auto [&>nav]:overflow-hidden">
               {!searchMode && <PathBar items={[
@@ -389,7 +388,7 @@ function App() {
                 }),
               ]} onNavigate={path => navigate(path)} />}
               <div className="ms-auto flex flex-none items-center gap-1">
-                {narrow && (gitPath !== null || searchMode || !document || error) && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible}
+                {narrow && (gitPath !== null || searchMode || !document) && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible}
                   size="small" variant="invisible" className="sidebar-toggle" icon={SidebarExpandIcon}
                   aria-label="Show sidebar" aria-expanded={filesVisible}
                   aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />}
@@ -410,9 +409,10 @@ function App() {
             {Boolean(repoId) && <>
             {bookmarkState.error && !bookmarksOnly && <div className="action-error" role="alert">{bookmarkState.error}</div>}
             {loading && !document && <div className="status" role="status"><span className="rendering-label">Rendering</span></div>}
-            {!loading && error && <LibraryError error={error} path={selected} navigate={navigate} />}
+            {!loading && error && (document ? <div className="action-error" role="alert">{error}</div>
+              : <LibraryError error={error} path={selected} navigate={navigate} />)}
             {!loading && !error && entries && <DirectoryView key={selected} directory={selectedNode || tree} navigate={navigate} />}
-            {!error && document && <>
+            {document && <>
               <DocumentToolbar key={document.path} document={document} status={{ ...readerStatus, view: activeView }}
                 stuck={toolbarStuck} readerRef={readerRef} sentinelRef={toolbarSentinelRef} bookmarkState={bookmarkState}
                 sidebarToggle={narrow && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible} size="small" variant="invisible"

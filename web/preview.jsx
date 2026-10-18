@@ -57,7 +57,6 @@ function VideoPreview({ document }) {
       onError={() => setError(true)}
       src={`${apiBase}/media?${new URLSearchParams({ path: document.path, v: document.modified })}`} />
     {error && <p role="alert">Could not play this video. Its encoding may not be supported by your browser.</p>}
-    <a href={document.url} download={document.name}>Download video</a>
   </div>;
 }
 

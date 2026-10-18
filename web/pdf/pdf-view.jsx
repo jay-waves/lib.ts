@@ -1,5 +1,4 @@
-import React, { memo, useContext, useEffect, useMemo, useState } from 'react';
-import { SessionActivity } from '../session-activity';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import { Spinner } from '@primer/react';
 import { createByteCache } from '../byte-cache.ts';
 import { PDF_PAGE_WIDTH, pdfRenderWidth } from './render.ts';
@@ -39,7 +38,6 @@ const PdfPage = memo(function PdfPage({ page, index, scale, active, cache, revis
 });
 
 export function PdfPages({ pages, scale, modified, revision = modified }) {
-  const visible = useContext(SessionActivity);
   const { ref, window } = usePageWindow(pages);
   // Retain compressed blobs for short backtracking, never decoded offscreen images.
   const cache = useMemo(() => createByteCache({ maxEntries: 12, maxBytes: 16 * 1024 * 1024,
@@ -47,5 +45,5 @@ export function PdfPages({ pages, scale, modified, revision = modified }) {
   useEffect(() => () => cache.clear(), [cache]);
   return <div ref={ref} className="pdf-pages">{pages.map((page, index) =>
     <PdfPage key={page.url} page={page} index={index} scale={scale} revision={revision} cache={cache}
-      active={visible && index + 1 >= window.first && index + 1 <= window.last} />)}</div>;
+      active={index + 1 >= window.first && index + 1 <= window.last} />)}</div>;
 }

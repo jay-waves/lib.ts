@@ -1755,28 +1755,32 @@ async fn library_events(State(state): State<AppState>, OriginalUri(uri): Origina
     }
     let receiver = state
         .runtime
-        .subscribe_file_events(document.clone(), assets);
-    let modified = modified_rfc3339(&document);
+        .subscribe_file_events(document.clone(), assets.clone());
+    let snapshot = serde_json::json!({
+        "modified": modified_rfc3339(&document),
+        "assets": assets.iter().map(|(path, name)| {
+            (name.clone(), file_signature(path).map(|(modified, size)| format!("{modified}:{size}")))
+        }).collect::<std::collections::HashMap<_, _>>()
+    }).to_string();
     let events: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
         Box::pin(stream::unfold(
             (
                 Some(receiver),
                 true,
-                Some(modified),
+                Some(snapshot),
                 VecDeque::<Event>::new(),
             ),
-            |(mut receiver, mut initial, mut modified, mut pending)| async move {
+            |(mut receiver, mut initial, mut snapshot, mut pending)| async move {
                 if initial {
                     initial = false;
-                    let event = Event::default().event("connected").data(
-                        serde_json::json!({"modified":modified.take().unwrap_or_default()})
-                            .to_string(),
-                    );
-                    return Some((Ok(event), (receiver, initial, modified, pending)));
+                    let event = Event::default()
+                        .event("connected")
+                        .data(snapshot.take().unwrap_or_default());
+                    return Some((Ok(event), (receiver, initial, snapshot, pending)));
                 }
                 loop {
                     if let Some(event) = pending.pop_front() {
-                        return Some((Ok(event), (receiver, initial, modified, pending)));
+                        return Some((Ok(event), (receiver, initial, snapshot, pending)));
                     }
                     let current = receiver.as_mut()?.recv().await;
                     match current {

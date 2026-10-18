@@ -59,5 +59,5 @@ export function TypstPages({ pages, scale, onExpired }) {
   }, [visible, pages, pageSvg, window.first, window.last]);
   return <div ref={ref} className="typst-page-window">{pages.map((page, index) =>
     <TypstPage key={page.url} page={page} index={index} scale={scale} pageSvg={pageSvg} onExpired={onExpired}
-      active={visible && index + 1 >= window.first && index + 1 <= window.last} />)}</div>;
+      active={index + 1 >= window.first && index + 1 <= window.last} />)}</div>;
 }
