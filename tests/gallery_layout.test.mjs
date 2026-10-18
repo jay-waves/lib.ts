@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { galleryLayout, galleryRows } from '../web/gallery-layout.mjs';
+import { galleryLayout, galleryRows, galleryRowLayout } from '../web/gallery-layout.mjs';
 
 test('column cards preserve aspect ratios and stay in their column when dimensions arrive', () => {
   const before = galleryLayout([1, 1, 1, 1], 452, 220);
@@ -10,6 +10,22 @@ test('column cards preserve aspect ratios and stay in their column when dimensio
   assert.deepEqual(before.items[1], after.items[1]);
   assert.deepEqual(before.items[3], after.items[3]);
   assert.equal(after.height, after.items[2].top + after.items[2].height);
+});
+
+test('appending prepared batches leaves existing column cards and complete row batches in place', () => {
+  const ratios = Array.from({ length: 150 }, (_, index) => [.5, 1, 2, 3, .8][index % 5]);
+  for (const layout of [galleryLayout, galleryRowLayout]) {
+    for (const width of [100, 600, 1400]) {
+      const first = layout(ratios.slice(0, 64), width, 220);
+      const second = layout(ratios.slice(0, 128), width, 220);
+      const final = layout(ratios, width, 220);
+      assert.deepEqual(second.items.slice(0, 64), first.items);
+      assert.deepEqual(final.items.slice(0, 128), second.items);
+      assert.ok(final.height >= second.height && second.height >= first.height);
+      assert.equal(final.items.length, ratios.length);
+    }
+    assert.deepEqual(layout([], 600, 220), { items: [], height: 0 });
+  }
 });
 
 test('adjusted rows fill their width and preserve photo proportions and order', () => {

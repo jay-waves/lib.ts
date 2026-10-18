@@ -4,3 +4,14 @@
 @media (prefers-color-scheme: dark) {
   [data-dim-images] img:not(:hover) { filter: brightness(0.75) !important; }
 }
+.image-preview-page { overflow: hidden; }
+.image-preview-page img { display: block; width: 100%; height: auto; object-fit: contain; }
+.image-preview-full { position: relative; z-index: 1; }
+.image-preview-page .image-preview-placeholder { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.image-preview-page .image-preview-transition { opacity: 0; transition: opacity .18s ease; }
+.image-preview-page[data-ready] .image-preview-transition { opacity: 1; }
+.image-preview-page[data-ready] .image-preview-placeholder { visibility: hidden; transition: visibility 0s .18s; }
+@media (prefers-reduced-motion: reduce) {
+  .image-preview-page .image-preview-transition { transition: none; }
+  .image-preview-page[data-ready] .image-preview-placeholder { transition: none; }
+}

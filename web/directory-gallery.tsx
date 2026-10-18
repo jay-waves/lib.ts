@@ -2,18 +2,17 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { BroadcastIcon, ImageIcon, TriangleIcon } from '@primer/octicons-react';
 import type { GalleryImage } from './gallery-images';
-import { StaticPhotoAlbum, type Photo } from 'react-photo-album';
-import 'react-photo-album/rows.css';
 import { apiBase, fileUrl } from './urls.mjs';
 import './directory-gallery.css';
 import { isGalleryVideo, mediaKey } from './gallery-images';
-import { galleryLayout, galleryRows } from './gallery-layout.mjs';
+import { galleryLayout, galleryRowLayout } from './gallery-layout.mjs';
+import { thumbnailUrl, mediaFileUrl } from './media-urls.mjs';
 
-function ImageCard({ node, autoplayVideos, navigate, style, onDimensions }: {
+function ImageCard({ node, autoplayVideos, navigate, style }: {
   node: GalleryImage; autoplayVideos: boolean; navigate(path: string, directory: boolean): void;
-  style: CSSProperties; onDimensions(node: GalleryImage, ratio: number): void;
+  style: CSSProperties;
 }) {
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [imageError, setImageError] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [playError, setPlayError] = useState(false);
@@ -25,8 +24,6 @@ function ImageCard({ node, autoplayVideos, navigate, style, onDimensions }: {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const visible = useRef(false);
   const hovering = useRef(false);
-  const query = new URLSearchParams({ path: node.path, v: node.modified });
-  const videoQuery = videoNode && new URLSearchParams({ path: videoNode.path, v: videoNode.modified });
   const stop = () => { clearTimeout(timer.current); setPlaying(false); setVideoReady(false); };
   useEffect(() => {
     if (!video || !card.current) return;
@@ -68,64 +65,69 @@ function ImageCard({ node, autoplayVideos, navigate, style, onDimensions }: {
       if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); navigate(node.path, false);
     }}>
-    <div className={`gallery-image gallery-image-${status}`}>
-      {status !== 'error' && <img src={`${apiBase}/thumbnail?${query}`}
-        alt="" loading="lazy" decoding="async" onLoad={event => {
-          const image = event.currentTarget;
-          if (image.naturalWidth && image.naturalHeight) onDimensions(node, image.naturalWidth / image.naturalHeight);
-          setStatus('ready');
-        }} onError={() => setStatus('error')} />}
-      {status === 'error' && <span className="gallery-image-error"><ImageIcon size={24} />
+    <div className="gallery-image">
+      {!imageError && <img src={thumbnailUrl(apiBase, node)}
+        alt="" loading="lazy" decoding="async" onError={() => setImageError(true)} />}
+      {imageError && <span className="gallery-image-error"><ImageIcon size={24} />
         <span>{video && !node.liveVideo ? 'Could not load video cover' : 'Could not display image'}</span>
       </span>}
       {video && <span className="gallery-video-badge" role="img" aria-label={videoLabel} title={videoLabel}>
         {node.liveVideo ? <BroadcastIcon size={14} /> : <TriangleIcon size={16} />}
       </span>}
-      {video && playing && <video ref={player} className={`gallery-video${videoReady ? ' gallery-video-ready' : ''}`} src={`${apiBase}/media?${videoQuery}`}
+      {video && playing && <video ref={player} className={`gallery-video${videoReady ? ' gallery-video-ready' : ''}`} src={mediaFileUrl(apiBase, videoNode)}
         muted loop playsInline onPlaying={() => setVideoReady(true)}
         onError={() => { stop(); setPlayError(true); }} />}
     </div>
   </a>;
 }
 
-export function DirectoryGallery({ images, width, availableWidth, onWidthChange, recursive, autoplayVideos, rows, navigate, ratios, onDimensions, dimensionsLoading }: {
-  images: GalleryImage[]; width: number; recursive: boolean; autoplayVideos: boolean; rows: boolean; navigate(path: string, directory: boolean): void;
+export function DirectoryGallery({ images, total, hasMore, loadMore, width, availableWidth, onWidthChange, recursive, autoplayVideos, rows, navigate, ratios, dimensionsLoading }: {
+  images: GalleryImage[]; total: number; hasMore: boolean; loadMore(): void;
+  width: number; recursive: boolean; autoplayVideos: boolean; rows: boolean; navigate(path: string, directory: boolean): void;
   availableWidth: number; onWidthChange(width: number): void;
-  ratios: number[]; onDimensions(node: GalleryImage, ratio: number): void; dimensionsLoading: boolean;
+  ratios: number[]; dimensionsLoading: boolean;
 }) {
-  const container = useRef<HTMLDivElement>(null);
+  const container = useRef<HTMLElement>(null);
+  const end = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const element = container.current;
-    if (!element) return;
-    onWidthChange(element.getBoundingClientRect().width);
-    const observer = new ResizeObserver(([entry]) => onWidthChange(entry.contentRect.width));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [images.length > 0, rows, onWidthChange]);
-  const layout = galleryLayout(ratios, availableWidth, width);
-  const photos = useMemo(() => images.map((node, index) => {
-    const ratio = ratios[index];
-    const photo: Photo & { node: GalleryImage } = {
-      key: mediaKey(node), node, src: `${apiBase}/thumbnail?${new URLSearchParams({ path: node.path, v: node.modified })}`,
-      width: Math.max(1, Math.round(ratio * 1000)), height: 1000, alt: node.name,
+    const viewport = element?.closest<HTMLElement>('.main-panel');
+    if (!element || !viewport) return;
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      if (!rect.width) return;
+      onWidthChange(rect.width);
+      const top = rect.top - viewport.getBoundingClientRect().top + viewport.scrollTop;
+      element.style.setProperty('--gallery-min-height', `${Math.max(120, viewport.clientHeight - top - 14)}px`);
     };
-    return photo;
-  }), [images, ratios]);
-  const rowLayout = useMemo(() => rows && availableWidth > 0 ? galleryRows(photos, availableWidth, width) : undefined,
-    [rows, photos, availableWidth, width]);
-  return <section aria-label="Media gallery">
-    {images.length && rows ? <div className="directory-rows-gallery" ref={container}>
-      {dimensionsLoading ? <div className="gallery-loading" role="status">Loading image dimensions…</div> : <StaticPhotoAlbum
-        layout="rows" model={rowLayout}
-        componentsProps={{ container: { className: 'directory-rows-album' } }}
-        render={{ photo: (_, { photo, width: photoWidth, height: photoHeight }) => <ImageCard
-          node={photo.node} autoplayVideos={autoplayVideos} navigate={navigate}
-          style={{ position: 'relative', width: photoWidth, height: photoHeight, flex: 'none' }}
-          onDimensions={onDimensions} /> }} />}
-    </div> : images.length ? <div className="directory-gallery" ref={container} style={{ height: layout.height }}>
-      {images.map((node, index) => <ImageCard key={mediaKey(node)} node={node} autoplayVideos={autoplayVideos}
-        navigate={navigate} style={layout.items[index]} onDimensions={onDimensions} />)}
-    </div> : <div className="gallery-empty" role="status"><ImageIcon size={40} />
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [onWidthChange]);
+  const layout = useMemo(() => (rows ? galleryRowLayout : galleryLayout)(ratios, availableWidth, width),
+    [rows, ratios, availableWidth, width]);
+  const showLoading = dimensionsLoading || availableWidth <= 0;
+  useEffect(() => {
+    const target = end.current;
+    const viewport = container.current?.closest<HTMLElement>('.main-panel');
+    if (showLoading || !hasMore || !target || !viewport) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) loadMore();
+    }, { root: viewport, rootMargin: `${viewport.clientHeight}px 0px` });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [showLoading, hasMore, images.length, availableWidth, loadMore]);
+  return <section ref={container} className="directory-gallery" aria-label="Media gallery" data-loading={showLoading && total ? '' : undefined}>
+    {total ? <>
+      <div className="gallery-loading" role="status"><span className="rendering-label">Rendering</span></div>
+      <div className="gallery-content" style={{ height: layout.height }} aria-busy={hasMore}>
+        {images.map((node, index) => <ImageCard key={mediaKey(node)} node={node} autoplayVideos={autoplayVideos}
+          navigate={navigate} style={layout.items[index]} />)}
+      </div>
+      {hasMore && !showLoading && <div ref={end} className="gallery-next" aria-hidden="true" />}
+    </> : <div className="gallery-empty" role="status"><ImageIcon size={40} />
       <strong>No images or videos in this folder</strong>
       <span>{recursive ? 'Try another folder or return to the file list.' : 'Enable Include subdirectories in the menu to look for more media.'}</span>
     </div>}

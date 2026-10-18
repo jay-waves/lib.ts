@@ -50,6 +50,12 @@ export function useReaderSession({ document, root, request, onActivity }) {
       if (disposed) return;
       initial.current = { line: saved.line || 1, page: saved.page };
       const currentRequest = latest.current.request;
+      const requestedPosition = currentRequest?.path === document.path
+        ? currentRequest.page ? { page: currentRequest.page }
+          : currentRequest.line ? { line: currentRequest.line } : saved
+        : saved;
+      const atTop = isTopPosition(requestedPosition);
+      panel()?.classList.toggle('pathbar-hidden', !atTop);
       setView(readerView(document, currentRequest?.path === document.path ? currentRequest.view || saved.view : saved.view));
       setScale(document.type === 'image' ? 1 : saved.scale || 1);
       setReady(true);
@@ -57,19 +63,38 @@ export function useReaderSession({ document, root, request, onActivity }) {
     return () => { disposed = true; };
   }, [key]);
 
+  useEffect(() => {
+    if (!ready || !active) return;
+    const viewport = panel();
+    if (!viewport) return;
+    const updatePathBar = () => viewport.classList.toggle('pathbar-hidden',
+      !isTopPosition(readerPosition(viewport, latest.current.document, latest.current.view, inset())));
+    viewport.addEventListener('scroll', updatePathBar, { passive: true });
+    return () => {
+      viewport.removeEventListener('scroll', updatePathBar);
+      viewport.classList.remove('pathbar-hidden');
+    };
+  }, [ready, active, document.path]);
+
   const restore = position => {
     selectedSymbol.current = null;
     const state = latest.current;
     if (!panel() || !state.ready || !state.active) return false;
     if (state.document.type === 'image') {
-      const image = panel().querySelector('.document-page[data-page="1"] img');
-      if (!image || !image.complete) return false;
-      if (!image.naturalWidth) return true;
+      const page = panel().querySelector('.document-page[data-page="1"]');
+      // Known dimensions are sufficient; decoding the thumbnail or original
+      // must not delay or change reading-position restoration.
+      if (!page?.offsetWidth || !page.offsetHeight) {
+        const image = page?.querySelector('.image-preview-full');
+        return Boolean(image?.complete && !image.naturalWidth);
+      }
     }
     if (restoreReaderPosition(panel(), state.document, state.view, position, inset()) === false) {
       navigation.retry();
       return false;
     }
+    panel().classList.toggle('pathbar-hidden',
+      !isTopPosition(readerPosition(panel(), state.document, state.view, inset())));
     scheduleCapture();
     return true;
   };
@@ -146,4 +171,9 @@ export function useReaderSession({ document, root, request, onActivity }) {
       onScale: scale => { setScale(scale); savePosition(key, { scale }); scheduleCapture(); },
     },
   };
+}
+
+function isTopPosition(position) {
+  if (position.page) return position.page.index === 0 && (position.page.y ?? 0) <= 0.01;
+  return (position.line ?? 1) <= 1 && !position.position;
 }

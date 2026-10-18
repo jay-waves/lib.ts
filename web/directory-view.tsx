@@ -7,13 +7,14 @@ import { readDirectoryState, readRepositoryDisplayState, saveDirectoryState } fr
 import { useDirectoryScroll } from './use-directory-scroll';
 import { formatRelativeModified } from './time-labels.mjs';
 import type { TreeNode } from './api/contracts';
-import { getMediaDimensions, openDirectory } from './api/library';
+import { openDirectory } from './api/library';
 import { useClipboard } from './use-clipboard';
 import { DirectoryGallery } from './directory-gallery';
+import { useGalleryMedia } from './use-gallery-media';
 import { FileToolbar, MoveToTopButton, useToolbarStuck } from './file-toolbar';
 import { bindGalleryZoom, gallerySize, resizeGallery } from './gallery-zoom.mjs';
-import { directorySortOptions, gallerySortOptions, galleryImages, isGalleryVideo, mediaKey, sortDirectoryNodes } from './gallery-images';
-import type { DirectorySort, GalleryImage } from './gallery-images';
+import { directorySortOptions, gallerySortOptions, galleryImages, sortDirectoryNodes } from './gallery-images';
+import type { DirectorySort } from './gallery-images';
 
 interface DirectoryViewProps {
   directory: { path?: string; absolutePath?: string; children?: TreeNode[] };
@@ -37,26 +38,12 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
     saveDirectoryState(pageBase, directory.path, { width, sort });
   }, [directory.path, width, sort]);
   const activeSort = !gallery && sort.startsWith('taken-') ? sort === 'taken-asc' ? 'time-asc' : 'time-desc' : sort;
-  const captureSort = gallery && sort.startsWith('taken-');
   const entries = useMemo(() => sortDirectoryNodes(children, activeSort), [children, activeSort]);
   const candidates = useMemo(() => gallery ? galleryImages(children, recursive) : [],
     [children, recursive, gallery]);
-  const [capturedAt, setCapturedAt] = useState<Record<string, number | null>>({});
-  const images = useMemo(() => sortDirectoryNodes(candidates, sort, capturedAt), [candidates, sort, capturedAt]);
-  const [mediaDimensions, setMediaDimensions] = useState<Record<string, { width: number; height: number }>>({});
-  const [dimensionsLoading, setDimensionsLoading] = useState(() => Boolean(gallery && (rows || captureSort) && candidates.length));
-  useDirectoryScroll(directoryRef, pageBase, directory.path ?? '', !gallery || availableWidth > 0 && !dimensionsLoading);
-  const [metadataError, setMetadataError] = useState('');
-  const [naturalRatios, setNaturalRatios] = useState<Record<string, number>>({});
-  const onDimensions = useCallback((node: GalleryImage, ratio: number) => {
-    if (mediaDimensions[node.path]) return;
-    const key = mediaKey(node);
-    setNaturalRatios(previous => previous[key] === ratio ? previous : { ...previous, [key]: ratio });
-  }, [mediaDimensions]);
-  const ratios = useMemo(() => images.map(node => {
-    const size = mediaDimensions[node.path];
-    return size ? size.width / size.height : naturalRatios[mediaKey(node)] ?? 4 / 3;
-  }), [images, mediaDimensions, naturalRatios]);
+  const { images, ratios, loading: dimensionsLoading, hasMore, loadMore, error: metadataError } = useGalleryMedia(candidates, sort);
+  useDirectoryScroll(directoryRef, pageBase, directory.path ?? '',
+    !gallery || availableWidth > 0 && !dimensionsLoading, !gallery || !hasMore, loadMore);
   const zoomSteps = useMemo(() => dimensionsLoading || !ratios.length || !availableWidth
     ? { smaller: width, larger: width }
     : {
@@ -71,39 +58,6 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
     if (!gallery || !viewport) return;
     return bindGalleryZoom(viewport, changeSize, { isEnabled: () => !directoryRef.current?.closest('[hidden]') });
   }, [gallery, changeSize]);
-  useEffect(() => {
-    setMetadataError('');
-    if (!gallery || (!rows && !captureSort) || !candidates.length) { setDimensionsLoading(false); return; }
-    const controller = new AbortController();
-    setDimensionsLoading(true);
-    setMediaDimensions({});
-    void (async () => {
-      try {
-        const dimensions: Record<string, { width: number; height: number }> = {};
-        const dates: Record<string, number | null> = {};
-        const requested = captureSort && !rows
-          ? candidates.filter(node => !isGalleryVideo(node.name) && !/\.svg$/i.test(node.name)) : candidates;
-        for (let index = 0; index < requested.length; index += 512) {
-          const batch = requested.slice(index, index + 512);
-          const response = await getMediaDimensions(apiBase, batch.map(node => node.path), controller.signal, captureSort);
-          for (const [path, value] of Object.entries(response.dimensions)) if (value) dimensions[path] = value;
-          if (captureSort) for (const node of batch) dates[mediaKey(node)] = response.capturedAt[node.path] ?? null;
-        }
-        if (!controller.signal.aborted) {
-          setMediaDimensions(dimensions);
-          if (captureSort) setCapturedAt(dates);
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          console.warn('Could not load gallery metadata', error);
-          if (captureSort) setMetadataError('Could not load capture dates. Using available dates or modification times.');
-        }
-      } finally {
-        if (!controller.signal.aborted) setDimensionsLoading(false);
-      }
-    })();
-    return () => controller.abort();
-  }, [gallery, rows, captureSort, candidates]);
   const { copied, error: copyError, copy } = useClipboard();
   const [openError, open, opening] = useActionState(async () => {
     try {
@@ -184,10 +138,7 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
       </div>
     </FileToolbar>
     {(openError || copyError) && <div className="action-error" role="alert">{openError || copyError}</div>}
-    {captureSort && (dimensionsLoading || metadataError) && <div className="px-3.5 py-2 text-meta text-muted" role="status">
-      {dimensionsLoading ? 'Loading capture dates…' : metadataError}
-    </div>}
-    {gallery ? <DirectoryGallery rows={rows} images={images} width={width} availableWidth={availableWidth} onWidthChange={setAvailableWidth} recursive={recursive} autoplayVideos={autoplayVideos} navigate={navigate} ratios={ratios} onDimensions={onDimensions} dimensionsLoading={dimensionsLoading} /> : entries.map(node => <a className="ui-focus flex min-h-toolbar box-border items-center gap-2 border-0 border-b border-solid border-divider px-3.5 py-2 text-ui text-fg no-underline last:border-b-0 hover:bg-subtle [&>svg]:shrink-0 [&>svg]:text-muted @max-reader-md/reader:px-3 @max-reader-sm/reader:flex-wrap" key={node.path} href={fileUrl(node.path, node.type === 'directory')}
+    {gallery ? <DirectoryGallery rows={rows} images={images} total={candidates.length} hasMore={hasMore} loadMore={loadMore} width={width} availableWidth={availableWidth} onWidthChange={setAvailableWidth} recursive={recursive} autoplayVideos={autoplayVideos} navigate={navigate} ratios={ratios} dimensionsLoading={dimensionsLoading} /> : entries.map(node => <a className="ui-focus flex min-h-toolbar box-border items-center gap-2 border-0 border-b border-solid border-divider px-3.5 py-2 text-ui text-fg no-underline last:border-b-0 hover:bg-subtle [&>svg]:shrink-0 [&>svg]:text-muted @max-reader-md/reader:px-3 @max-reader-sm/reader:flex-wrap" key={node.path} href={fileUrl(node.path, node.type === 'directory')}
       onClick={event => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault(); navigate(node.path, node.type === 'directory');
@@ -197,5 +148,6 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
       {node.type === 'directory' && node.modified && <time className="ms-auto flex-none whitespace-nowrap text-meta text-muted @max-reader-sm/reader:ms-6 @max-reader-sm/reader:w-[calc(100%-24px)]" dateTime={node.modified}
         >{formatRelativeModified(node.modified)}</time>}
     </a>)}
+    {gallery && metadataError && <div className="px-3.5 py-2 text-meta text-muted" role="status">{metadataError}</div>}
   </div>;
 }

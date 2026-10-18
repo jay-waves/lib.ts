@@ -12,7 +12,7 @@ export function PathBar({ items, onNavigate, disabled = false }: {
   onNavigate(path: string): void;
   disabled?: boolean;
 }) {
-  return <div className="min-w-0 flex-1 text-[12.5px] leading-5 [&_a]:text-[12.5px]! [&_button]:text-[12.5px]! [&_span]:text-[12.5px]! [&_[aria-current=page]]:font-semibold [&_[aria-current=page]]:text-fg"
+  return <div className="path-bar min-w-0 flex-1 text-[12.5px] leading-5 [&_a]:text-[12.5px]! [&_button]:text-[12.5px]! [&_span]:text-[12.5px]! [&_[aria-current=page]]:font-semibold [&_[aria-current=page]]:text-fg"
     inert={disabled}>
     <Breadcrumbs overflow="menu-with-root">
       {items.map((item, index) => {

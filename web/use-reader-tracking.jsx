@@ -25,12 +25,16 @@ export function useReaderTracking({ root, active, document, view, capture, retry
     observer.observe(panel);
     for (const content of root.current.querySelectorAll('.rendered-markdown, .raw-view, .document-page')) observer.observe(content);
     panel.addEventListener('scroll', changed, true);
+    panel.addEventListener('load', changed, true);
+    panel.addEventListener('error', changed, true);
     const frame = requestAnimationFrame(changed);
     const stopSmoothWheel = view === 'raw' || !panel.matches('.document-viewport') ? enableSmoothWheel(panel) : undefined;
     return () => {
       cancelAnimationFrame(frame); clearTimeout(timer.current);
       timer.current = null;
       observer.disconnect(); panel.removeEventListener('scroll', changed, true);
+      panel.removeEventListener('load', changed, true);
+      panel.removeEventListener('error', changed, true);
       stopSmoothWheel?.();
     };
   }, [active, document, view, root]);

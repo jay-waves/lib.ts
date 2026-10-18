@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { requestJson } from './client.ts';
+import { dimensionsSchema, videoMetadataSchema } from './media.ts';
 import { documentEvents } from './contracts.ts';
 import { subscribeEvents } from './events.ts';
 
@@ -17,19 +18,15 @@ const source = { lineCount: z.number().int().nonnegative(), source: z.string() }
 export const documentSchema = z.discriminatedUnion('type', [
   documentBase.extend({ ...source, type: z.literal('html'), url: z.string() }),
   documentBase.extend({ type: z.literal('image'), mime: z.string(), format: z.string(), url: z.string(),
+    preview: z.enum(['original', 'thumbnail', 'converted']).optional(),
     imageMetadata: z.object({
-      dimensions: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
+      dimensions: dimensionsSchema.optional(),
       exif: z.array(z.string()),
       capturedAt: z.number().int().optional(),
     }).optional(),
   }),
   documentBase.extend({ type: z.literal('binary'), mime: z.string(), format: z.string().optional(), url: z.string(),
-    videoMetadata: z.object({
-      dimensions: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
-      durationSeconds: z.number().int().nonnegative().optional(),
-      bitrate: z.number().int().positive().optional(),
-      codec: z.string().optional(),
-    }).optional(),
+    videoMetadata: videoMetadataSchema.optional(),
   }),
   documentBase.extend({ ...source, type: z.literal('markdown'), html: z.string().optional() }),
   documentBase.extend({ ...source, type: z.literal('text'),

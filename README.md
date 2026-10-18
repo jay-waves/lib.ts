@@ -62,6 +62,18 @@ curl -X POST http://127.0.0.1:49191/api/library/open \
 
 缩略图按源文件路径、大小和修改时间缓存于 `LIBRARY_DATA_DIRECTORY/thumbnails/`，重启后继续复用。透明图片保存为 PNG，其他图片和视频封面保存为 JPEG。可删除该目录清理缓存，后续访问会重新生成。
 
+媒体接口统一位于 `/{仓库}/api/media`：
+
+| 请求 | 用途 |
+| --- | --- |
+| `GET /media?path=…&v=…` | 原始媒体，支持 Range 分段读取 |
+| `GET /media/thumbnail?path=…&v=…` | 画廊缩略图和视频封面，小图片直接返回原图 |
+| `GET /media/preview?path=…&v=…` | HEIC/HEIF 的完整尺寸预览 |
+| `GET /media/metadata?path=…` | 异步视频元数据，与画廊尺寸读取共用探测缓存 |
+| `POST /media/dimensions` | 批量尺寸和可选拍摄时间；接口最多接收 512 个路径，画廊每批请求 64 个 |
+
+图片文档响应中的 `preview` 字段由后端确定：`original`、`thumbnail` 或 `converted`。前端直接使用该策略，避免重复维护图片大小阈值。媒体资源的 `v` 参数与源文件修改时间一致时启用浏览器私有缓存；无版本或版本不符时重新校验。画廊与单文件预览使用相同的缩略图 URL，以复用浏览器缓存。
+
 HEIC/HEIF 使用 FFmpeg 转为 JPEG，分别缓存画廊缩略图和完整尺寸预览，原始文件保持不变。建议使用带 HEVC 解码支持的 FFmpeg 8.1 或更新版本，以正确处理 iPhone 常见的分块 HEIF；暂不处理 Live Photo 配对及 HDR 增益图还原。
 
 ## 构建与打包

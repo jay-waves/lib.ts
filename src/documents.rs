@@ -72,6 +72,7 @@ enum DocumentContent {
         url: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         image_metadata: Option<crate::media::ImageMetadata>,
+        preview: crate::media::ImagePreview,
     },
     Pdf {
         revision: String,
@@ -230,10 +231,20 @@ fn load_document(
             ),
         }
     } else if mime.starts_with("image/") {
+        let image_metadata =
+            (mime != "image/svg+xml").then(|| media_metadata.image_metadata(&path));
+        let preview = crate::media::image_preview(
+            &path,
+            size,
+            image_metadata
+                .as_ref()
+                .and_then(|metadata| metadata.dimensions),
+        );
         DocumentContent::Image {
             mime,
             format: detected.format,
-            image_metadata: (mime != "image/svg+xml").then(|| media_metadata.image_metadata(&path)),
+            image_metadata,
+            preview,
             url: format!(
                 "{api_prefix}/api/asset?path={}",
                 encode_query_component(&requested_path)
@@ -268,8 +279,7 @@ fn load_document(
         DocumentContent::Binary {
             mime,
             format: Some(detected.format),
-            video_metadata: crate::media::is_video(&path)
-                .then(|| crate::media::video_metadata(&path)),
+            video_metadata: None,
             url: format!(
                 "{api_prefix}/api/asset?path={}",
                 encode_query_component(&requested_path)
@@ -281,8 +291,7 @@ fn load_document(
             DocumentContent::Binary {
                 mime: "application/octet-stream",
                 format: None,
-                video_metadata: crate::media::is_video(&path)
-                    .then(|| crate::media::video_metadata(&path)),
+                video_metadata: None,
                 url: format!(
                     "{api_prefix}/api/asset?path={}",
                     encode_query_component(&requested_path)

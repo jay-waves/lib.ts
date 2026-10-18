@@ -6,7 +6,6 @@ import {
   treeEvents,
   treeSchema,
   openDirectoryResponseSchema,
-  mediaDimensionsResponseSchema,
 } from './contracts';
 import { subscribeEvents } from './events';
 
@@ -44,13 +43,5 @@ export function openDirectory(apiBase: string, path = '') {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ path }),
-  });
-}
-
-export function getMediaDimensions(apiBase: string, paths: string[], signal?: AbortSignal, includeCaptureTime = false) {
-  return requestJson(`${apiBase}/media/dimensions`, mediaDimensionsResponseSchema, {
-    method: 'POST', signal,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ paths, includeCaptureTime }),
   });
 }

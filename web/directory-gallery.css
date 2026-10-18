@@ -1,8 +1,13 @@
 .gallery-menu-toggle [data-component="ActionList.Selection"] { display: none; }
 .gallery-menu-toggle [data-component="ActionList.Item.Label"] { text-align: left; }
-.directory-gallery { position: relative; margin: 14px; }
-.directory-rows-gallery { margin: 14px; }
-.gallery-loading { min-height: 120px; display: grid; place-items: center; color: var(--fgColor-muted); font-size: 12px; }
+.directory-gallery { position: relative; min-height: var(--gallery-min-height, 120px); margin: 14px; }
+.gallery-content { position: relative; }
+.gallery-next { height: 1px; }
+.gallery-loading { position: absolute; inset: 0 0 auto; height: var(--gallery-min-height, 120px); display: none; place-items: center; }
+.directory-gallery[data-loading] > .gallery-loading,
+[data-restoring] .directory-gallery > .gallery-loading { display: grid; }
+.directory-gallery[data-loading] > .gallery-content,
+[data-restoring] .directory-gallery > .gallery-content { visibility: hidden; }
 .gallery-card {
   position: absolute;
   box-sizing: border-box;

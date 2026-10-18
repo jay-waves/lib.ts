@@ -1,128 +1,12 @@
-//! On-demand gallery previews. Encoded files survive restarts; one worker limits decoding.
-use image::{ImageDecoder, ImageEncoder, ImageReader};
-use serde::Serialize;
-use std::{collections::HashMap, sync::Mutex, time::SystemTime};
+use super::{Dimensions, ImageMetadata, VideoMetadata, dimensions, is_heif, is_video, probe};
+use image::{ImageDecoder, ImageReader};
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    sync::Mutex,
+    time::SystemTime,
 };
-
-const MAX_EDGE: u32 = 800;
-const LARGE_PIXELS: u64 = 8_000_000;
-const LARGE_BYTES: u64 = 8 * 1024 * 1024;
-
 const METADATA_CACHE_LIMIT: usize = 2048;
-
-#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
-pub struct Dimensions {
-    pub width: u32,
-    pub height: u32,
-}
-
-#[derive(Clone, Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImageMetadata {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dimensions: Option<Dimensions>,
-    exif: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub captured_at: Option<i64>,
-}
-
-#[derive(Clone, Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VideoMetadata {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dimensions: Option<Dimensions>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_seconds: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bitrate: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub codec: Option<String>,
-}
-
-pub fn video_metadata(path: &Path) -> VideoMetadata {
-    let output = Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=width,height,bit_rate,codec_name:format=duration,bit_rate",
-            "-of",
-            "json",
-        ])
-        .arg(crate::client_path(path))
-        .stdin(Stdio::null())
-        .output();
-    let Ok(output) = output else {
-        return VideoMetadata::default();
-    };
-    if !output.status.success() {
-        return VideoMetadata::default();
-    }
-    let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
-        return VideoMetadata::default();
-    };
-    let stream = json
-        .get("streams")
-        .and_then(|value| value.as_array())
-        .and_then(|streams| streams.first());
-    let dimensions = stream
-        .and_then(|stream| {
-            Some((
-                stream.get("width")?.as_u64()?,
-                stream.get("height")?.as_u64()?,
-            ))
-        })
-        .and_then(|(width, height)| {
-            dimensions(u32::try_from(width).ok()?, u32::try_from(height).ok()?)
-        });
-    let duration_seconds = json
-        .get("format")
-        .and_then(|format| format.get("duration"))
-        .and_then(|value| {
-            value
-                .as_str()
-                .and_then(|s| s.parse::<f64>().ok())
-                .or_else(|| value.as_f64())
-        })
-        .filter(|value| value.is_finite() && *value > 0.0)
-        .map(|value| value.round() as u64);
-    let bitrate = stream
-        .and_then(|stream| stream.get("bit_rate"))
-        .and_then(|value| {
-            value
-                .as_str()
-                .and_then(|s| s.parse::<u64>().ok())
-                .or_else(|| value.as_u64())
-        })
-        .or_else(|| {
-            json.get("format")
-                .and_then(|format| format.get("bit_rate"))
-                .and_then(|value| {
-                    value
-                        .as_str()
-                        .and_then(|s| s.parse::<u64>().ok())
-                        .or_else(|| value.as_u64())
-                })
-        })
-        .filter(|value| *value > 0);
-    let codec = stream
-        .and_then(|stream| stream.get("codec_name"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned);
-    VideoMetadata {
-        dimensions,
-        duration_seconds,
-        bitrate,
-        codec,
-    }
-}
 
 fn capture_time(exif: &exif::Exif) -> Option<i64> {
     use exif::{In, Tag, Value};
@@ -158,7 +42,12 @@ fn capture_time(exif: &exif::Exif) -> Option<i64> {
     )
 }
 
-pub fn image_metadata(path: &Path) -> ImageMetadata {
+#[cfg(test)]
+fn image_metadata(path: &Path) -> ImageMetadata {
+    read_image_metadata(path, read_dimensions(path))
+}
+
+fn read_image_metadata(path: &Path, mut size: Option<Dimensions>) -> ImageMetadata {
     use exif::{In, Tag, Value};
     let exif = fs::File::open(path).ok().and_then(|file| {
         exif::Reader::new()
@@ -168,7 +57,6 @@ pub fn image_metadata(path: &Path) -> ImageMetadata {
             .ok()
     });
     let mut summary = Vec::new();
-    let mut size = read_dimensions(path);
     let captured_at = exif.as_ref().and_then(capture_time);
     if let Some(exif) = exif {
         let text = |tag| {
@@ -233,41 +121,54 @@ pub fn image_metadata(path: &Path) -> ImageMetadata {
     }
 }
 
+type Cache<T> = Mutex<Option<lru::LruCache<PathBuf, (u64, SystemTime, T)>>>;
+
 #[derive(Default)]
 pub struct MetadataService {
-    cache: Mutex<HashMap<PathBuf, (u64, SystemTime, Option<Dimensions>)>>,
-    photos: Mutex<Option<lru::LruCache<PathBuf, (u64, SystemTime, ImageMetadata)>>>,
+    cache: Cache<Option<Dimensions>>,
+    photos: Cache<ImageMetadata>,
+    videos: Cache<VideoMetadata>,
+}
+
+fn cached<T: Clone + Default>(cache: &Cache<T>, path: &Path, read: impl FnOnce(&Path) -> T) -> T {
+    let Ok(metadata) = fs::metadata(path) else {
+        return T::default();
+    };
+    let Ok(modified) = metadata.modified() else {
+        return read(path);
+    };
+    if let Some((_, _, value)) = cache
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_mut()
+        .and_then(|cache| cache.get(path))
+        .filter(|(size, time, _)| *size == metadata.len() && *time == modified)
+    {
+        return value.clone();
+    }
+    let value = read(path);
+    cache
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get_or_insert_with(|| {
+            lru::LruCache::new(std::num::NonZeroUsize::new(METADATA_CACHE_LIMIT).unwrap())
+        })
+        .put(
+            path.to_path_buf(),
+            (metadata.len(), modified, value.clone()),
+        );
+    value
 }
 
 impl MetadataService {
     pub fn image_metadata(&self, path: &Path) -> ImageMetadata {
-        let Ok(metadata) = fs::metadata(path) else {
-            return ImageMetadata::default();
-        };
-        let Ok(modified) = metadata.modified() else {
-            return image_metadata(path);
-        };
-        {
-            let mut photos = self.photos.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some((_, _, value)) = photos
-                .as_mut()
-                .and_then(|cache| cache.get(path))
-                .filter(|(size, time, _)| *size == metadata.len() && *time == modified)
-            {
-                return value.clone();
-            }
-        }
-        let value = image_metadata(path);
-        let mut photos = self.photos.lock().unwrap_or_else(|e| e.into_inner());
-        photos
-            .get_or_insert_with(|| {
-                lru::LruCache::new(std::num::NonZeroUsize::new(METADATA_CACHE_LIMIT).unwrap())
-            })
-            .put(
-                path.to_path_buf(),
-                (metadata.len(), modified, value.clone()),
-            );
-        value
+        cached(&self.photos, path, |path| {
+            read_image_metadata(path, self.dimensions(path))
+        })
+    }
+
+    pub fn video_metadata(&self, path: &Path) -> VideoMetadata {
+        cached(&self.videos, path, probe::video_metadata)
     }
 
     pub fn dimensions(&self, path: &Path) -> Option<Dimensions> {
@@ -276,53 +177,23 @@ impl MetadataService {
         if let Some((_, _, value)) = self
             .photos
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(|error| error.into_inner())
             .as_mut()
             .and_then(|cache| cache.get(path))
             .filter(|(size, time, _)| *size == metadata.len() && *time == modified)
         {
             return value.dimensions;
         }
-        if let Some((_, _, dimensions)) = self
-            .cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(path)
-            .filter(|(size, time, _)| *size == metadata.len() && *time == modified)
-        {
-            return *dimensions;
+        if is_video(path) || is_heif(path) {
+            return self.video_metadata(path).dimensions;
         }
-        let dimensions = read_dimensions(path);
-        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        if cache.len() >= METADATA_CACHE_LIMIT {
-            cache.clear();
-        }
-        cache.insert(path.to_path_buf(), (metadata.len(), modified, dimensions));
-        dimensions
+        cached(&self.cache, path, read_dimensions)
     }
 }
 
 fn read_dimensions(path: &Path) -> Option<Dimensions> {
     if is_video(path) || is_heif(path) {
-        let output = Command::new("ffprobe")
-            .args([
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=width,height",
-                "-of",
-                "csv=s=x:p=0",
-            ])
-            .arg(crate::client_path(path))
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
-        let value = String::from_utf8(output.stdout).ok()?;
-        let (width, height) = value.trim().split_once('x')?;
-        return dimensions(width.parse().ok()?, height.parse().ok()?);
+        return probe::video_metadata(path).dimensions;
     }
     if path
         .extension()
@@ -349,10 +220,6 @@ fn read_dimensions(path: &Path) -> Option<Dimensions> {
         std::mem::swap(&mut width, &mut height);
     }
     dimensions(width, height)
-}
-
-fn dimensions(width: u32, height: u32) -> Option<Dimensions> {
-    (width > 0 && height > 0).then_some(Dimensions { width, height })
 }
 
 fn svg_dimensions(path: &Path) -> Option<Dimensions> {
@@ -435,151 +302,32 @@ fn svg_dimensions(path: &Path) -> Option<Dimensions> {
     )
 }
 
-pub fn is_video(path: &Path) -> bool {
-    path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
-        matches!(
-            s.to_ascii_lowercase().as_str(),
-            "mp4" | "m4v" | "mov" | "webm" | "ogv"
-        )
-    })
-}
-
-pub fn thumbnail(path: &Path, data: &Path) -> Result<PathBuf, String> {
-    generate(path, data, false).map_err(|e| e.to_string())
-}
-
-pub fn is_heif(path: &Path) -> bool {
-    path.extension()
-        .and_then(|s| s.to_str())
-        .is_some_and(|s| matches!(s.to_ascii_lowercase().as_str(), "heic" | "heif"))
-}
-
-pub fn preview(path: &Path, data: &Path) -> Result<PathBuf, String> {
-    if !is_heif(path) {
-        return Ok(path.to_path_buf());
-    }
-    generate(path, data, true).map_err(|e| e.to_string())
-}
-
-fn generate(path: &Path, data: &Path, full: bool) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let metadata = fs::metadata(path)?;
-    let key = typst::utils::hash128(&(
-        "gallery-v1",
-        path,
-        metadata.len(),
-        metadata.modified()?,
-        MAX_EDGE,
-        full,
-    ));
-    let folder = data.join("thumbnails");
-    let mut cached = folder.join(format!("{key:032x}.png"));
-    for extension in ["png", "jpg"] {
-        let candidate = cached.with_extension(extension);
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
-    }
-    let video = is_video(path);
-    let reader = if video || is_heif(path) {
-        None
-    } else {
-        let reader = ImageReader::open(path)?.with_guessed_format()?;
-        // Keep browser-native formats that this build cannot decode usable.
-        let dimensions = match image::image_dimensions(path) {
-            Ok(dimensions) => dimensions,
-            Err(_) => return Ok(path.to_path_buf()),
-        };
-        if u64::from(dimensions.0) * u64::from(dimensions.1) <= LARGE_PIXELS
-            && metadata.len() <= LARGE_BYTES
-        {
-            return Ok(path.to_path_buf());
-        }
-        Some(reader)
-    };
-    fs::create_dir_all(&folder)?;
-    let temporary = cached.with_extension("tmp");
-    let result: Result<(), Box<dyn std::error::Error>> = (|| {
-        if let Some(mut reader) = reader {
-            let mut limits = image::Limits::default();
-            limits.max_alloc = Some(512 * 1024 * 1024);
-            reader.limits(limits);
-            let mut decoder = reader.into_decoder()?;
-            let orientation = image::ImageDecoder::orientation(&mut decoder)?;
-            let mut decoded = image::DynamicImage::from_decoder(decoder)?;
-            decoded.apply_orientation(orientation);
-            let preview = decoded.thumbnail(
-                MAX_EDGE.min(decoded.width()),
-                MAX_EDGE.min(decoded.height()),
-            );
-            let out = fs::File::create(&temporary)?;
-            if preview.color().has_alpha() {
-                let preview = preview.to_rgba8();
-                image::codecs::png::PngEncoder::new(out).write_image(
-                    preview.as_raw(),
-                    preview.width(),
-                    preview.height(),
-                    image::ExtendedColorType::Rgba8,
-                )?;
-            } else {
-                cached.set_extension("jpg");
-                image::codecs::jpeg::JpegEncoder::new_with_quality(out, 80)
-                    .encode_image(&preview)?;
-            }
-        } else {
-            cached.set_extension("jpg");
-            let mut command = Command::new("ffmpeg");
-            command
-                .args(["-nostdin", "-v", "error", "-threads", "1", "-i"])
-                .arg(crate::client_path(path));
-            if !full {
-                command.args([
-                    "-vf",
-                    "scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease",
-                ]);
-            }
-            let status = command
-                .args([
-                    "-frames:v",
-                    "1",
-                    "-an",
-                    "-threads",
-                    "1",
-                    "-f",
-                    "image2",
-                    "-c:v",
-                    "mjpeg",
-                    "-q:v",
-                    "3",
-                    "-y",
-                ])
-                .arg(crate::client_path(&temporary))
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()?;
-            if !status.success() {
-                return Err(if video {
-                    "Could not extract video cover"
-                } else {
-                    "Could not decode HEIC/HEIF. Use FFmpeg 8.1 or newer with HEVC support."
-                }
-                .into());
-            }
-        }
-        fs::rename(&temporary, &cached)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result?;
-    Ok(cached)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use image::ImageEncoder;
+
+    #[test]
+    fn video_dimensions_and_details_share_a_versioned_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clip.mp4");
+        fs::write(&path, b"video").unwrap();
+        let service = MetadataService::default();
+        cached(&service.videos, &path, |_| VideoMetadata {
+            dimensions: dimensions(1920, 1080),
+            codec: Some("h264".into()),
+            ..VideoMetadata::default()
+        });
+        assert_eq!(service.dimensions(&path), dimensions(1920, 1080));
+        assert_eq!(service.video_metadata(&path).codec.as_deref(), Some("h264"));
+        fs::write(&path, b"changed video").unwrap();
+        cached(&service.videos, &path, |_| VideoMetadata {
+            dimensions: dimensions(640, 480),
+            ..VideoMetadata::default()
+        });
+        assert_eq!(service.dimensions(&path), dimensions(640, 480));
+        assert!(service.video_metadata(&path).codec.is_none());
+    }
 
     #[test]
     fn image_metadata_handles_missing_exif_and_invalid_images() {
@@ -738,49 +486,6 @@ mod tests {
     }
 
     #[test]
-    fn byte_threshold_creates_jpeg_without_upscaling_and_revision_changes_cache() {
-        let dir = tempfile::tempdir().unwrap();
-        let source = dir.path().join("photo.jpg");
-        let data = dir.path().join("data");
-        image::RgbImage::new(40, 20).save(&source).unwrap();
-        fs::OpenOptions::new()
-            .append(true)
-            .open(&source)
-            .unwrap()
-            .write_all(&vec![0; LARGE_BYTES as usize])
-            .unwrap();
-        let first = thumbnail(&source, &data).unwrap();
-        assert_ne!(first, source);
-        assert_eq!(first.extension().unwrap(), "jpg");
-        assert_eq!(image::image_dimensions(&first).unwrap(), (40, 20));
-        fs::OpenOptions::new()
-            .append(true)
-            .open(&source)
-            .unwrap()
-            .write_all(&[0])
-            .unwrap();
-        assert_ne!(thumbnail(&source, &data).unwrap(), first);
-    }
-
-    #[test]
-    fn large_image_is_cached_and_small_image_passes_through() {
-        let dir = tempfile::tempdir().unwrap();
-        let source = dir.path().join("large.png");
-        image::RgbaImage::new(3000, 3000).save(&source).unwrap();
-        let data = dir.path().join("data");
-        let preview = thumbnail(&source, &data).unwrap();
-        assert_eq!(image::image_dimensions(&preview).unwrap(), (800, 800));
-        let modified = fs::metadata(&preview).unwrap().modified().unwrap();
-        assert_eq!(thumbnail(&source, &data).unwrap(), preview);
-        assert_eq!(
-            fs::metadata(&preview).unwrap().modified().unwrap(),
-            modified
-        );
-        image::RgbaImage::new(20, 10).save(&source).unwrap();
-        assert_eq!(thumbnail(&source, &data).unwrap(), source);
-    }
-
-    #[test]
     fn metadata_service_reads_raster_and_svg_dimensions_and_refreshes_cache() {
         let dir = tempfile::tempdir().unwrap();
         let raster = dir.path().join("photo.png");
@@ -815,10 +520,5 @@ mod tests {
                 height: 480
             })
         );
-    }
-
-    #[test]
-    fn recognizes_mov_as_video() {
-        assert!(is_video(Path::new("live-photo.MOV")));
     }
 }

@@ -9,6 +9,7 @@ import { pagedDocumentLayout } from './document-preview.mjs';
 import { useReader } from './reader-context.jsx';
 import { isGalleryVideo } from './gallery-images';
 import { apiBase } from './urls.mjs';
+import { thumbnailUrl, mediaFileUrl } from './media-urls.mjs';
 
 function diagnosticExcerpt(source, range) {
   const start = Number(range?.start?.line);
@@ -52,10 +53,11 @@ function TypstPreview() {
 
 function VideoPreview({ document }) {
   const [error, setError] = useState(false);
+  const poster = thumbnailUrl(apiBase, document);
   return <div className="p-4">
-    <video className="w-full max-h-[80vh]" controls playsInline preload="metadata"
+    <video className="w-full max-h-[80vh]" controls playsInline preload="metadata" poster={poster}
       onError={() => setError(true)}
-      src={`${apiBase}/media?${new URLSearchParams({ path: document.path, v: document.modified })}`} />
+      src={mediaFileUrl(apiBase, document)} />
     {error && <p role="alert">Could not play this video. Its encoding may not be supported by your browser.</p>}
   </div>;
 }
@@ -68,7 +70,7 @@ export function Preview() {
     <PdfPages key={`${document.path}:${document.revision || document.modified}`} pages={document.pages}
       scale={viewport.scale} modified={document.modified} revision={document.revision || document.modified} />
   </DocumentPreview>;
-  if (document.type === 'image') return <ImagePreview />;
+  if (document.type === 'image') return <ImagePreview key={document.modified} />;
   if (document.type === 'binary' && isGalleryVideo(document.name)) return <VideoPreview key={document.path} document={document} />;
   if (document.type === 'html') return <iframe className="html-preview" aria-label={document.name}
     sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer"

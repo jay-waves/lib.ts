@@ -1,6 +1,7 @@
 import { computeRowsLayout } from 'react-photo-album';
 
 const gap = 12;
+export const galleryBatchSize = 64;
 export const galleryColumns = (width, size) => Math.max(1, Math.floor((width + gap) / (size + gap)));
 /**
  * @template {import('react-photo-album').Photo} TPhoto
@@ -9,6 +10,30 @@ export const galleryColumns = (width, size) => Math.max(1, Math.floor((width + g
  * @param {number} size
  */
 export const galleryRows = (photos, width, size) => computeRowsLayout(photos, gap, 0, width, size);
+
+// Each completed batch keeps its row breaks when more photos are appended.
+export function galleryRowTracks(photos, width, size) {
+  const tracks = [];
+  for (let start = 0; start < photos.length; start += galleryBatchSize) {
+    tracks.push(...(galleryRows(photos.slice(start, start + galleryBatchSize), Math.max(1, width), size)?.tracks ?? []));
+  }
+  return tracks;
+}
+
+export function galleryRowLayout(ratios, width, size) {
+  const photos = ratios.map(ratio => ({ src: '', width: Math.max(1, Math.round(ratio * 1000)), height: 1000 }));
+  const items = [];
+  let top = 0;
+  for (const track of galleryRowTracks(photos, width, size)) {
+    let left = 0;
+    for (const photo of track.photos) {
+      items.push({ left, top, width: photo.width, height: photo.height });
+      left += photo.width + gap;
+    }
+    top += track.photos[0].height + gap;
+  }
+  return { items, height: Math.max(0, top - (items.length ? gap : 0)) };
+}
 
 // One flat card list keeps React identity stable across size and layout changes.
 export function galleryLayout(ratios, availableWidth, size) {

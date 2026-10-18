@@ -1,16 +1,20 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { readDirectoryState, saveDirectoryState } from './directory-state.mjs';
 
-export function useDirectoryScroll(root: RefObject<HTMLElement | null>, repository: string, path: string, ready: boolean) {
+export function useDirectoryScroll(root: RefObject<HTMLElement | null>, repository: string, path: string, ready: boolean,
+  complete = true, loadMore?: () => void) {
   const layoutReady = useRef(ready);
+  const progress = useRef({ complete, loadMore });
   const restore = useRef(() => {});
   layoutReady.current = ready;
+  progress.current = { complete, loadMore };
   useLayoutEffect(() => {
     const content = root.current;
     const panel = content?.closest<HTMLElement>('.main-panel');
     if (!content || !panel) return;
     let top = readDirectoryState(repository, path).scrollTop ?? 0;
     let restoring = true;
+    content.toggleAttribute('data-restoring', top > 0);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const hidden = () => Boolean(content.closest('[hidden]'));
     let visible = !hidden();
@@ -19,14 +23,23 @@ export function useDirectoryScroll(root: RefObject<HTMLElement | null>, reposito
       saveDirectoryState(repository, path, { scrollTop: top });
     };
     const attempt = () => {
-      if (!restoring || hidden()) return;
+      if (!restoring || hidden() || !layoutReady.current) return;
+      if (top > panel.scrollHeight - panel.clientHeight + 1 && !progress.current.complete) {
+        progress.current.loadMore?.();
+        return;
+      }
       panel.scrollTo({ top, behavior: 'instant' });
-      if (layoutReady.current) { restoring = false; top = panel.scrollTop; }
+      restoring = false;
+      top = panel.scrollTop;
+      content.removeAttribute('data-restoring');
     };
     restore.current = attempt;
     const observer = new ResizeObserver(() => {
       const nextVisible = !hidden();
-      if (nextVisible && !visible) restoring = true;
+      if (nextVisible && !visible) {
+        restoring = true;
+        content.toggleAttribute('data-restoring', top > 0);
+      }
       visible = nextVisible;
       attempt();
     });
@@ -40,7 +53,11 @@ export function useDirectoryScroll(root: RefObject<HTMLElement | null>, reposito
     };
     // Explicit input takes priority over a pending layout restoration.
     const interact = () => {
-      if (!hidden()) { restoring = false; top = panel.scrollTop; }
+      if (!hidden()) {
+        restoring = false;
+        top = panel.scrollTop;
+        content.removeAttribute('data-restoring');
+      }
     };
     const key = (event: KeyboardEvent) => {
       if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) interact();
@@ -56,6 +73,7 @@ export function useDirectoryScroll(root: RefObject<HTMLElement | null>, reposito
     attempt();
     return () => {
       save();
+      content.removeAttribute('data-restoring');
       restore.current = () => {};
       observer.disconnect();
       panel.removeEventListener('scroll', scrolled);
@@ -67,5 +85,5 @@ export function useDirectoryScroll(root: RefObject<HTMLElement | null>, reposito
       document.removeEventListener('visibilitychange', visibility);
     };
   }, [root, repository, path]);
-  useLayoutEffect(() => restore.current(), [ready]);
+  useLayoutEffect(() => restore.current(), [ready, complete]);
 }

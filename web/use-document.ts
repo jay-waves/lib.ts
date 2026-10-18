@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { getDocument, type DocumentView, type LibraryDocument } from './api/documents.ts';
+import { getVideoMetadata } from './api/media.ts';
 import { loadPosition, readingKey } from './reading-state.mjs';
 import { sameDocumentContent } from './document-content.ts';
 
@@ -78,10 +79,18 @@ export function useDocument(options: DocumentOptions) {
       const value = await getDocument(apiBase, path, fetchedView, theme, controller.signal);
       if (controller.signal.aborted) return;
       loadedRequest.current = key;
-      if (document && sameDocumentContent(document, value)) return;
-      if (document?.path === value.path) capture();
-      if (document?.path !== value.path) onOpen(fetchedView);
-      setDocument(value);
+      if (!(document && sameDocumentContent(document, value))) {
+        if (document?.path === value.path) capture();
+        if (document?.path !== value.path) onOpen(fetchedView);
+        setDocument(value);
+      }
+      if (value.type === 'binary' && /\.(?:mp4|m4v|mov|webm|ogv)$/i.test(value.name)) {
+        void getVideoMetadata(apiBase, path, controller.signal).then(videoMetadata => {
+          if (controller.signal.aborted) return;
+          setDocument(previous => previous?.path === value.path && previous.modified === value.modified
+            ? { ...previous, videoMetadata } : previous);
+        }).catch(() => {});
+      }
     }
     void load().catch(cause => {
       if (!controller.signal.aborted) setError(String(cause));

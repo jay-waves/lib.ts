@@ -1573,140 +1573,6 @@ async fn search(
     }
 }
 
-async fn media_file(
-    State(state): State<AppState>,
-    OriginalUri(uri): OriginalUri,
-    Query(query): Query<PathQuery>,
-    request: Request,
-) -> Response {
-    let root = state.root_for_uri(uri.path());
-    let path = match checked_library_path(&root, &query.path, &state.data_directory) {
-        Ok(path) => path,
-        Err((status, message)) => return json_error(status, message).into_response(),
-    };
-    serve_media_path(path, request).await
-}
-
-async fn serve_media_path(path: PathBuf, request: Request) -> Response {
-    match tower_http::services::ServeFile::new(path)
-        .try_call(request)
-        .await
-    {
-        Ok(response) => response.map(Body::new),
-        Err(error) => {
-            json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct MediaDimensionsRequest {
-    paths: Vec<String>,
-    #[serde(default, rename = "includeCaptureTime")]
-    include_capture_time: bool,
-}
-
-#[derive(Serialize)]
-struct MediaDimensionsResponse {
-    dimensions: std::collections::HashMap<String, Option<media::Dimensions>>,
-    #[serde(rename = "capturedAt")]
-    captured_at: std::collections::HashMap<String, Option<i64>>,
-}
-
-async fn media_dimensions(
-    State(state): State<AppState>,
-    OriginalUri(uri): OriginalUri,
-    Json(request): Json<MediaDimensionsRequest>,
-) -> Response {
-    if request.paths.len() > 512 {
-        return json_error(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "At most 512 media paths are allowed",
-        )
-        .into_response();
-    }
-    let root = state.root_for_uri(uri.path());
-    let private = state.data_directory.clone();
-    let mut paths = Vec::with_capacity(request.paths.len());
-    for value in request.paths {
-        let path = match checked_library_path(&root, &value, &private) {
-            Ok(path) => path,
-            Err((status, message)) => return json_error(status, message).into_response(),
-        };
-        if !path.is_file() {
-            return json_error(StatusCode::BAD_REQUEST, "Media path is not a file").into_response();
-        }
-        paths.push((value, path));
-    }
-    let metadata = state.media_metadata.clone();
-    match state
-        .media_workers
-        .run(move || {
-            let mut dimensions = std::collections::HashMap::new();
-            let mut captured_at = std::collections::HashMap::new();
-            for (key, path) in paths {
-                if request.include_capture_time
-                    && !media::is_video(&path)
-                    && !path
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-                {
-                    let value = metadata.image_metadata(&path);
-                    captured_at.insert(key.clone(), value.captured_at);
-                    dimensions.insert(key, value.dimensions);
-                } else {
-                    captured_at.insert(key.clone(), None);
-                    dimensions.insert(key, metadata.dimensions(&path));
-                }
-            }
-            MediaDimensionsResponse {
-                dimensions,
-                captured_at,
-            }
-        })
-        .await
-    {
-        Ok(response) => Json(response).into_response(),
-        Err(error) => worker_error(error),
-    }
-}
-
-#[derive(Deserialize)]
-struct ThumbnailQuery {
-    path: String,
-    #[serde(default)]
-    preview: bool,
-}
-
-async fn media_thumbnail(
-    State(state): State<AppState>,
-    OriginalUri(uri): OriginalUri,
-    Query(query): Query<ThumbnailQuery>,
-    request: Request,
-) -> Response {
-    let root = state.root_for_uri(uri.path());
-    let path = match checked_library_path(&root, &query.path, &state.data_directory) {
-        Ok(path) => path,
-        Err((status, message)) => return json_error(status, message).into_response(),
-    };
-    let data = state.data_directory.clone();
-    match state
-        .media_workers
-        .run(move || {
-            if query.preview {
-                media::preview(&path, &data)
-            } else {
-                media::thumbnail(&path, &data)
-            }
-        })
-        .await
-    {
-        Ok(Ok(path)) => serve_media_path(path, request).await,
-        Ok(Err(message)) => json_error(StatusCode::UNPROCESSABLE_ENTITY, message).into_response(),
-        Err(error) => worker_error(error),
-    }
-}
-
 async fn asset(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -2163,9 +2029,14 @@ fn build_router(state: AppState) -> Router {
         .route("/html", get(html::html_document))
         .route("/html-resource/{token}/{*path}", get(html::html_resource))
         .route("/asset", get(asset))
-        .route("/thumbnail", get(media_thumbnail))
-        .route("/media/dimensions", axum::routing::post(media_dimensions))
-        .route("/media", get(media_file))
+        .route("/media/thumbnail", get(media::http::thumbnail))
+        .route("/media/preview", get(media::http::preview))
+        .route("/media/metadata", get(media::http::metadata))
+        .route(
+            "/media/dimensions",
+            axum::routing::post(media::http::dimensions),
+        )
+        .route("/media", get(media::http::file))
         .route("/pdf/page", get(pdf_page))
         .route("/typst/page", get(typst_page))
         .with_state(state.clone());
