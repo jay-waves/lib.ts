@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getVideoMetadata, getMediaDimensions, videoMetadataSchema } from '../web/api/media.ts';
+import { getVideoMetadata, getMediaDimensions, openMedia, videoMetadataSchema } from '../web/api/media.ts';
 import { documentSchema } from '../web/api/documents.ts';
 
 test('media API encodes paths, supports cancellation and shares the video contract', async t => {
@@ -38,4 +38,18 @@ test('image documents validate the backend preview policy', () => {
     assert.equal(documentSchema.parse({ ...image, preview }).preview, preview);
   }
   assert.equal(documentSchema.safeParse({ ...image, preview: 'invalid' }).success, false);
+});
+
+test('system opening sends a repository path and reports backend launch errors', async t => {
+  const path = '视频/a & b.ts';
+  const fetch = t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, '/repo/api/media/open');
+    assert.equal(options.method, 'POST');
+    assert.equal(options.headers['content-type'], 'application/json');
+    assert.deepEqual(JSON.parse(options.body), { path });
+    return Response.json({ ok: true, target: 'server' });
+  });
+  assert.deepEqual(await openMedia('/repo/api', path), { ok: true, target: 'server' });
+  fetch.mock.mockImplementation(async () => Response.json({ error: 'Not an image or video file' }, { status: 400 }));
+  await assert.rejects(openMedia('/repo/api', path), /Not an image or video file/);
 });

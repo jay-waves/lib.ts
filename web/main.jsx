@@ -30,6 +30,7 @@ import { randomId } from './random-id.mjs';
 import { FileTree } from './file-tree-view.tsx';
 import { BookmarkList } from './bookmark-list';
 import { documentSymbols, SymbolsPanel } from './symbols-panel.tsx';
+import { useMediaDimensions } from './use-media-dimensions';
 import { DocumentToolbar } from './document-toolbar.tsx';
 import { DirectoryView } from './directory-view.tsx';
 import { useToolbarStuck } from './file-toolbar';
@@ -136,6 +137,7 @@ function App() {
     capture: () => readerRef.current?.capture(),
     onOpen: view => setReaderStatus({ view, line: null, page: null, pending: true }),
   });
+  const mediaDimensions = useMediaDimensions(document);
   const recentState = useRecentFiles(active && Boolean(apiBase), document?.path === selected ? selected : null);
   const activeView = document?.type === 'text' ? 'raw' : document?.type === 'binary' ? 'preview' : readerStatus.view;
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 960px)').matches);
@@ -440,12 +442,12 @@ function App() {
             {!loading && !error && entries && <DirectoryView key={selected} directory={selectedNode || tree} navigate={navigate}
               display={display} onDisplayChange={changeDisplay} />}
             {document && <>
-              <DocumentToolbar key={document.path} document={document} status={{ ...readerStatus, view: activeView }}
+              <DocumentToolbar key={document.path} document={document} dimensions={mediaDimensions.dimensions} status={{ ...readerStatus, view: activeView }}
                 stuck={toolbarStuck} readerRef={readerRef} sentinelRef={toolbarSentinelRef} bookmarkState={bookmarkState}
                 sidebarToggle={narrow && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible} size="small" variant="invisible"
                   className="sidebar-toggle" icon={SidebarExpandIcon} aria-label="Show sidebar"
                   aria-expanded={filesVisible} aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />} />
-              <Reader ref={readerRef} key={document.path} document={document} request={readerRequest} bookmarkState={bookmarkState}
+              <Reader ref={readerRef} key={document.path} document={document} mediaDimensions={mediaDimensions} request={readerRequest} bookmarkState={bookmarkState}
                 navigate={navigate} onReload={reloadDocument} onActivity={readerActivity} />
             </>}
             </>}

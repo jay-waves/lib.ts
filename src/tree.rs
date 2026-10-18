@@ -30,6 +30,8 @@ struct Node {
     #[serde(rename = "type")]
     kind: &'static str,
     modified: String,
+    #[serde(rename = "transportStream", skip_serializing_if = "std::ops::Not::not")]
+    transport_stream: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     children: Vec<Node>,
 }
@@ -289,6 +291,11 @@ impl Scan<'_> {
                     .replace('\\', "/"),
                 absolute_path: ty.is_dir().then(|| crate::client_path(file)),
                 kind: if ty.is_dir() { "directory" } else { "file" },
+                transport_stream: ty.is_file()
+                    && file
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("ts"))
+                    && crate::media::is_video(file),
                 modified,
                 children,
             });

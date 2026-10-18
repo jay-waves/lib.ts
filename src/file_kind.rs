@@ -66,6 +66,22 @@ pub fn has_binary_extension(path: &Path) -> bool {
 
 pub fn detect(path: &Path, bytes: &[u8]) -> FileType {
     let bytes = &bytes[..bytes.len().min(HEADER_BYTES)];
+    // Require repeated transport packet sync bytes, not the .ts suffix shared
+    // with TypeScript. Standard MPEG-TS packets contain 188 bytes.
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("ts"))
+        && bytes.len() >= 188 * 3
+        && (0..188)
+            .any(|offset| (0..3).all(|packet| bytes.get(offset + packet * 188) == Some(&0x47)))
+        && binary_prefix(bytes)
+    {
+        return FileType {
+            mime: "video/mp2t",
+            format: "ts".into(),
+            binary: true,
+        };
+    }
     if let Some(kind) = signature(bytes) {
         return FileType {
             mime: kind.mime_type(),
@@ -108,6 +124,22 @@ pub fn is_text(bytes: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transport_stream_is_distinct_from_typescript() {
+        let mut bytes = vec![0xff; 188 * 4];
+        for offset in (0..bytes.len()).step_by(188) {
+            bytes[offset] = 0x47;
+        }
+        let kind = detect(Path::new("clip.TS"), &bytes);
+        assert_eq!(kind.mime, "video/mp2t");
+        assert!(kind.binary);
+        assert_ne!(detect(Path::new("other.bin"), &bytes).mime, "video/mp2t");
+        assert!(!detect(Path::new("source.ts"), b"export const value = 1;").binary);
+        bytes[188] = 0;
+        bytes[376] = 0;
+        assert_ne!(detect(Path::new("broken.ts"), &bytes).mime, "video/mp2t");
+    }
 
     #[test]
     fn ambiguous_signatures_do_not_promote_text_to_binary() {

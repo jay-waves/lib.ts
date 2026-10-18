@@ -2,7 +2,13 @@ import type { TreeNode } from './api/contracts';
 
 // The browser decides decode support. Unsupported files remain accessible cards.
 const imageExtension = /\.(?:avif|bmp|gif|ico|jpe?g|jfif|png|svg|webp|apng|tiff?|heic|heif|jxl)$/i;
-export const isGalleryVideo = (name: string) => /\.(?:mp4|m4v|mov|webm|ogv)$/i.test(name);
+export const isGalleryVideo = (name: string) => /\.(?:mp4|m4v|mov|webm|ogv|mkv|avi|mpg|mpeg|mts|m2ts|flv|wmv|3gp|3g2)$/i.test(name);
+
+export const isVideoMedia = (node: { name: string; transportStream?: boolean; mime?: string }) =>
+  isGalleryVideo(node.name) || node.transportStream === true || node.mime?.startsWith('video/') === true;
+
+export const isBrowserVideo = (node: { name: string; transportStream?: boolean; mime?: string }) =>
+  !node.transportStream && node.mime !== 'video/mp2t' && /\.(?:mp4|m4v|mov|webm|ogv)$/i.test(node.name);
 
 export const directorySortOptions = {
   'name-asc': 'Name: A–Z',
@@ -57,7 +63,7 @@ export function galleryImages(nodes: readonly TreeNode[], recursive: boolean): G
   for (const node of nodes) {
     if (node.type === 'directory') {
       if (recursive) images.push(...galleryImages(node.children ?? [], true));
-    } else if (!pairedVideos.has(node) && (imageExtension.test(node.name) || isGalleryVideo(node.name))) {
+    } else if (!pairedVideos.has(node) && (imageExtension.test(node.name) || isVideoMedia(node))) {
       const liveVideo = livePhotos.get(node);
       images.push(liveVideo ? { ...node, liveVideo } : node);
     }

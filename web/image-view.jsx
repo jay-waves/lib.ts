@@ -1,3 +1,4 @@
+import { OpenMedia } from './open-media';
 import React, { useMemo, useState } from 'react';
 import { DocumentPreview } from './document-preview.jsx';
 import { imageDocumentLayout } from './document-preview.mjs';
@@ -6,10 +7,9 @@ import { apiBase } from './urls.mjs';
 import { imagePreviewUrls } from './media-urls.mjs';
 
 export function ImagePreview() {
-  const { document, viewport } = useReader();
-  const [measuredSize, setMeasuredSize] = useState(null);
+  const { document, viewport, mediaDimensions } = useReader();
   const [status, setStatus] = useState('loading');
-  const size = document.imageMetadata?.dimensions || measuredSize;
+  const size = mediaDimensions.dimensions;
   const layout = useMemo(() => imageDocumentLayout(size), [size]);
   const { thumbnail, source } = imagePreviewUrls(apiBase, document);
   const placeholder = thumbnail !== source && Boolean(size);
@@ -22,16 +22,14 @@ export function ImagePreview() {
           onError={event => { event.currentTarget.style.visibility = 'hidden'; }} />}
         <img className={`image-preview-full${placeholder ? ' image-preview-transition' : ''}`}
           src={source} alt={document.name} draggable={false} decoding="async" onLoad={event => {
-            if (!document.imageMetadata?.dimensions) {
-              const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
-              if (width && height) setMeasuredSize({ width, height });
-            }
+            const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
+            mediaDimensions.report(width, height);
             setStatus('ready');
           }} onError={() => setStatus('error')} />
       </div>
       {status === 'error' && <div className="status" role="alert"><p>{/\.(heic|heif)$/i.test(document.name)
         ? 'Could not preview HEIC/HEIF. The server needs FFmpeg 8.1 or newer with HEVC support.'
-        : 'Could not display image'}</p><a href={document.url} download={document.name}>Download original</a></div>}
+        : 'Could not display image'}</p><OpenMedia path={document.path} /><a href={document.url} download={document.name}>Download original</a></div>}
     </div>
   </DocumentPreview>;
 }

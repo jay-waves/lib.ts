@@ -4,7 +4,7 @@ import { BroadcastIcon, ImageIcon, TriangleIcon } from '@primer/octicons-react';
 import type { GalleryImage } from './gallery-images';
 import { apiBase, fileUrl } from './urls.mjs';
 import './directory-gallery.css';
-import { isGalleryVideo, mediaKey } from './gallery-images';
+import { isVideoMedia, isBrowserVideo, mediaKey } from './gallery-images';
 import { galleryLayout, galleryRowLayout } from './gallery-layout.mjs';
 import { thumbnailUrl, mediaFileUrl } from './media-urls.mjs';
 
@@ -16,17 +16,18 @@ function ImageCard({ node, autoplayVideos, navigate, style }: {
   const [playing, setPlaying] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [playError, setPlayError] = useState(false);
-  const videoNode = node.liveVideo ?? (isGalleryVideo(node.name) ? node : undefined);
+  const videoNode = node.liveVideo ?? (isVideoMedia(node) ? node : undefined);
   const video = !!videoNode;
-  const videoLabel = playError ? 'Cannot play in this browser' : node.liveVideo ? 'Live photo' : 'Video';
+  const playable = !!videoNode && isBrowserVideo(videoNode);
   const player = useRef<HTMLVideoElement>(null);
+  const videoLabel = playError ? 'Cannot play in this browser' : node.liveVideo ? 'Live photo' : 'Video';
   const card = useRef<HTMLAnchorElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const visible = useRef(false);
   const hovering = useRef(false);
   const stop = () => { clearTimeout(timer.current); setPlaying(false); setVideoReady(false); };
   useEffect(() => {
-    if (!video || !card.current) return;
+    if (!playable || !card.current) return;
     const observer = new IntersectionObserver(entries => {
       visible.current = entries[0].isIntersecting;
       if (visible.current && (autoplayVideos || hovering.current)) setPlaying(true);
@@ -39,7 +40,7 @@ function ImageCard({ node, autoplayVideos, navigate, style }: {
     };
     document.addEventListener('visibilitychange', hidden);
     return () => { observer.disconnect(); clearTimeout(timer.current); document.removeEventListener('visibilitychange', hidden); };
-  }, [video, autoplayVideos]);
+  }, [playable, autoplayVideos]);
   useEffect(() => {
     if (!autoplayVideos && !hovering.current) stop();
   }, [autoplayVideos]);
@@ -57,7 +58,7 @@ function ImageCard({ node, autoplayVideos, navigate, style }: {
     style={style}
     ref={card} onMouseEnter={() => {
       hovering.current = true;
-      if (video && !autoplayVideos) timer.current = setTimeout(() => { setPlayError(false); setPlaying(true); }, 150);
+      if (playable && !autoplayVideos) timer.current = setTimeout(() => { setPlayError(false); setPlaying(true); }, 150);
     }}
     onMouseLeave={() => { hovering.current = false; if (!autoplayVideos) stop(); }}
     onBlur={() => { hovering.current = false; if (!autoplayVideos) stop(); }}
@@ -74,7 +75,7 @@ function ImageCard({ node, autoplayVideos, navigate, style }: {
       {video && <span className="gallery-video-badge" role="img" aria-label={videoLabel} title={videoLabel}>
         {node.liveVideo ? <BroadcastIcon size={14} /> : <TriangleIcon size={16} />}
       </span>}
-      {video && playing && <video ref={player} className={`gallery-video${videoReady ? ' gallery-video-ready' : ''}`} src={mediaFileUrl(apiBase, videoNode)}
+      {playable && playing && <video ref={player} className={`gallery-video${videoReady ? ' gallery-video-ready' : ''}`} src={mediaFileUrl(apiBase, videoNode)}
         muted loop playsInline onPlaying={() => setVideoReady(true)}
         onError={() => { stop(); setPlayError(true); }} />}
     </div>

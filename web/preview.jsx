@@ -7,7 +7,8 @@ import { PdfPages } from './pdf/pdf-view.jsx';
 import { ImagePreview } from './image-view.jsx';
 import { pagedDocumentLayout } from './document-preview.mjs';
 import { useReader } from './reader-context.jsx';
-import { isGalleryVideo } from './gallery-images';
+import { OpenMedia } from './open-media';
+import { isVideoMedia, isBrowserVideo } from './gallery-images';
 import { apiBase } from './urls.mjs';
 import { thumbnailUrl, mediaFileUrl } from './media-urls.mjs';
 
@@ -52,13 +53,22 @@ function TypstPreview() {
 }
 
 function VideoPreview({ document }) {
+  const { mediaDimensions } = useReader();
   const [error, setError] = useState(false);
+  const [coverError, setCoverError] = useState(false);
+  const native = isBrowserVideo(document);
   const poster = thumbnailUrl(apiBase, document);
   return <div className="p-4">
-    <video className="w-full max-h-[80vh]" controls playsInline preload="metadata" poster={poster}
-      onError={() => setError(true)}
-      src={mediaFileUrl(apiBase, document)} />
-    {error && <p role="alert">Could not play this video. Its encoding may not be supported by your browser.</p>}
+    {native ? <video className="w-full max-h-[80vh]" controls playsInline preload="metadata" poster={poster}
+      onLoadedMetadata={event => mediaDimensions.report(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
+      onError={() => setError(true)} src={mediaFileUrl(apiBase, document)} />
+      : !coverError && <img className="w-full max-h-[80vh] object-contain" src={poster} alt={document.name}
+        onError={() => setCoverError(true)} />}
+    {(!native || error) && <>
+      <p>{error ? 'Could not play this video in your browser.' : 'Open this video with a system application.'}</p>
+      <OpenMedia path={document.path} />
+      <a href={document.url} download={document.name}>Download original</a>
+    </>}
   </div>;
 }
 
@@ -70,8 +80,8 @@ export function Preview() {
     <PdfPages key={`${document.path}:${document.revision || document.modified}`} pages={document.pages}
       scale={viewport.scale} modified={document.modified} revision={document.revision || document.modified} />
   </DocumentPreview>;
-  if (document.type === 'image') return <ImagePreview key={document.modified} />;
-  if (document.type === 'binary' && isGalleryVideo(document.name)) return <VideoPreview key={document.path} document={document} />;
+  if (document.type === 'image') return <ImagePreview key={`${document.path}:${document.modified}`} />;
+  if (document.type === 'binary' && isVideoMedia(document)) return <VideoPreview key={`${document.path}:${document.modified}`} document={document} />;
   if (document.type === 'html') return <iframe className="html-preview" aria-label={document.name}
     sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer"
     src={`${document.url}&v=${encodeURIComponent(document.modified)}`} />;

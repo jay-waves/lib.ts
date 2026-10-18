@@ -12,7 +12,7 @@ function documentLink(path) {
   return /\.(?:md|typ|html?)$/i.test(path) ? fileUrl(path) : `${apiBase}/asset?path=${encodeURIComponent(path)}`;
 }
 
-export function Reader({ ref, document, request, navigate, onReload, onActivity, bookmarkState }) {
+export function Reader({ ref, document, request, navigate, onReload, onActivity, bookmarkState, mediaDimensions }) {
   const root = useRef(null);
   const active = useContext(SessionActivity);
   const session = useReaderSession({ document, root, request, onActivity });
@@ -21,7 +21,7 @@ export function Reader({ ref, document, request, navigate, onReload, onActivity,
     ? prepareMarkdown(document, documentLink) : null, [document]);
   const assetVersions = useReaderWatch(document, prepared?.assets || [], active, onReload);
   const onExpired = useExpiredPages(onReload);
-  return <ReaderContext value={{ document, viewport: session.viewport, prepared, assetVersions, navigate, onExpired }}>
+  return <ReaderContext value={{ document, viewport: session.viewport, prepared, assetVersions, navigate, onExpired, mediaDimensions }}>
     <div ref={root} className="reader" onClick={session.click}>
       {!session.ready ? <div className="status">Loading reading position…</div>
         : session.view === 'raw' ? <RawView document={document} targetLine={session.targetLine} navigationRequest={request} bookmarkState={bookmarkState} />

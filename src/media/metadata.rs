@@ -44,7 +44,7 @@ fn capture_time(exif: &exif::Exif) -> Option<i64> {
 
 #[cfg(test)]
 fn image_metadata(path: &Path) -> ImageMetadata {
-    read_image_metadata(path, read_dimensions(path))
+    read_image_metadata(path, read_raster_dimensions(path))
 }
 
 fn read_image_metadata(path: &Path, mut size: Option<Dimensions>) -> ImageMetadata {
@@ -172,36 +172,14 @@ impl MetadataService {
     }
 
     pub fn dimensions(&self, path: &Path) -> Option<Dimensions> {
-        let metadata = fs::metadata(path).ok()?;
-        let modified = metadata.modified().ok()?;
-        if let Some((_, _, value)) = self
-            .photos
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .as_mut()
-            .and_then(|cache| cache.get(path))
-            .filter(|(size, time, _)| *size == metadata.len() && *time == modified)
-        {
-            return value.dimensions;
-        }
         if is_video(path) || is_heif(path) {
             return self.video_metadata(path).dimensions;
         }
-        cached(&self.cache, path, read_dimensions)
+        cached(&self.cache, path, read_raster_dimensions)
     }
 }
 
-fn read_dimensions(path: &Path) -> Option<Dimensions> {
-    if is_video(path) || is_heif(path) {
-        return probe::video_metadata(path).dimensions;
-    }
-    if path
-        .extension()
-        .and_then(|value| value.to_str())
-        .is_some_and(|value| value.eq_ignore_ascii_case("svg"))
-    {
-        return svg_dimensions(path);
-    }
+fn read_raster_dimensions(path: &Path) -> Option<Dimensions> {
     let mut decoder = ImageReader::open(path)
         .ok()?
         .with_guessed_format()
@@ -220,86 +198,6 @@ fn read_dimensions(path: &Path) -> Option<Dimensions> {
         std::mem::swap(&mut width, &mut height);
     }
     dimensions(width, height)
-}
-
-fn svg_dimensions(path: &Path) -> Option<Dimensions> {
-    use std::io::Read;
-    let mut bytes = Vec::with_capacity(4096);
-    fs::File::open(path)
-        .ok()?
-        .take(64 * 1024)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    let source = std::str::from_utf8(&bytes).ok()?;
-    let start = source.find("<svg")? + 4;
-    let tag = &source[start..start + source[start..].find('>')?];
-    let mut width = None;
-    let mut height = None;
-    let mut view_box = None;
-    let mut rest = tag;
-    while !rest.is_empty() {
-        rest = rest.trim_start();
-        let key_end = rest
-            .find(|ch: char| ch.is_whitespace() || ch == '=')
-            .unwrap_or(rest.len());
-        if key_end == 0 {
-            rest = &rest[1..];
-            continue;
-        }
-        let key = &rest[..key_end];
-        rest = rest[key_end..].trim_start();
-        if !rest.starts_with('=') {
-            continue;
-        }
-        rest = rest[1..].trim_start();
-        let quote = *rest.as_bytes().first()?;
-        if quote != b'"' && quote != b'\'' {
-            continue;
-        }
-        rest = &rest[1..];
-        let value_end = rest.find(quote as char)?;
-        let value = &rest[..value_end];
-        let number = || {
-            let end = value
-                .find(|ch: char| {
-                    !(ch.is_ascii_digit() || matches!(ch, '.' | '+' | '-' | 'e' | 'E'))
-                })
-                .unwrap_or(value.len());
-            value[..end]
-                .parse::<f64>()
-                .ok()
-                .filter(|number| number.is_finite() && *number > 0.0)
-        };
-        match key {
-            "width" => width = number(),
-            "height" => height = number(),
-            "viewBox" => {
-                let parts = value
-                    .split([',', ' '])
-                    .filter(|part| !part.is_empty())
-                    .filter_map(|part| part.parse::<f64>().ok())
-                    .collect::<Vec<_>>();
-                if parts.len() == 4 && parts[2] > 0.0 && parts[3] > 0.0 {
-                    view_box = Some((parts[2], parts[3]));
-                }
-            }
-            _ => {}
-        }
-        rest = &rest[value_end + 1..];
-    }
-    let (width, height) = match (width, height, view_box) {
-        (Some(width), Some(height), _) => (width, height),
-        (Some(width), None, Some((_, view_height))) => (width, view_height),
-        (None, Some(height), Some((view_width, _))) => (view_width, height),
-        (_, _, Some((width, height))) => (width, height),
-        (Some(width), None, None) => (width, width * 0.5),
-        (None, Some(height), None) => (height * 2.0, height),
-        _ => (300.0, 150.0),
-    };
-    dimensions(
-        width.round().clamp(1.0, u32::MAX as f64) as u32,
-        height.round().clamp(1.0, u32::MAX as f64) as u32,
-    )
 }
 
 #[cfg(test)]
@@ -486,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn metadata_service_reads_raster_and_svg_dimensions_and_refreshes_cache() {
+    fn metadata_service_refreshes_raster_dimensions_and_leaves_svg_to_browser() {
         let dir = tempfile::tempdir().unwrap();
         let raster = dir.path().join("photo.png");
         image::RgbImage::new(40, 20).save(&raster).unwrap();
@@ -513,12 +411,6 @@ mod tests {
             r#"<svg viewBox="0 0 640 480" xmlns="http://www.w3.org/2000/svg"></svg>"#,
         )
         .unwrap();
-        assert_eq!(
-            service.dimensions(&svg),
-            Some(Dimensions {
-                width: 640,
-                height: 480
-            })
-        );
+        assert!(service.dimensions(&svg).is_none());
     }
 }

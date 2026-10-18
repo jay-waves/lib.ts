@@ -8,6 +8,7 @@ export const treeNodeSchema = z.object({
   absolutePath: z.string().optional(),
   type: z.enum(['directory', 'file']),
   modified: z.string(),
+  transportStream: z.boolean().optional(),
   get children(): z.ZodOptional<z.ZodArray<typeof treeNodeSchema>> {
     return z.array(treeNodeSchema).optional();
   },

@@ -25,3 +25,12 @@ export function getMediaDimensions(apiBase: string, paths: string[], signal?: Ab
     body: JSON.stringify({ paths, includeCaptureTime }),
   });
 }
+
+// Launching is a backend operation; the response identifies its execution target.
+export function openMedia(apiBase: string, path: string) {
+  return requestJson(`${apiBase}/media/open`, z.object({ ok: z.literal(true), target: z.literal('server') }), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+}

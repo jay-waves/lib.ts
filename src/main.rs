@@ -68,6 +68,7 @@ mod repositories;
 mod resources;
 mod search;
 mod symbols;
+mod system_open;
 mod tree;
 mod typst;
 mod worker;
@@ -1470,29 +1471,9 @@ async fn open_directory(
     if !directory.is_dir() {
         return json_error(StatusCode::BAD_REQUEST, "Not a directory").into_response();
     }
-    #[cfg(target_os = "windows")]
-    let result = tokio::process::Command::new("explorer.exe")
-        .arg(dunce::simplified(&directory))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    #[cfg(target_os = "macos")]
-    let result = tokio::process::Command::new("open")
-        .arg(&directory)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let result = tokio::process::Command::new("xdg-open")
-        .arg(&directory)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
+    let result = system_open::open(&directory);
     match result {
-        Ok(_child) => Json(serde_json::json!({"ok":true})).into_response(),
+        Ok(()) => Json(serde_json::json!({"ok":true})).into_response(),
         Err(error) => {
             let status = if error.kind() == std::io::ErrorKind::NotFound {
                 StatusCode::NOT_FOUND
@@ -2032,6 +2013,7 @@ fn build_router(state: AppState) -> Router {
         .route("/media/thumbnail", get(media::http::thumbnail))
         .route("/media/preview", get(media::http::preview))
         .route("/media/metadata", get(media::http::metadata))
+        .route("/media/open", axum::routing::post(media::http::open))
         .route(
             "/media/dimensions",
             axum::routing::post(media::http::dimensions),
@@ -2178,6 +2160,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         runtime: Arc::new(RuntimeState::default()),
         base_url,
     };
+    let media_cache_maintenance = tokio::spawn(media::cache::maintain(data_directory.clone()));
     let lease_state = state.clone();
     let maintenance = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
@@ -2215,6 +2198,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await;
     maintenance.abort();
+    media_cache_maintenance.abort();
     let _ = maintenance.await;
     state.document_workers.shutdown().await;
     state.media_workers.shutdown().await;

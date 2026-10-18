@@ -248,3 +248,42 @@ mod tests {
         assert_eq!(response.headers()[CACHE_CONTROL], policy);
     }
 }
+
+#[derive(Deserialize)]
+pub(crate) struct OpenMediaRequest {
+    path: String,
+}
+
+pub(crate) async fn open(
+    State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+    Json(request): Json<OpenMediaRequest>,
+) -> Response {
+    let root = state.root_for_uri(uri.path());
+    let path = match checked_library_path(&root, &request.path, &state.data_directory) {
+        Ok(path) if path.is_file() => path,
+        Ok(_) => return json_error(StatusCode::BAD_REQUEST, "Not a file").into_response(),
+        Err((status, message)) => return json_error(status, message).into_response(),
+    };
+    let source = path.clone();
+    let allowed = state
+        .media_workers
+        .run(move || super::is_external_media(&source))
+        .await;
+    match allowed {
+        Ok(true) => {}
+        Ok(false) => {
+            return json_error(StatusCode::BAD_REQUEST, "Not an image or video file")
+                .into_response();
+        }
+        Err(error) => return worker_error(error),
+    }
+    match crate::system_open::open(&path) {
+        Ok(()) => Json(serde_json::json!({"ok": true, "target": "server"})).into_response(),
+        Err(error) => json_error(
+            StatusCode::BAD_REQUEST,
+            format!("Could not open system application: {error}"),
+        )
+        .into_response(),
+    }
+}

@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { directorySortOptions, galleryImages, isGalleryVideo, mediaKey, sortDirectoryNodes } from '../web/gallery-images.ts';
+import { directorySortOptions, galleryImages, isGalleryVideo, isVideoMedia, isBrowserVideo, mediaKey, sortDirectoryNodes } from '../web/gallery-images.ts';
 
 const file = (name, path = name) => ({ name, path, type: 'file', modified: '' });
 
-test('gallery includes native video candidates but leaves other containers out', () => {
-  const videos = ['clip.MP4', 'clip.webm', 'clip.m4v', 'clip.MOV', 'clip.ogv'].map(name => file(name));
-  assert.deepEqual(galleryImages([...videos, file('clip.mkv'), file('clip.avi')], false), videos);
+test('gallery includes native and external video candidates', () => {
+  const videos = ['clip.MP4', 'clip.webm', 'clip.m4v', 'clip.MOV', 'clip.ogv', 'clip.mkv', 'clip.avi'].map(name => file(name));
+  assert.deepEqual(galleryImages([...videos, file('notes.txt')], false), videos);
   assert.equal(isGalleryVideo('clip.MP4'), true);
   assert.equal(isGalleryVideo('live-photo.mov'), true);
   assert.equal(isGalleryVideo('clip.mp4.png'), false);
@@ -108,4 +108,24 @@ test('folders stay first for every list sort while each group follows the chosen
     assert.equal(result[2].name, `${first}.txt`);
   }
   assert.equal(nodes[0].name, 'a.txt');
+});
+
+test('TS gallery candidates require content detection, preserving TypeScript files', () => {
+  const source = file('source.ts');
+  const video = { ...file('clip.TS'), transportStream: true };
+  assert.deepEqual(galleryImages([source, video], false), [video]);
+  assert.equal(isVideoMedia(source), false);
+  assert.equal(isVideoMedia({ name: 'clip.ts', mime: 'video/mp2t' }), true);
+});
+
+test('TS and external containers have covers but cannot autoplay in the browser', () => {
+  assert.equal(isBrowserVideo({ name: 'clip.ts', transportStream: true }), false);
+  assert.equal(isBrowserVideo({ name: 'clip.mp4', mime: 'video/mp2t' }), false);
+  for (const name of ['clip.mkv', 'clip.avi', 'clip.m2ts']) {
+    assert.equal(isVideoMedia({ name }), true);
+    assert.equal(isBrowserVideo({ name }), false);
+  }
+  for (const name of ['clip.MOV', 'clip.mp4', 'clip.webm']) {
+    assert.equal(isBrowserVideo({ name }), true);
+  }
 });

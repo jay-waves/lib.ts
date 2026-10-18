@@ -5,6 +5,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    time::Duration,
 };
 
 const MAX_EDGE: u32 = 800;
@@ -38,17 +39,22 @@ fn original_thumbnail(bytes: u64, width: u32, height: u32) -> bool {
 }
 
 pub fn thumbnail(path: &Path, data: &Path) -> Result<PathBuf, String> {
-    generate(path, data, false).map_err(|e| e.to_string())
+    generate(path, data, false, time::OffsetDateTime::now_utc().date()).map_err(|e| e.to_string())
 }
 
 pub fn preview(path: &Path, data: &Path) -> Result<PathBuf, String> {
     if !is_heif(path) {
         return Ok(path.to_path_buf());
     }
-    generate(path, data, true).map_err(|e| e.to_string())
+    generate(path, data, true, time::OffsetDateTime::now_utc().date()).map_err(|e| e.to_string())
 }
 
-fn generate(path: &Path, data: &Path, full: bool) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn generate(
+    path: &Path,
+    data: &Path,
+    full: bool,
+    date: time::Date,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let metadata = fs::metadata(path)?;
     let key = typst::utils::hash128(&(
         "gallery-v1",
@@ -58,12 +64,24 @@ fn generate(path: &Path, data: &Path, full: bool) -> Result<PathBuf, Box<dyn std
         MAX_EDGE,
         full,
     ));
-    let folder = data.join("thumbnails");
+    let [folder, previous] = super::cache::folders(data, date);
     let mut cached = folder.join(format!("{key:032x}.png"));
-    for extension in ["png", "jpg"] {
-        let candidate = cached.with_extension(extension);
-        if candidate.is_file() {
-            return Ok(candidate);
+    for bucket in [&folder, &previous] {
+        for extension in ["png", "jpg"] {
+            let candidate = bucket.join(format!("{key:032x}.{extension}"));
+            if candidate.is_file() {
+                if bucket == &previous {
+                    fs::create_dir_all(&folder)?;
+                    let refreshed = cached.with_extension(extension);
+                    match fs::rename(&candidate, &refreshed) {
+                        Ok(()) => return Ok(refreshed),
+                        Err(error) => {
+                            tracing::warn!(%error, "Could not refresh weekly media cache")
+                        }
+                    }
+                }
+                return Ok(candidate);
+            }
         }
     }
     let video = is_video(path);
@@ -122,7 +140,7 @@ fn generate(path: &Path, data: &Path, full: bool) -> Result<PathBuf, Box<dyn std
                     "scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease",
                 ]);
             }
-            let status = command
+            command
                 .args([
                     "-frames:v",
                     "1",
@@ -138,11 +156,9 @@ fn generate(path: &Path, data: &Path, full: bool) -> Result<PathBuf, Box<dyn std
                     "-y",
                 ])
                 .arg(crate::client_path(&temporary))
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()?;
-            if !status.success() {
+                .stdout(Stdio::null());
+            let output = super::process::run(&mut command, Duration::from_secs(30))?;
+            if !output.status.success() {
                 return Err(if video {
                     "Could not extract video cover"
                 } else {
@@ -236,15 +252,26 @@ mod tests {
         let source = dir.path().join("large.png");
         image::RgbaImage::new(3000, 3000).save(&source).unwrap();
         let data = dir.path().join("data");
-        let preview = thumbnail(&source, &data).unwrap();
-        assert_eq!(image::image_dimensions(&preview).unwrap(), (800, 800));
+        let date = time::Date::from_calendar_date(2026, time::Month::October, 19).unwrap();
+        let preview = generate(&source, &data, false, date).unwrap();
         let modified = fs::metadata(&preview).unwrap().modified().unwrap();
-        assert_eq!(thumbnail(&source, &data).unwrap(), preview);
+        assert_eq!(generate(&source, &data, false, date).unwrap(), preview);
+        let next_week = date + time::Duration::weeks(1);
+        let refreshed = generate(&source, &data, false, next_week).unwrap();
+        assert_ne!(refreshed, preview);
+        assert!(!preview.exists()); // Moving renews retention without keeping a second copy.
         assert_eq!(
-            fs::metadata(&preview).unwrap().modified().unwrap(),
+            fs::metadata(&refreshed).unwrap().modified().unwrap(),
             modified
         );
+        assert_eq!(
+            generate(&source, &data, false, next_week).unwrap(),
+            refreshed
+        );
+        let renewed = generate(&source, &data, false, date + time::Duration::weeks(3)).unwrap();
+        assert_ne!(renewed, refreshed); // No visit for two weeks: regenerate.
+        assert_eq!(image::image_dimensions(&renewed).unwrap(), (800, 800));
         image::RgbaImage::new(20, 10).save(&source).unwrap();
-        assert_eq!(thumbnail(&source, &data).unwrap(), source);
+        assert_eq!(generate(&source, &data, false, date).unwrap(), source);
     }
 }

@@ -1,3 +1,4 @@
+import { isVideoMedia } from './gallery-images';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { getDocument, type DocumentView, type LibraryDocument } from './api/documents.ts';
 import { getVideoMetadata } from './api/media.ts';
@@ -84,7 +85,7 @@ export function useDocument(options: DocumentOptions) {
         if (document?.path !== value.path) onOpen(fetchedView);
         setDocument(value);
       }
-      if (value.type === 'binary' && /\.(?:mp4|m4v|mov|webm|ogv)$/i.test(value.name)) {
+      if (value.type === 'binary' && isVideoMedia(value)) {
         void getVideoMetadata(apiBase, path, controller.signal).then(videoMetadata => {
           if (controller.signal.aborted) return;
           setDocument(previous => previous?.path === value.path && previous.modified === value.modified
