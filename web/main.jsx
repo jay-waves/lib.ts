@@ -20,6 +20,7 @@ import { PathBar } from './path-bar';
 import { useWorkspaceSearch } from './workspace-search.tsx';
 import { useGitStatus } from './use-git-status.tsx';
 import { readSidebarState, saveSidebarState } from './sidebar-state.mjs';
+import { readRepositoryDisplayState, saveRepositoryDisplayState } from './directory-state.mjs';
 import { Reader } from './reader.jsx';
 import { hasDocumentViewport } from './preview-kind.mjs';
 import { syncReadingPositions } from './reading-state.mjs';
@@ -110,7 +111,17 @@ function App() {
     : { query: '' });
   const [readerRequest, setReaderRequest] = useState(() => readerRouteRequest(currentPath(), location.search));
   const [selected, setSelected] = useState(() => currentPath());
-  const { tree, index: treeIndex, loading: treeLoading, error: treeError } = useFileTree(apiBase, selected, active);
+  const [display, setDisplay] = useState(() => readRepositoryDisplayState(pageBase));
+  const changeDisplay = patch => {
+    setDisplay(previous => ({ ...previous, ...patch }));
+    saveRepositoryDisplayState(pageBase, patch);
+    if (patch.showHidden === false) {
+      const parts = selected.split('/');
+      const hidden = parts.findIndex(part => part.startsWith('.'));
+      if (hidden >= 0) navigate(parts.slice(0, hidden).join('/'), true);
+    }
+  };
+  const { tree, index: treeIndex, loading: treeLoading, error: treeError } = useFileTree(apiBase, selected, active, display.showHidden === true);
   const bookmarkState = useBookmarks(active && Boolean(apiBase));
   const [recentOnly, setRecentOnly] = useState(() => Boolean(initialSidebar.recentOnly));
   const [documentRevision, setDocumentRevision] = useState(0);
@@ -254,7 +265,7 @@ function App() {
     if (directory) setSidebarTab('files');
   }
   const parts = (gitPath ?? selected).split('/').filter(Boolean);
-  const entries = selectedNode?.type === 'directory' ? selectedNode.children : !selected ? tree?.children : null;
+  const entries = selectedNode?.type === 'directory' ? selectedNode.children ?? [] : !selected ? tree?.children : null;
   const filteredTree = useMemo(() => {
     const nodes = sortMode === 'name' ? tree?.children : sortFileTree(tree?.children);
     return fileTreeForView(nodes, { bookmarksOnly, bookmarks: bookmarkState.bookmarks });
@@ -411,7 +422,8 @@ function App() {
             {loading && !document && <div className="status" role="status"><span className="rendering-label">Rendering</span></div>}
             {!loading && error && (document ? <div className="action-error" role="alert">{error}</div>
               : <LibraryError error={error} path={selected} navigate={navigate} />)}
-            {!loading && !error && entries && <DirectoryView key={selected} directory={selectedNode || tree} navigate={navigate} />}
+            {!loading && !error && entries && <DirectoryView key={selected} directory={selectedNode || tree} navigate={navigate}
+              display={display} onDisplayChange={changeDisplay} />}
             {document && <>
               <DocumentToolbar key={document.path} document={document} status={{ ...readerStatus, view: activeView }}
                 stuck={toolbarStuck} readerRef={readerRef} sentinelRef={toolbarSentinelRef} bookmarkState={bookmarkState}

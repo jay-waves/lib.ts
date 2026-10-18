@@ -23,6 +23,8 @@ const names = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' 
 export function sortDirectoryNodes<T extends TreeNode>(nodes: readonly T[], sort: DirectorySort,
   capturedAt: Readonly<Record<string, number | null>> = {}): T[] {
   return [...nodes].sort((a, b) => {
+    const byKind = Number(a.type !== 'directory') - Number(b.type !== 'directory');
+    if (byKind) return byKind;
     const byName = names.compare(a.name, b.name) || names.compare(a.path, b.path);
     if (sort === 'name-asc') return byName;
     if (sort === 'name-desc') return -byName;

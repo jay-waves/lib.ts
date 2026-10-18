@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { galleryImages, isGalleryVideo, mediaKey, sortDirectoryNodes } from '../web/gallery-images.ts';
+import { directorySortOptions, galleryImages, isGalleryVideo, mediaKey, sortDirectoryNodes } from '../web/gallery-images.ts';
 
 const file = (name, path = name) => ({ name, path, type: 'file', modified: '' });
 
@@ -91,4 +91,21 @@ test('unmatched files stay separate and MOV only pairs with JPEG in its own dire
   const video = file('same.mov', 'videos/same.mov');
   const directory = (name, children) => ({ name, path: name, type: 'directory', modified: '', children });
   assert.deepEqual(galleryImages([directory('photos', [photo]), directory('videos', [video])], true), [photo, video]);
+});
+
+test('folders stay first for every list sort while each group follows the chosen order', () => {
+  const nodes = [
+    { name: 'a.txt', type: 'file', modified: '2026-01-01' },
+    { name: 'b-dir', type: 'directory', modified: '2026-02-01' },
+    { name: 'b.txt', type: 'file', modified: '2026-02-01' },
+    { name: 'a-dir', type: 'directory', modified: '2026-01-01' },
+  ].map(node => ({ ...node, path: node.name }));
+  for (const sort of Object.keys(directorySortOptions)) {
+    const result = sortDirectoryNodes(nodes, sort);
+    assert.deepEqual(result.map(node => node.type), ['directory', 'directory', 'file', 'file']);
+    const first = sort.endsWith('desc') ? 'b' : 'a';
+    assert.equal(result[0].name, `${first}-dir`);
+    assert.equal(result[2].name, `${first}.txt`);
+  }
+  assert.equal(nodes[0].name, 'a.txt');
 });

@@ -89,7 +89,8 @@ test('document SSE validates payloads, preserves assets and reconnects after vis
   assert.equal(target.searchParams.get('path'), identity.path);
   assert.deepEqual(target.searchParams.getAll('asset'), ['a & b.png', '中文.svg']);
   const emit = (name, data) => streams.at(-1).dispatchEvent(new MessageEvent(name, { data: JSON.stringify(data) }));
-  emit('connected', { modified: metadata.modified });
+  const assets = { 'a & b.png': 'version-1', '中文.svg': null };
+  emit('connected', { modified: metadata.modified, assets });
   emit('document', {});
   emit('assets', { paths: ['中文.svg'] });
   emit('connected', { modified: [] });
@@ -97,13 +98,13 @@ test('document SSE validates payloads, preserves assets and reconnects after vis
   streams[0].dispatchEvent(new MessageEvent('assets', { data: '{' }));
   assert.equal(errors.mock.callCount(), 3);
   assert.deepEqual(received, [
-    ['connected', { modified: metadata.modified }], ['document'], ['assets', { paths: ['中文.svg'] }],
+    ['connected', { modified: metadata.modified, assets }], ['document'], ['assets', { paths: ['中文.svg'] }],
   ]);
   doc.hidden = true; doc.dispatchEvent(new Event('visibilitychange'));
   assert.equal(streams[0].closed, true);
   doc.hidden = false; doc.dispatchEvent(new Event('visibilitychange'));
-  emit('connected', { modified: 'new revision' });
-  assert.deepEqual(received.at(-1), ['connected', { modified: 'new revision' }]);
+  emit('connected', { modified: 'new revision', assets: {} });
+  assert.deepEqual(received.at(-1), ['connected', { modified: 'new revision', assets: {} }]);
   subscription.close();
   assert.equal(streams[1].closed, true);
 });

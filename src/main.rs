@@ -872,12 +872,23 @@ fn checked_library_path(
     Ok(path)
 }
 
-async fn get_tree(State(state): State<AppState>, OriginalUri(uri): OriginalUri) -> Response {
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct TreeQuery {
+    show_hidden: bool,
+}
+
+async fn get_tree(
+    State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+    Query(query): Query<TreeQuery>,
+) -> Response {
     let root = state.root_for_uri(uri.path());
-    let entry = match state
-        .trees
-        .entry((*root).clone(), (*state.data_directory).clone())
-    {
+    let entry = match state.trees.entry(
+        (*root).clone(),
+        (*state.data_directory).clone(),
+        query.show_hidden,
+    ) {
         Ok(entry) => entry,
         Err(error) => return json_error(StatusCode::SERVICE_UNAVAILABLE, error).into_response(),
     };
@@ -1813,12 +1824,17 @@ async fn library_events(State(state): State<AppState>, OriginalUri(uri): Origina
         .into_response()
 }
 
-async fn tree_events(State(state): State<AppState>, OriginalUri(uri): OriginalUri) -> Response {
+async fn tree_events(
+    State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+    Query(query): Query<TreeQuery>,
+) -> Response {
     let root = state.root_for_uri(uri.path());
-    let entry = match state
-        .trees
-        .entry((*root).clone(), (*state.data_directory).clone())
-    {
+    let entry = match state.trees.entry(
+        (*root).clone(),
+        (*state.data_directory).clone(),
+        query.show_hidden,
+    ) {
         Ok(entry) => entry,
         Err(error) => return json_error(StatusCode::SERVICE_UNAVAILABLE, error).into_response(),
     };

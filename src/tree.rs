@@ -81,13 +81,19 @@ impl Entry {
 
 #[derive(Clone, Default)]
 pub struct Service {
-    entries: Arc<Mutex<HashMap<PathBuf, Arc<Entry>>>>,
+    entries: Arc<Mutex<HashMap<(PathBuf, bool), Arc<Entry>>>>,
 }
 
 impl Service {
-    pub fn entry(&self, root: PathBuf, private: PathBuf) -> Result<Arc<Entry>, String> {
+    pub fn entry(
+        &self,
+        root: PathBuf,
+        private: PathBuf,
+        show_hidden: bool,
+    ) -> Result<Arc<Entry>, String> {
+        let key = (root.clone(), show_hidden);
         let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(entry) = entries.get(&root) {
+        if let Some(entry) = entries.get(&key) {
             *entry.last_used.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
             return Ok(entry.clone());
         }
@@ -100,18 +106,19 @@ impl Service {
             #[cfg(test)]
             scans: AtomicU64::new(0),
         });
-        entries.insert(root.clone(), entry.clone());
+        entries.insert(key.clone(), entry.clone());
         let map = Arc::downgrade(&self.entries);
         let worker_entry = entry.clone();
         let worker_root = root.clone();
+        let worker_key = key.clone();
         if let Err(error) = std::thread::Builder::new().name("tree-watch".into()).spawn(move || {
-            let outcome = run(&worker_root, &private, &worker_entry, || {
+            let outcome = run(&worker_root, &private, show_hidden, &worker_entry, || {
                 let Some(map) = map.upgrade() else { return false; };
                 let mut map = map.lock().unwrap_or_else(|e| e.into_inner());
                 let active = worker_entry.events.receiver_count() > 0
                     || worker_entry.last_used.lock().unwrap_or_else(|e| e.into_inner()).elapsed() < IDLE_TIME;
-                if !active && map.get(&worker_root).is_some_and(|entry| Arc::ptr_eq(entry, &worker_entry)) {
-                    map.remove(&worker_root);
+                if !active && map.get(&worker_key).is_some_and(|entry| Arc::ptr_eq(entry, &worker_entry)) {
+                    map.remove(&worker_key);
                 }
                 active
             });
@@ -122,12 +129,12 @@ impl Service {
             let _ = worker_entry.events.send(Event::Removed);
             if let Some(map) = map.upgrade() {
                 let mut map = map.lock().unwrap_or_else(|e| e.into_inner());
-                if map.get(&worker_root).is_some_and(|entry| Arc::ptr_eq(entry, &worker_entry)) {
-                    map.remove(&worker_root);
+                if map.get(&worker_key).is_some_and(|entry| Arc::ptr_eq(entry, &worker_entry)) {
+                    map.remove(&worker_key);
                 }
             }
         }) {
-            entries.remove(&root);
+            entries.remove(&key);
             return Err(error.to_string());
         }
         Ok(entry)
@@ -139,12 +146,12 @@ impl Service {
     }
 }
 
-fn excluded(path: &Path, root: &Path, private: &Path) -> bool {
+fn excluded(path: &Path, root: &Path, private: &Path, show_hidden: bool) -> bool {
     path.starts_with(private)
         || path.strip_prefix(root).is_ok_and(|relative| {
             relative.components().any(|part| {
                 let name = part.as_os_str().to_string_lossy();
-                name.starts_with('.') || name == "node_modules"
+                (!show_hidden && name.starts_with('.')) || name == ".git" || name == "node_modules"
             })
         })
 }
@@ -199,6 +206,23 @@ struct Scan<'a> {
     desired: HashSet<PathBuf>,
     known: &'a RwLock<HashSet<PathBuf>>,
     paths: HashSet<PathBuf>,
+    show_hidden: bool,
+}
+
+fn directory_entries(directory: &Path, private: &Path, show_hidden: bool) -> ignore::Walk {
+    let private = private.to_path_buf();
+    let mut builder = WalkBuilder::new(directory);
+    builder
+        .max_depth(Some(1))
+        .hidden(!show_hidden)
+        .follow_links(false)
+        .require_git(false)
+        .filter_entry(move |entry| {
+            !entry.path().starts_with(&private)
+                && entry.file_name() != "node_modules"
+                && entry.file_name() != ".git"
+        });
+    builder.build()
 }
 
 impl Scan<'_> {
@@ -214,18 +238,8 @@ impl Scan<'_> {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(directory.to_path_buf());
-        let private = self.private.to_path_buf();
-        let mut builder = WalkBuilder::new(directory);
-        builder
-            .max_depth(Some(1))
-            .hidden(true)
-            .follow_links(false)
-            .require_git(false)
-            .filter_entry(move |entry| {
-                !entry.path().starts_with(&private) && entry.file_name() != "node_modules"
-            });
         let mut nodes = Vec::new();
-        for item in builder.build() {
+        for item in directory_entries(directory, self.private, self.show_hidden) {
             let item = match item {
                 Ok(item) if item.depth() > 0 => item,
                 Ok(_) => continue,
@@ -253,9 +267,6 @@ impl Scan<'_> {
             } else {
                 Vec::new()
             };
-            if ty.is_dir() && children.is_empty() {
-                continue;
-            }
             let modified = metadata
                 .modified()
                 .ok()
@@ -291,7 +302,13 @@ impl Scan<'_> {
     }
 }
 
-fn run(root: &Path, private: &Path, entry: &Entry, alive: impl Fn() -> bool) -> Result<(), String> {
+fn run(
+    root: &Path,
+    private: &Path,
+    show_hidden: bool,
+    entry: &Entry,
+    alive: impl Fn() -> bool,
+) -> Result<(), String> {
     let (dirty, signals) = mpsc::sync_channel(1);
     let known = Arc::new(RwLock::new(HashSet::from([root.to_path_buf()])));
     let controls = Arc::new(RwLock::new(control_files(root)));
@@ -349,7 +366,9 @@ fn run(root: &Path, private: &Path, entry: &Entry, alive: impl Fn() -> bool) -> 
                 }) {
                     return true;
                 }
-                if !path.starts_with(&event_root) || excluded(path, &event_root, &event_private) {
+                if !path.starts_with(&event_root)
+                    || excluded(path, &event_root, &event_private, show_hidden)
+                {
                     return false;
                 }
                 structural
@@ -406,6 +425,7 @@ fn run(root: &Path, private: &Path, entry: &Entry, alive: impl Fn() -> bool) -> 
             desired: HashSet::new(),
             known: &known,
             paths: HashSet::new(),
+            show_hidden,
         };
         // Watch ignore/config parents too, including creation of missing files.
         for path in control_paths {
@@ -473,6 +493,63 @@ fn run(root: &Path, private: &Path, entry: &Entry, alive: impl Fn() -> bool) -> 
 mod tests {
     use super::*;
 
+    #[test]
+    fn hidden_entries_are_optional_while_ignores_and_private_paths_remain_excluded() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        for name in [".config", ".empty", ".git", "node_modules", "private"] {
+            std::fs::create_dir(root.join(name)).unwrap();
+        }
+        std::fs::write(root.join(".gitignore"), ".ignored\n").unwrap();
+        std::fs::write(root.join(".ignored"), "ignored").unwrap();
+        std::fs::write(root.join(".env"), "hidden").unwrap();
+        std::fs::write(root.join("note.md"), "note").unwrap();
+        let names = |show_hidden| {
+            directory_entries(root, &root.join("private"), show_hidden)
+                .filter_map(Result::ok)
+                .filter(|entry| entry.depth() > 0)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect::<HashSet<_>>()
+        };
+        assert_eq!(names(false), HashSet::from(["note.md".to_owned()]));
+        assert_eq!(
+            names(true),
+            HashSet::from([
+                ".config".to_owned(),
+                ".empty".to_owned(),
+                ".env".to_owned(),
+                ".gitignore".to_owned(),
+                "note.md".to_owned(),
+            ])
+        );
+    }
+
+    #[test]
+    fn hidden_event_filter_matches_visibility_without_exposing_fixed_exclusions() {
+        let root = Path::new("repo");
+        let private = root.join("private");
+        assert!(excluded(
+            &root.join(".config/settings"),
+            root,
+            &private,
+            false
+        ));
+        assert!(!excluded(
+            &root.join(".config/settings"),
+            root,
+            &private,
+            true
+        ));
+        for path in [
+            ".git/config",
+            "nested/.git/config",
+            "node_modules/pkg",
+            "private/data",
+        ] {
+            assert!(excluded(&root.join(path), root, &private, true));
+        }
+    }
+
     fn paths(snapshot: &Snapshot) -> Vec<String> {
         fn collect(nodes: &[serde_json::Value], paths: &mut Vec<String>) {
             for node in nodes {
@@ -514,8 +591,12 @@ mod tests {
         std::fs::write(root.join("note.md"), "note").unwrap();
         std::fs::write(root.join("ignored.txt"), "ignored").unwrap();
         let service = Service::default();
-        let entry = service.entry(root.clone(), root.join("private")).unwrap();
-        let other = service.entry(root.clone(), root.join("private")).unwrap();
+        let entry = service
+            .entry(root.clone(), root.join("private"), false)
+            .unwrap();
+        let other = service
+            .entry(root.clone(), root.join("private"), false)
+            .unwrap();
         assert!(Arc::ptr_eq(&entry, &other));
         let (first, second) = tokio::join!(entry.snapshot(), other.snapshot());
         let first = first.unwrap();
@@ -549,9 +630,11 @@ mod tests {
         std::fs::write(root.join("excluded.md"), "excluded").unwrap();
         std::fs::write(root.join(".git/info/exclude"), "excluded.md\n").unwrap();
         let service = Service::default();
-        let entry = service.entry(root.clone(), root.join("private")).unwrap();
+        let entry = service
+            .entry(root.clone(), root.join("private"), false)
+            .unwrap();
         let mut events = entry.subscribe();
-        assert!(paths(&entry.snapshot().await.unwrap()).is_empty());
+        assert_eq!(paths(&entry.snapshot().await.unwrap()), ["docs"]);
         std::fs::create_dir_all(root.join("docs/new/sub")).unwrap();
         std::fs::write(root.join("docs/new/sub/note.md"), "new").unwrap();
         wait_for(&entry, &mut events, |paths| {
@@ -570,7 +653,7 @@ mod tests {
         .await;
         std::fs::remove_file(root.join("docs/new/sub/note.md")).unwrap();
         wait_for(&entry, &mut events, |paths| {
-            !paths.iter().any(|path| path == "docs/new")
+            !paths.iter().any(|path| path == "docs/new/sub/note.md")
         })
         .await;
         // Editors commonly publish a hidden temporary file by renaming it.

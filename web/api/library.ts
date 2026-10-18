@@ -10,8 +10,8 @@ import {
 } from './contracts';
 import { subscribeEvents } from './events';
 
-export async function getFileTree(apiBase: string, signal?: AbortSignal) {
-  const { data, response } = await requestJsonWithResponse(`${apiBase}/tree`, treeSchema, { signal });
+export async function getFileTree(apiBase: string, signal?: AbortSignal, showHidden = false) {
+  const { data, response } = await requestJsonWithResponse(`${apiBase}/tree?showHidden=${showHidden}`, treeSchema, { signal });
   return { ...data, revision: response.headers.get('x-tree-revision') };
 }
 
@@ -31,8 +31,9 @@ export async function setBookmark(apiBase: string, path: string, bookmarked: boo
 export function watchFileTree(
   apiBase: string,
   onRevision: (revision: string) => void,
+  showHidden = false,
 ) {
-  return subscribeEvents(`${apiBase}/library/tree-events`, treeEvents, {
+  return subscribeEvents(`${apiBase}/library/tree-events?showHidden=${showHidden}`, treeEvents, {
     tree: ({ revision }) => onRevision(revision),
     connected: ({ revision }) => onRevision(revision),
   });

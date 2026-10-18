@@ -3,7 +3,8 @@ import { startTransition, useActionState, useCallback, useEffect, useMemo, useRe
 
 import { CheckIcon, KebabHorizontalIcon, SortDescIcon, FileDirectoryIcon, FileIcon, MarkdownIcon, MaximizeIcon, MinimizeIcon } from '@primer/octicons-react';
 import { apiBase, fileUrl, pageBase } from './urls.mjs';
-import { readDirectoryGalleryState, saveDirectoryGalleryState } from './directory-state.mjs';
+import { readDirectoryState, readRepositoryDisplayState, saveDirectoryState } from './directory-state.mjs';
+import { useDirectoryScroll } from './use-directory-scroll';
 import { formatRelativeModified } from './time-labels.mjs';
 import type { TreeNode } from './api/contracts';
 import { getMediaDimensions, openDirectory } from './api/library';
@@ -15,40 +16,36 @@ import { directorySortOptions, gallerySortOptions, galleryImages, isGalleryVideo
 import type { DirectorySort, GalleryImage } from './gallery-images';
 
 interface DirectoryViewProps {
-  directory: { path?: string; absolutePath?: string; children: TreeNode[] };
+  directory: { path?: string; absolutePath?: string; children?: TreeNode[] };
   navigate(path: string, directory: boolean): void;
+  display: ReturnType<typeof readRepositoryDisplayState>;
+  onDisplayChange(patch: ReturnType<typeof readRepositoryDisplayState>): void;
 }
 
-export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
+const emptyChildren: TreeNode[] = [];
+
+export function DirectoryView({ directory, navigate, display, onDisplayChange }: DirectoryViewProps) {
   const directoryRef = useRef<HTMLDivElement>(null);
   const { stuck, sentinelRef } = useToolbarStuck();
-  const [savedGalleryState] = useState(() => readDirectoryGalleryState(pageBase, directory.path));
-  const [gallery, setGallery] = useState(() => savedGalleryState.gallery
-    ?? history.state?.directoryGallery === true);
-  const [rows, setRows] = useState(() => savedGalleryState.rows ?? history.state?.galleryOptions?.rows === true);
-  const [recursive, setRecursive] = useState(() => savedGalleryState.recursive ?? history.state?.galleryOptions?.recursive === true);
-  const [autoplayVideos, setAutoplayVideos] = useState(() => savedGalleryState.autoplayVideos ?? history.state?.galleryOptions?.autoplayVideos === true);
+  const [savedState] = useState(() => readDirectoryState(pageBase, directory.path));
+  const { gallery = false, rows = false, recursive = false, autoplayVideos = false, showHidden = false } = display;
+  const children = directory.children ?? emptyChildren;
   const [availableWidth, setAvailableWidth] = useState(0);
-  const [width, setWidth] = useState<number>(() => {
-    const saved = history.state?.galleryOptions?.width;
-    return typeof saved === 'number' && saved >= gallerySize.min && saved <= gallerySize.max ? saved : gallerySize.initial;
-  });
-  const [sort, setSort] = useState<DirectorySort>(() => {
-    const saved = history.state?.galleryOptions?.sort;
-    return Object.hasOwn(gallerySortOptions, saved) ? saved : 'name-asc';
-  });
+  const [width, setWidth] = useState<number>(() => savedState.width ?? gallerySize.initial);
+  const [sort, setSort] = useState<DirectorySort>(() => savedState.sort ?? 'name-asc');
   useEffect(() => {
-    history.replaceState({ ...history.state, galleryOptions: { recursive, width, sort, autoplayVideos, rows } }, '');
-  }, [recursive, width, sort, autoplayVideos, rows]);
+    saveDirectoryState(pageBase, directory.path, { width, sort });
+  }, [directory.path, width, sort]);
   const activeSort = !gallery && sort.startsWith('taken-') ? sort === 'taken-asc' ? 'time-asc' : 'time-desc' : sort;
   const captureSort = gallery && sort.startsWith('taken-');
-  const entries = useMemo(() => sortDirectoryNodes(directory.children, activeSort), [directory.children, activeSort]);
-  const candidates = useMemo(() => gallery ? galleryImages(directory.children, recursive) : [],
-    [directory.children, recursive, gallery]);
+  const entries = useMemo(() => sortDirectoryNodes(children, activeSort), [children, activeSort]);
+  const candidates = useMemo(() => gallery ? galleryImages(children, recursive) : [],
+    [children, recursive, gallery]);
   const [capturedAt, setCapturedAt] = useState<Record<string, number | null>>({});
   const images = useMemo(() => sortDirectoryNodes(candidates, sort, capturedAt), [candidates, sort, capturedAt]);
   const [mediaDimensions, setMediaDimensions] = useState<Record<string, { width: number; height: number }>>({});
-  const [dimensionsLoading, setDimensionsLoading] = useState(false);
+  const [dimensionsLoading, setDimensionsLoading] = useState(() => Boolean(gallery && (rows || captureSort) && candidates.length));
+  useDirectoryScroll(directoryRef, pageBase, directory.path ?? '', !gallery || availableWidth > 0 && !dimensionsLoading);
   const [metadataError, setMetadataError] = useState('');
   const [naturalRatios, setNaturalRatios] = useState<Record<string, number>>({});
   const onDimensions = useCallback((node: GalleryImage, ratio: number) => {
@@ -107,11 +104,6 @@ export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
     })();
     return () => controller.abort();
   }, [gallery, rows, captureSort, candidates]);
-  function switchGallery(value: boolean) {
-    setGallery(value);
-    saveDirectoryGalleryState(pageBase, directory.path, { gallery: value });
-    history.replaceState({ ...history.state, directoryGallery: value }, '');
-  }
   const { copied, error: copyError, copy } = useClipboard();
   const [openError, open, opening] = useActionState(async () => {
     try {
@@ -121,7 +113,7 @@ export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
   }, '');
   return <div ref={directoryRef}>
     <FileToolbar sentinelRef={sentinelRef} className="flex-wrap items-center gap-3 text-muted">
-      <span className="me-auto whitespace-nowrap">{directory.children.length} items</span>
+      <span className="me-auto whitespace-nowrap">{children.length} items</span>
       <div className="flex flex-none items-center gap-2 [&_svg]:size-4" role="group" aria-label="Directory actions">
       {stuck && <MoveToTopButton />}
       {gallery && <>
@@ -161,30 +153,26 @@ export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
               <ActionList.Item onSelect={() => copy('absolute path', directory.absolutePath)}>
                 Copy absolute path{copied === 'absolute path' ? ' · Copied' : ''}
               </ActionList.Item>
+              <ActionList.Divider style={{ opacity: .5 }} />
               <ActionList.Group selectionVariant="multiple" style={{ marginBlockStart: 0 }}>
-                <ActionList.Item className="gallery-menu-toggle" selected={gallery} onSelect={() => switchGallery(!gallery)}>
+                <ActionList.Item className="gallery-menu-toggle" selected={showHidden} onSelect={() => onDisplayChange({ showHidden: !showHidden })}>
+                  Show hidden files
+                  <ActionList.TrailingVisual>{showHidden ? <CheckIcon /> : null}</ActionList.TrailingVisual>
+                </ActionList.Item>
+                <ActionList.Item className="gallery-menu-toggle" selected={gallery} onSelect={() => onDisplayChange({ gallery: !gallery })}>
                   Show gallery
                   <ActionList.TrailingVisual>{gallery ? <CheckIcon /> : null}</ActionList.TrailingVisual>
                 </ActionList.Item>
                 {gallery && <>
-                  <ActionList.Item className="gallery-menu-toggle" selected={rows} onSelect={() => {
-                    setRows(!rows);
-                    saveDirectoryGalleryState(pageBase, directory.path, { rows: !rows });
-                  }}>
+                  <ActionList.Item className="gallery-menu-toggle" selected={rows} onSelect={() => onDisplayChange({ rows: !rows })}>
                     Adjusted height
                     <ActionList.TrailingVisual>{rows ? <CheckIcon /> : null}</ActionList.TrailingVisual>
                   </ActionList.Item>
-                  <ActionList.Item className="gallery-menu-toggle" selected={recursive} onSelect={() => {
-                    setRecursive(!recursive);
-                    saveDirectoryGalleryState(pageBase, directory.path, { recursive: !recursive });
-                  }}>
+                  <ActionList.Item className="gallery-menu-toggle" selected={recursive} onSelect={() => onDisplayChange({ recursive: !recursive })}>
                     Include subdirectories
                     <ActionList.TrailingVisual>{recursive ? <CheckIcon /> : null}</ActionList.TrailingVisual>
                   </ActionList.Item>
-                  <ActionList.Item className="gallery-menu-toggle" selected={autoplayVideos} onSelect={() => {
-                    setAutoplayVideos(!autoplayVideos);
-                    saveDirectoryGalleryState(pageBase, directory.path, { autoplayVideos: !autoplayVideos });
-                  }}>
+                  <ActionList.Item className="gallery-menu-toggle" selected={autoplayVideos} onSelect={() => onDisplayChange({ autoplayVideos: !autoplayVideos })}>
                     Autoplay videos
                     <ActionList.TrailingVisual>{autoplayVideos ? <CheckIcon /> : null}</ActionList.TrailingVisual>
                   </ActionList.Item>

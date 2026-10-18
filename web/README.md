@@ -16,6 +16,10 @@ PDF、Typst 和图片支持中键拖动、触摸平移、双指缩放，以及 C
 
 支持浏览器多标签页、前进与后退，以及直接分享文件、搜索和 Git 页面地址。最近浏览和阅读位置按仓库保存，最多保留 100 个文件。
 
+目录菜单的 Show hidden files、Show gallery、Include subdirectories、Autoplay videos 和 Adjusted height 按仓库统一保存；排序、缩略图缩放和滚动位置按目录独立记忆，保存在当前浏览器中。新目录默认按名称升序，列表始终将文件夹排在文件前面。
+
+Show hidden files 默认关闭，开启后内容列表和侧栏同步显示隐藏项。仍遵守忽略规则，并排除 `.git`、`node_modules` 和应用私有数据目录。
+
 ## 搜索
 
 Search 默认搜索当前仓库正文。Files 范围按文件路径搜索，通过后端快照每批加载 20 个文件，展开目录后滚动到底部继续加载，也可点击加载更多；最多保留 20,000 个结果或 2 MiB 快照，达到上限时提示缩小范围。使用可折叠文件树展示已加载结果，无搜索条件时目录默认折叠，有搜索条件时自动展开匹配目录；点击目录展开或折叠，点击文件打开。Scope 可限定 Files、Bookmarks、Symbols 或 Current File；Languages、Paths 可进一步筛选。

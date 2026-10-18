@@ -9,10 +9,10 @@ interface FileTreeState {
   error: string;
 }
 
-export function useFileTree(apiBase: string, selected: string, active = true) {
+export function useFileTree(apiBase: string, selected: string, active = true, showHidden = false) {
   const resource = useMemo(
-    () => createTreeResource(signal => getFileTree(apiBase, signal)),
-    [apiBase],
+    () => createTreeResource(signal => getFileTree(apiBase, signal, showHidden)),
+    [apiBase, showHidden],
   );
   const [state, setState] = useState<FileTreeState>({ tree: null, loading: true, error: '' });
   const update = useCallback((path: string, force = false) => {
@@ -45,9 +45,9 @@ export function useFileTree(apiBase: string, selected: string, active = true) {
         if (!disposed && !(error instanceof DOMException && error.name === 'AbortError')) void refresh();
       });
     };
-    const stream = watchFileTree(apiBase, synchronize);
+    const stream = watchFileTree(apiBase, synchronize, showHidden);
     return () => { disposed = true; stream.close(); };
-  }, [apiBase, resource, refresh, active]);
+  }, [apiBase, resource, refresh, active, showHidden]);
   useEffect(() => () => resource.dispose(), [resource]);
   return { ...state, index: resource.index, refresh };
 }
