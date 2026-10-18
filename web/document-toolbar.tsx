@@ -15,6 +15,7 @@ interface DocumentToolbarProps {
   document: Pick<LibraryDocument, 'path' | 'absolutePath' | 'type' | 'size' | 'modified'> & {
     lineCount?: number | null;
     imageMetadata?: Extract<LibraryDocument, { type: 'image' }>['imageMetadata'];
+    videoMetadata?: Extract<LibraryDocument, { type: 'binary' }>['videoMetadata'];
   };
   status: { view: 'preview' | 'raw'; line?: number | null; pending?: boolean; bookmarkPage?: import('./api/contracts').Bookmark['page'] };
   stuck: boolean;
@@ -34,9 +35,41 @@ function sizeLabel(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
+function durationLabel(seconds: number) {
+  const total = Math.round(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainder = total % 60;
+  return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
+
+function bitrateLabel(bitsPerSecond: number) {
+  return bitsPerSecond >= 1_000_000
+    ? `${(bitsPerSecond / 1_000_000).toFixed(1)} Mb/s`
+    : `${Math.round(bitsPerSecond / 1000)} kb/s`;
+}
+
+function codecLabel(codec: string) {
+  const labels: Record<string, string> = {
+    h264: 'H.264', avc: 'H.264', hevc: 'HEVC', h265: 'HEVC', av1: 'AV1',
+    vp8: 'VP8', vp9: 'VP9', prores: 'ProRes', mpeg4: 'MPEG-4', mjpeg: 'Motion JPEG',
+  };
+  return labels[codec.toLowerCase()] || codec.toUpperCase();
+}
+
 export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRef, bookmarkState, sidebarToggle }: DocumentToolbarProps) {
   const { copied, error, copy } = useClipboard();
   const imageMetadata = document.type === 'image' ? document.imageMetadata : undefined;
+  const videoMetadata = document.type === 'binary' ? document.videoMetadata : undefined;
+  const detailTitle = [
+    ...(imageMetadata ? [
+      ...(imageMetadata.dimensions ? [`${imageMetadata.dimensions.width} × ${imageMetadata.dimensions.height} px`] : []),
+      ...imageMetadata.exif,
+    ] : []),
+    ...(videoMetadata?.bitrate ? [bitrateLabel(videoMetadata.bitrate)] : []),
+    ...(videoMetadata?.codec ? [codecLabel(videoMetadata.codec)] : []),
+  ].join(' · ');
   return <>
     {error && <div className="action-error" role="alert">{error}</div>}
     <FileToolbar sentinelRef={sentinelRef} className="items-stretch gap-2">
@@ -47,10 +80,7 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
           aria-selected={status.view === 'raw'} onClick={() => readerRef.current?.switchView('raw')}>Raw</button>}
       </div>
       <span className="ms-3 min-w-0 self-center truncate font-code text-ui leading-5 text-muted tabular-nums tracking-[-.15px] @max-reader-sm/reader:ms-0 @max-reader-sm/reader:order-3 @max-reader-sm/reader:basis-full" aria-busy={document.lineCount != null && status.pending}
-        title={imageMetadata ? [
-          ...(imageMetadata.dimensions ? [`${imageMetadata.dimensions.width} × ${imageMetadata.dimensions.height} px`] : []),
-          ...imageMetadata.exif,
-        ].join(' · ') : undefined}>
+        title={detailTitle || undefined} tabIndex={detailTitle ? 0 : undefined}>
         {document.lineCount != null && <>{`${status.line ?? '—'} / ${document.lineCount} lines · `}</>}
         {sizeLabel(document.size)}
         {document.modified && <>{' · '}<time dateTime={document.modified}>
@@ -60,6 +90,8 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
         {!!imageMetadata?.exif.length && <span>
           {' · '}{imageMetadata.exif.join(' · ')}
         </span>}
+        {videoMetadata?.dimensions && <>{' · '}{videoMetadata.dimensions.width} × {videoMetadata.dimensions.height} px</>}
+        {videoMetadata?.durationSeconds != null && <>{' · '}{durationLabel(videoMetadata.durationSeconds)}</>}
       </span>
       <div className="ms-auto flex flex-none items-center gap-1" role="group" aria-label="Page actions">
         {stuck && <MoveToTopButton onClick={() => readerRef.current?.toTop()} />}

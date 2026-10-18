@@ -388,7 +388,22 @@ function App() {
             const width = Math.max(180, Math.min(480, sidebarWidth + (event.key === 'ArrowRight' ? 10 : -10)));
             setSidebarWidth(width);
           }} />
-        <main className={`main-panel col-start-4 row-start-1 h-dvh max-h-dvh min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-none bg-surface${gitPath === null && !searchMode && activeView === 'preview' && hasDocumentViewport(document) ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}>
+        <main className={`main-panel col-start-4 row-start-1 h-dvh max-h-dvh min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-none bg-surface${gitPath === null && !searchMode && activeView === 'preview' && hasDocumentViewport(document) ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}
+          onKeyDown={event => {
+            if (event.code !== 'Space' || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+            const target = event.target;
+            if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, button, a[href], [role="button"]'))) return;
+            if (searchMode || gitPath !== null || !document) return;
+            event.preventDefault();
+            const video = document.type === 'binary' && mainPanelRef.current?.querySelector('video');
+            if (video) {
+              if (video.paused) video.play().catch(() => {});
+              else video.pause();
+              return;
+            }
+            if (activeView === 'raw' || ['pdf', 'typst', 'markdown', 'html', 'image'].includes(document.type))
+              mainPanelRef.current?.scrollBy({ top: mainPanelRef.current.clientHeight * 0.9, behavior: 'smooth' });
+          }}>
           {(!searchMode || narrow) && <div className="page-header mx-auto flex h-toolbar min-h-0 w-[var(--content-width)] flex-none box-border items-center gap-2 p-0 text-ui">
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2.5 [&>nav]:min-w-0 [&>nav]:flex-auto [&>nav]:overflow-hidden">
               {!searchMode && <PathBar items={[

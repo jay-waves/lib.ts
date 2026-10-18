@@ -82,6 +82,8 @@ enum DocumentContent {
         mime: &'static str,
         #[serde(skip_serializing_if = "Option::is_none")]
         format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        video_metadata: Option<crate::media::VideoMetadata>,
         url: String,
     },
     Markdown {
@@ -266,6 +268,8 @@ fn load_document(
         DocumentContent::Binary {
             mime,
             format: Some(detected.format),
+            video_metadata: crate::media::is_video(&path)
+                .then(|| crate::media::video_metadata(&path)),
             url: format!(
                 "{api_prefix}/api/asset?path={}",
                 encode_query_component(&requested_path)
@@ -277,6 +281,8 @@ fn load_document(
             DocumentContent::Binary {
                 mime: "application/octet-stream",
                 format: None,
+                video_metadata: crate::media::is_video(&path)
+                    .then(|| crate::media::video_metadata(&path)),
                 url: format!(
                     "{api_prefix}/api/asset?path={}",
                     encode_query_component(&requested_path)

@@ -30,6 +30,100 @@ pub struct ImageMetadata {
     pub captured_at: Option<i64>,
 }
 
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<Dimensions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bitrate: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub codec: Option<String>,
+}
+
+pub fn video_metadata(path: &Path) -> VideoMetadata {
+    let output = Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height,bit_rate,codec_name:format=duration,bit_rate",
+            "-of",
+            "json",
+        ])
+        .arg(crate::client_path(path))
+        .stdin(Stdio::null())
+        .output();
+    let Ok(output) = output else {
+        return VideoMetadata::default();
+    };
+    if !output.status.success() {
+        return VideoMetadata::default();
+    }
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+        return VideoMetadata::default();
+    };
+    let stream = json
+        .get("streams")
+        .and_then(|value| value.as_array())
+        .and_then(|streams| streams.first());
+    let dimensions = stream
+        .and_then(|stream| {
+            Some((
+                stream.get("width")?.as_u64()?,
+                stream.get("height")?.as_u64()?,
+            ))
+        })
+        .and_then(|(width, height)| {
+            dimensions(u32::try_from(width).ok()?, u32::try_from(height).ok()?)
+        });
+    let duration_seconds = json
+        .get("format")
+        .and_then(|format| format.get("duration"))
+        .and_then(|value| {
+            value
+                .as_str()
+                .and_then(|s| s.parse::<f64>().ok())
+                .or_else(|| value.as_f64())
+        })
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(|value| value.round() as u64);
+    let bitrate = stream
+        .and_then(|stream| stream.get("bit_rate"))
+        .and_then(|value| {
+            value
+                .as_str()
+                .and_then(|s| s.parse::<u64>().ok())
+                .or_else(|| value.as_u64())
+        })
+        .or_else(|| {
+            json.get("format")
+                .and_then(|format| format.get("bit_rate"))
+                .and_then(|value| {
+                    value
+                        .as_str()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .or_else(|| value.as_u64())
+                })
+        })
+        .filter(|value| *value > 0);
+    let codec = stream
+        .and_then(|stream| stream.get("codec_name"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    VideoMetadata {
+        dimensions,
+        duration_seconds,
+        bitrate,
+        codec,
+    }
+}
+
 fn capture_time(exif: &exif::Exif) -> Option<i64> {
     use exif::{In, Tag, Value};
     let ascii = |tag| match &exif.get_field(tag, In::PRIMARY)?.value {
