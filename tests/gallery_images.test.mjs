@@ -5,9 +5,10 @@ import { galleryImages, isGalleryVideo, sortDirectoryNodes } from '../web/galler
 const file = (name, path = name) => ({ name, path, type: 'file', modified: '' });
 
 test('gallery includes native video candidates but leaves other containers out', () => {
-  const videos = ['clip.MP4', 'clip.webm', 'clip.m4v', 'clip.ogv'].map(name => file(name));
+  const videos = ['clip.MP4', 'clip.webm', 'clip.m4v', 'clip.MOV', 'clip.ogv'].map(name => file(name));
   assert.deepEqual(galleryImages([...videos, file('clip.mkv'), file('clip.avi')], false), videos);
   assert.equal(isGalleryVideo('clip.MP4'), true);
+  assert.equal(isGalleryVideo('live-photo.mov'), true);
   assert.equal(isGalleryVideo('clip.mp4.png'), false);
 });
 
@@ -40,4 +41,28 @@ test('recursive gallery preserves paths and tree order, handles empty and missin
   assert.deepEqual(galleryImages(nodes, true), [first, second]);
   assert.deepEqual(galleryImages([directory('unloaded')], true), []);
   assert.deepEqual(galleryImages([], false), []);
+});
+
+test('MOV finds a same-name JPEG and merges into a Live card without mutating files', () => {
+  const photo = file('IMG_1234.JPEG');
+  const video = { ...file('IMG_1234.MOV'), modified: 'video-revision' };
+  for (const nodes of [[video, photo], [photo, video]]) {
+    const result = galleryImages(nodes, false);
+    assert.deepEqual(result, [{ ...photo, liveVideo: video }]);
+    assert.equal(result[0].liveVideo.modified, 'video-revision');
+    assert.equal(photo.liveVideo, undefined);
+  }
+  assert.equal(sortDirectoryNodes(galleryImages([video, photo], false), 'name-asc')[0].liveVideo, video);
+});
+
+test('unmatched files stay separate and MOV only pairs with JPEG in its own directory', () => {
+  const jpeg = file('still.jpeg');
+  const mov = file('motion.mov');
+  const jpg = file('motion.jpg');
+  assert.deepEqual(galleryImages([jpeg, mov, jpg], false), [jpeg, mov, jpg]);
+
+  const photo = file('same.jpeg', 'photos/same.jpeg');
+  const video = file('same.mov', 'videos/same.mov');
+  const directory = (name, children) => ({ name, path: name, type: 'directory', modified: '', children });
+  assert.deepEqual(galleryImages([directory('photos', [photo]), directory('videos', [video])], true), [photo, video]);
 });

@@ -1,23 +1,17 @@
 import { ActionList, ActionMenu, IconButton } from '@primer/react';
-import { startTransition, useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { CheckIcon, KebabHorizontalIcon, SortDescIcon, FileDirectoryIcon, FileIcon, MarkdownIcon } from '@primer/octicons-react';
+import { CheckIcon, KebabHorizontalIcon, SortDescIcon, FileDirectoryIcon, FileIcon, MarkdownIcon, MaximizeIcon, MinimizeIcon } from '@primer/octicons-react';
 import { apiBase, fileUrl } from './urls.mjs';
 import { formatRelativeModified } from './time-labels.mjs';
 import type { TreeNode } from './api/contracts';
 import { getMediaDimensions, openDirectory } from './api/library';
 import { useClipboard } from './use-clipboard';
 import { DirectoryGallery } from './directory-gallery';
-import { FileToolbar } from './file-toolbar';
+import { FileToolbar, MoveToTopButton, useToolbarStuck } from './file-toolbar';
 import { bindGalleryZoom, gallerySize, resizeGallery } from './gallery-zoom.mjs';
-import { directorySortOptions, galleryImages, sortDirectoryNodes } from './gallery-images';
-import type { DirectorySort } from './gallery-images';
-
-function WallIcon() {
-  return <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <path fillRule="evenodd" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25V2.75A1.75 1.75 0 0 0 14.25 1Zm-.25 1.75a.25.25 0 0 1 .25-.25h5.5v2.75H1.5Zm7 2.5V2.5h5.75a.25.25 0 0 1 .25.25v2.5Zm6 1.5v2.5h-2.75v-2.5Zm-4.25 0v2.5h-4.5v-2.5Zm-6 0v2.5H1.5v-2.5ZM1.5 10.75h5.75v2.75h-5.5a.25.25 0 0 1-.25-.25Zm7 0h6v2.5a.25.25 0 0 1-.25.25H8.5Z" />
-  </svg>;
-}
+import { directorySortOptions, galleryImages, mediaKey, sortDirectoryNodes } from './gallery-images';
+import type { DirectorySort, GalleryImage } from './gallery-images';
 
 interface DirectoryViewProps {
   directory: { path?: string; absolutePath?: string; children: TreeNode[] };
@@ -26,10 +20,12 @@ interface DirectoryViewProps {
 
 export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
   const directoryRef = useRef<HTMLDivElement>(null);
+  const { stuck, sentinelRef } = useToolbarStuck();
   const [gallery, setGallery] = useState(() => history.state?.directoryGallery === true);
   const [rows, setRows] = useState(() => history.state?.galleryOptions?.rows === true);
   const [recursive, setRecursive] = useState(() => history.state?.galleryOptions?.recursive === true);
-  const [hoverVideos, setHoverVideos] = useState(() => history.state?.galleryOptions?.hoverVideos !== false);
+  const [autoplayVideos, setAutoplayVideos] = useState(() => history.state?.galleryOptions?.autoplayVideos === true);
+  const [availableWidth, setAvailableWidth] = useState(0);
   const [width, setWidth] = useState<number>(() => {
     const saved = history.state?.galleryOptions?.width;
     return typeof saved === 'number' && saved >= gallerySize.min && saved <= gallerySize.max ? saved : gallerySize.initial;
@@ -39,20 +35,37 @@ export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
     return Object.hasOwn(directorySortOptions, saved) ? saved : 'name-asc';
   });
   useEffect(() => {
-    history.replaceState({ ...history.state, galleryOptions: { recursive, width, sort, hoverVideos, rows } }, '');
-  }, [recursive, width, sort, hoverVideos, rows]);
-  useEffect(() => {
-    const viewport = directoryRef.current?.closest<HTMLElement>('.main-panel');
-    if (!gallery || !viewport) return;
-    return bindGalleryZoom(viewport, (direction: number, reset: boolean, source: 'wheel' | 'key') => {
-      setWidth(value => resizeGallery(value, direction, reset, source === 'wheel' ? gallerySize.wheelStep : gallerySize.step));
-    }, { isEnabled: () => !directoryRef.current?.closest('[hidden]') });
-  }, [gallery]);
+    history.replaceState({ ...history.state, galleryOptions: { recursive, width, sort, autoplayVideos, rows } }, '');
+  }, [recursive, width, sort, autoplayVideos, rows]);
   const entries = useMemo(() => sortDirectoryNodes(directory.children, sort), [directory.children, sort]);
   const images = useMemo(() => gallery ? sortDirectoryNodes(galleryImages(directory.children, recursive), sort) : [],
     [directory.children, recursive, sort, gallery]);
   const [mediaDimensions, setMediaDimensions] = useState<Record<string, { width: number; height: number }>>({});
   const [dimensionsLoading, setDimensionsLoading] = useState(false);
+  const [naturalRatios, setNaturalRatios] = useState<Record<string, number>>({});
+  const onDimensions = useCallback((node: GalleryImage, ratio: number) => {
+    if (mediaDimensions[node.path]) return;
+    const key = mediaKey(node);
+    setNaturalRatios(previous => previous[key] === ratio ? previous : { ...previous, [key]: ratio });
+  }, [mediaDimensions]);
+  const ratios = useMemo(() => images.map(node => {
+    const size = mediaDimensions[node.path];
+    return size ? size.width / size.height : naturalRatios[mediaKey(node)] ?? 4 / 3;
+  }), [images, mediaDimensions, naturalRatios]);
+  const zoomSteps = useMemo(() => dimensionsLoading || !ratios.length || !availableWidth
+    ? { smaller: width, larger: width }
+    : {
+      smaller: resizeGallery(width, -1, false, availableWidth, rows, ratios),
+      larger: resizeGallery(width, 1, false, availableWidth, rows, ratios),
+    }, [width, availableWidth, rows, ratios, dimensionsLoading]);
+  const changeSize = useCallback((direction: number, reset = false) => {
+    setWidth(value => resizeGallery(value, direction, reset, availableWidth, rows, ratios));
+  }, [availableWidth, rows, ratios]);
+  useEffect(() => {
+    const viewport = directoryRef.current?.closest<HTMLElement>('.main-panel');
+    if (!gallery || !viewport) return;
+    return bindGalleryZoom(viewport, changeSize, { isEnabled: () => !directoryRef.current?.closest('[hidden]') });
+  }, [gallery, changeSize]);
   useEffect(() => {
     if (!gallery || !rows || !images.length) { setDimensionsLoading(false); return; }
     const controller = new AbortController();
@@ -87,20 +100,21 @@ export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
     } catch (error) { return `Could not open directory: ${error instanceof Error ? error.message : String(error)}`; }
   }, '');
   return <div ref={directoryRef}>
-    <FileToolbar className="flex-wrap items-center gap-3 text-muted">
+    <FileToolbar sentinelRef={sentinelRef} className="flex-wrap items-center gap-3 text-muted">
       <span className="me-auto whitespace-nowrap">{directory.children.length} items</span>
-      {gallery && <div className="gallery-controls">
-        <IconButton unsafeDisableTooltip size="small" variant="invisible"
-          className="[&_svg]:size-4 aria-pressed:bg-selected! aria-pressed:text-fg!"
-          icon={WallIcon} aria-label="Arrange gallery in rows" aria-pressed={rows}
-          onClick={() => setRows(value => !value)} />
-        <label>Thumbnail size <input type="range" min={gallerySize.min} max={gallerySize.max} step={gallerySize.step} value={width}
-          onChange={event => setWidth(Number(event.target.value))} /></label>
-      </div>}
-      <div className="flex flex-none items-center gap-2" role="group" aria-label="Directory actions">
+      <div className="flex flex-none items-center gap-2 [&_svg]:size-4" role="group" aria-label="Directory actions">
+      {stuck && <MoveToTopButton />}
+      {gallery && <>
+        <IconButton unsafeDisableTooltip size="small" variant="invisible" className="[&_svg]:size-3.5!"
+          icon={MinimizeIcon} aria-label="Decrease thumbnail size by one step"
+          disabled={!images.length || dimensionsLoading || zoomSteps.smaller === width} onClick={() => changeSize(-1)} />
+        <IconButton unsafeDisableTooltip size="small" variant="invisible" className="[&_svg]:size-3.5!"
+          icon={MaximizeIcon} aria-label="Increase thumbnail size by one step"
+          disabled={!images.length || dimensionsLoading || zoomSteps.larger === width} onClick={() => changeSize(1)} />
+      </>}
         <ActionMenu>
           <ActionMenu.Anchor>
-            <IconButton unsafeDisableTooltip size="small" variant="invisible" className="[&_svg]:size-4"
+            <IconButton unsafeDisableTooltip size="small" variant="invisible"
               icon={SortDescIcon} aria-label={`Sort: ${directorySortOptions[sort]}`} />
           </ActionMenu.Anchor>
           <ActionMenu.Overlay>
@@ -112,7 +126,7 @@ export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
         </ActionMenu>
         <ActionMenu>
           <ActionMenu.Anchor>
-            <IconButton unsafeDisableTooltip size="small" variant="invisible" className="[&_svg]:size-4"
+            <IconButton unsafeDisableTooltip size="small" variant="invisible"
               icon={KebabHorizontalIcon} aria-label="Menu" />
           </ActionMenu.Anchor>
           <ActionMenu.Overlay>
@@ -127,26 +141,33 @@ export function DirectoryView({ directory, navigate }: DirectoryViewProps) {
               <ActionList.Item onSelect={() => copy('absolute path', directory.absolutePath)}>
                 Copy absolute path{copied === 'absolute path' ? ' · Copied' : ''}
               </ActionList.Item>
-              <ActionList.Item onSelect={() => switchGallery(!gallery)}>
-                {gallery ? 'Back to file list' : 'Browse as gallery'}
-              </ActionList.Item>
-              {gallery && <ActionList.Group selectionVariant="multiple" style={{ marginBlockStart: 0 }}>
+              <ActionList.Group selectionVariant="multiple" style={{ marginBlockStart: 0 }}>
+                <ActionList.Item className="gallery-menu-toggle" selected={gallery} onSelect={() => switchGallery(!gallery)}>
+                  Show gallery
+                  <ActionList.TrailingVisual>{gallery ? <CheckIcon /> : null}</ActionList.TrailingVisual>
+                </ActionList.Item>
+                {gallery && <>
+                  <ActionList.Item className="gallery-menu-toggle" selected={rows} onSelect={() => setRows(value => !value)}>
+                    Adjusted height
+                    <ActionList.TrailingVisual>{rows ? <CheckIcon /> : null}</ActionList.TrailingVisual>
+                  </ActionList.Item>
                   <ActionList.Item className="gallery-menu-toggle" selected={recursive} onSelect={() => setRecursive(value => !value)}>
                     Include subdirectories
                     <ActionList.TrailingVisual>{recursive ? <CheckIcon /> : null}</ActionList.TrailingVisual>
                   </ActionList.Item>
-                  <ActionList.Item className="gallery-menu-toggle" selected={hoverVideos} onSelect={() => setHoverVideos(value => !value)}>
-                    Play videos on hover
-                    <ActionList.TrailingVisual>{hoverVideos ? <CheckIcon /> : null}</ActionList.TrailingVisual>
+                  <ActionList.Item className="gallery-menu-toggle" selected={autoplayVideos} onSelect={() => setAutoplayVideos(value => !value)}>
+                    Autoplay videos
+                    <ActionList.TrailingVisual>{autoplayVideos ? <CheckIcon /> : null}</ActionList.TrailingVisual>
                   </ActionList.Item>
-                </ActionList.Group>}
+                </>}
+              </ActionList.Group>
             </ActionList>
           </ActionMenu.Overlay>
         </ActionMenu>
       </div>
     </FileToolbar>
     {(openError || copyError) && <div className="action-error" role="alert">{openError || copyError}</div>}
-    {gallery ? <DirectoryGallery rows={rows} images={images} width={width} recursive={recursive} hoverVideos={hoverVideos} navigate={navigate} dimensions={mediaDimensions} dimensionsLoading={dimensionsLoading} /> : entries.map(node => <a className="ui-focus flex min-h-toolbar box-border items-center gap-2 border-0 border-b border-solid border-divider px-3.5 py-2 text-ui text-fg no-underline last:border-b-0 hover:bg-subtle [&>svg]:shrink-0 [&>svg]:text-muted @max-reader-md/reader:px-3 @max-reader-sm/reader:flex-wrap" key={node.path} href={fileUrl(node.path, node.type === 'directory')}
+    {gallery ? <DirectoryGallery rows={rows} images={images} width={width} availableWidth={availableWidth} onWidthChange={setAvailableWidth} recursive={recursive} autoplayVideos={autoplayVideos} navigate={navigate} ratios={ratios} onDimensions={onDimensions} dimensionsLoading={dimensionsLoading} /> : entries.map(node => <a className="ui-focus flex min-h-toolbar box-border items-center gap-2 border-0 border-b border-solid border-divider px-3.5 py-2 text-ui text-fg no-underline last:border-b-0 hover:bg-subtle [&>svg]:shrink-0 [&>svg]:text-muted @max-reader-md/reader:px-3 @max-reader-sm/reader:flex-wrap" key={node.path} href={fileUrl(node.path, node.type === 'directory')}
       onClick={event => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault(); navigate(node.path, node.type === 'directory');

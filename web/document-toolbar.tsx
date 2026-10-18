@@ -1,7 +1,7 @@
 import { IconButton } from '@primer/react';
 import type { ReactNode, Ref, RefObject } from 'react';
 import { ActionList, ActionMenu } from '@primer/react';
-import { ArrowUpIcon, FocusCenterIcon, KebabHorizontalIcon } from '@primer/octicons-react';
+import { FocusCenterIcon, KebabHorizontalIcon } from '@primer/octicons-react';
 import { BookmarkMenu } from './bookmarks';
 import { apiBase, fileUrl } from './urls.mjs';
 import { hasDocumentViewport } from './preview-kind.mjs';
@@ -9,7 +9,7 @@ import { formatRelativeModified } from './time-labels.mjs';
 import type { LibraryDocument } from './api/documents';
 import type { BookmarkState } from './bookmarks';
 import { useClipboard } from './use-clipboard';
-import { FileToolbar } from './file-toolbar';
+import { FileToolbar, MoveToTopButton } from './file-toolbar';
 
 interface DocumentToolbarProps {
   document: Pick<LibraryDocument, 'path' | 'absolutePath' | 'type' | 'size' | 'modified'> & {
@@ -52,7 +52,7 @@ export function DocumentToolbar({ document, status, stuck, readerRef, sentinelRe
         </time></>}
       </span>
       <div className="ms-auto flex flex-none items-center gap-1" role="group" aria-label="Page actions">
-        {stuck && <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={ArrowUpIcon} aria-label="Back to top" onClick={() => readerRef.current?.toTop()} />}
+        {stuck && <MoveToTopButton onClick={() => readerRef.current?.toTop()} />}
         {stuck && status.view === 'preview' && hasDocumentViewport(document) && <IconButton unsafeDisableTooltip
           size="small" variant="invisible" icon={FocusCenterIcon} aria-label="Fit and recenter page" onClick={() => readerRef.current?.fit()} />}
         {sidebarToggle}

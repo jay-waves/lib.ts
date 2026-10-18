@@ -5,4 +5,5 @@
 .document-stage { width: max(100%, var(--document-width, 0px)); box-sizing: border-box; padding: 24px; }
 .document-viewport.is-panning, .document-viewport.is-panning * { cursor: grabbing !important; user-select: none !important; }
 
-.document-stage .document-page { position: relative; flex: none; background: white; box-shadow: 0 2px 12px #0003; }
+.document-stage .document-page { position: relative; flex: none; background: white; box-shadow: 0 0 0 1px light-dark(#18221b0d, #ffffff14), var(--surface-shadow); }
+.document-viewer[data-zoomed] .document-page { box-shadow: 0 0 0 1px light-dark(#18221b0d, #ffffff14), var(--surface-shadow-soft); }

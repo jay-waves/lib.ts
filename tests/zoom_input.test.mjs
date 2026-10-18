@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindZoomInput } from '../web/zoom-input.mjs';
 import { bindGalleryZoom, resizeGallery } from '../web/gallery-zoom.mjs';
+import { galleryLayout, galleryRows } from '../web/gallery-layout.mjs';
 
 function fixture() {
   const document = new EventTarget();
@@ -81,8 +82,50 @@ test('every keyboard press applies immediately and cancels queued wheel input', 
   assert.equal(changes.length, 5);
   assert.equal(resizeGallery(420, 1, false), 420);
   assert.equal(resizeGallery(140, -1, false), 140);
+  assert.equal(resizeGallery(220, 1, false), 240);
+  assert.equal(resizeGallery(220, -1, false), 200);
+  assert.equal(resizeGallery(225, 1, false), 240);
   assert.equal(resizeGallery(420, 0, true), 220);
   dispose();
+});
+
+test('column zoom skips unchanged layouts in both directions and stops at its limits', () => {
+  for (const width of [240, 452, 800, 1200]) {
+    for (let size = 140; size <= 420; size += 20) {
+      for (const direction of [-1, 1]) {
+        const next = resizeGallery(size, direction, false, width, false);
+        assert.ok(next >= 140 && next <= 420);
+        if (next !== size) {
+          assert.equal(Math.sign(next - size), direction);
+          assert.notDeepEqual(galleryLayout([1, .5], width, next).items,
+            galleryLayout([1, .5], width, size).items);
+        }
+      }
+    }
+  }
+});
+
+test('adjusted height zoom skips identical row partitions and disables unavailable steps', () => {
+  const ratios = Array(12).fill(1);
+  assert.equal(resizeGallery(220, 1, false, 1000, true, ratios), 300);
+  assert.equal(resizeGallery(220, -1, false, 1000, true, ratios), 180);
+  assert.equal(resizeGallery(220, 1, false, 1000, true, [1]), 220);
+  assert.equal(resizeGallery(220, -1, false, 1000, true, [1]), 220);
+  for (const ratios of [Array(12).fill(1), [.5, 3, 1, .8, 2, 1.5, .4]]) {
+    const photos = ratios.map(ratio => ({ src: '', width: ratio * 1000, height: 1000 }));
+    for (const width of [240, 800, 1000]) {
+      const key = size => galleryRows(photos, width, size).tracks.map(track => track.photos.length).join(',');
+      for (let size = 140; size <= 420; size += 20) {
+        for (const direction of [-1, 1]) {
+          const next = resizeGallery(size, direction, false, width, true, ratios);
+          if (next !== size) {
+            assert.equal(Math.sign(next - size), direction);
+            assert.notEqual(key(next), key(size));
+          }
+        }
+      }
+    }
+  }
 });
 
 test('direction reversal, hiding and disposal discard pending wheel changes', async () => {

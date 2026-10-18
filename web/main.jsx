@@ -31,6 +31,7 @@ import { BookmarkList } from './bookmark-list';
 import { documentSymbols, SymbolsPanel } from './symbols-panel.tsx';
 import { DocumentToolbar } from './document-toolbar.tsx';
 import { DirectoryView } from './directory-view.tsx';
+import { useToolbarStuck } from './file-toolbar';
 import '@primer/primitives/dist/css/functional/themes/light.css';
 import '@primer/primitives/dist/css/functional/themes/dark.css';
 import '@primer/primitives/dist/css/base/motion/motion.css';
@@ -151,8 +152,7 @@ function App() {
     if (element) element.scrollTop = filesScrollTop.current;
   }, []);
   const searchMode = sidebarTab === 'search';
-  const [toolbarStuck, setToolbarStuck] = useState(false);
-  const toolbarSentinelRef = useRef(null);
+  const { stuck: toolbarStuck, sentinelRef: toolbarSentinelRef } = useToolbarStuck(!searchMode && gitPath === null && !error);
   const mainPanelRef = useRef(null);
 
   useEffect(() => {
@@ -192,16 +192,6 @@ function App() {
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
   }, []);
-  useEffect(() => {
-    setToolbarStuck(false);
-    const sentinel = toolbarSentinelRef.current, panel = mainPanelRef.current;
-    if (!sentinel || !panel) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      setToolbarStuck(Boolean(entry.rootBounds && entry.boundingClientRect.bottom <= entry.rootBounds.top));
-    }, { root: panel, threshold: [0, 1] });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [document?.path, activeView, searchMode, Boolean(error)]);
   useEffect(() => {
     if (!repoId) return;
     const client = randomId();

@@ -67,7 +67,7 @@ static HTML_TAG_RE: LazyLock<regex::Regex> =
 static HTML_HOST_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"^[A-Za-z0-9.\-:\[\]]+$").expect("valid host pattern"));
 static HTML_RESOURCE_EXTENSION_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"(?i)^(css|js|mjs|png|jpe?g|gif|webp|avif|bmp|ico|svg|woff2?|ttf|otf|mp3|mp4|webm|ogg|wav)$")
+    regex::Regex::new(r"(?i)^(css|js|mjs|png|jpe?g|gif|webp|avif|bmp|ico|svg|woff2?|ttf|otf|mp3|mp4|mov|webm|ogg|wav)$")
         .expect("valid HTML resource extension pattern")
 });
 

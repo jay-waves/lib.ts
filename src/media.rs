@@ -185,7 +185,7 @@ pub fn is_video(path: &Path) -> bool {
     path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
         matches!(
             s.to_ascii_lowercase().as_str(),
-            "mp4" | "m4v" | "webm" | "ogv"
+            "mp4" | "m4v" | "mov" | "webm" | "ogv"
         )
     })
 }
@@ -405,5 +405,10 @@ mod tests {
                 height: 480
             })
         );
+    }
+
+    #[test]
+    fn recognizes_mov_as_video() {
+        assert!(is_video(Path::new("live-photo.MOV")));
     }
 }

@@ -1,7 +1,8 @@
 import { IconButton } from '@primer/react';
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { Banner, Spinner } from '@primer/react';
-import { ArrowUpIcon, ArrowUpRightIcon, FoldIcon, UnfoldIcon, XIcon } from '@primer/octicons-react';
+import { ArrowUpRightIcon, FoldIcon, UnfoldIcon, XIcon } from '@primer/octicons-react';
+import { FileToolbar, MoveToTopButton, useToolbarStuck } from './file-toolbar';
 import { apiBase } from './urls.mjs';
 import { getGitDiff } from './api/git';
 import type { GitDiffResponse } from './api/contracts';
@@ -50,19 +51,8 @@ interface GitDiffViewProps {
 export default function GitDiffView({ path, scope, active, revision, onOpen, onClose }: GitDiffViewProps) {
   const [data, setData] = useState<GitDiffResponse | null>(null);
   const [error, setError] = useState('');
-  const [stuck, setStuck] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const { stuck, sentinelRef } = useToolbarStuck(active);
   const sections = data?.sections || [];
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    const panel = sentinel?.closest('.main-panel');
-    if (!sentinel || !panel || !active) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      setStuck(Boolean(entry.rootBounds && entry.boundingClientRect.bottom <= entry.rootBounds.top));
-    }, { root: panel, threshold: [0, 1] });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [active]);
   useEffect(() => {
     if (!active) return;
     const controller = new AbortController();
@@ -84,8 +74,7 @@ export default function GitDiffView({ path, scope, active, revision, onOpen, onC
   const renamedTo = metadata.find(text => text.startsWith('rename to '))?.slice(10) || path;
   const details = [...new Set(metadata.filter(text => !/^(rename from |rename to |similarity index |deleted file mode )/.test(text)))];
   return <div className="content-panel ui-panel">
-    <div className="pointer-events-none h-px flex-none -mb-px" ref={sentinelRef} aria-hidden="true" />
-    <div className="ui-toolbar items-center gap-1 [&>button]:flex-none">
+    <FileToolbar sentinelRef={sentinelRef} className="items-center gap-1 [&>button]:flex-none">
       <strong className="me-1 flex-none">{label}</strong>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 py-1">
       {renamedFrom && <span className="min-w-0 text-muted [overflow-wrap:anywhere]">{renamedFrom} → {renamedTo}</span>}
@@ -98,11 +87,10 @@ export default function GitDiffView({ path, scope, active, revision, onOpen, onC
           aria-label={`${deletions} deleted lines`}>−{deletions}</span>
       </>}
       </div>
-      {stuck && <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={ArrowUpIcon} aria-label="Back to top"
-        onClick={() => sentinelRef.current?.closest('.main-panel')?.scrollTo({ top: 0, behavior: 'instant' })} />}
+      {stuck && <MoveToTopButton />}
       {onOpen && <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={ArrowUpRightIcon} aria-label="Open file" onClick={onOpen} />}
       <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={XIcon} aria-label="Close diff" onClick={onClose} />
-    </div>
+    </FileToolbar>
     {error && <Banner variant="critical" layout="compact" title="Could not load diff" description={error} />}
     {!data && !error && <div className="m-0 px-3.5 py-3 text-ui text-muted [overflow-wrap:anywhere]" role="status"><Spinner size="small" /> Loading diff…</div>}
     {data?.conflict && <Banner variant="warning" layout="compact" title="Unresolved conflict"

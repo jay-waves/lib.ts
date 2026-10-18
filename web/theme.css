@@ -21,6 +21,9 @@
 
 /* Git colors: soft mint and rose on neutral dark row backgrounds. */
 :root {
+  --surface-shadow: 0 1px 2px light-dark(#18221b08, #00000029),
+    0 4px 14px light-dark(#18221b08, #00000024);
+  --surface-shadow-soft: 0 0 8px 2px color-mix(in srgb, var(--fgColor-muted) 12%, transparent);
   --git-added-fg: light-dark(var(--fgColor-success), #8bd5b0);
   --git-deleted-fg: light-dark(var(--fgColor-danger), #f0a0a8);
   --git-added-bg: light-dark(#dafbe1, #192b27);

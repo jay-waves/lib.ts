@@ -29,6 +29,12 @@ body, .workspace { background: var(--library-canvas); }
 .sidebar-drawer > div:not(.sidebar-drawer-header) { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .main-panel { container: reader / inline-size; --content-gutter: 58px; --content-width: min(calc(100% - var(--content-gutter)), 1120px); }
 .reader { display: contents; }
+.content-panel {
+  box-shadow: var(--surface-shadow);
+}
+.content-panel:has(.document-viewer[data-zoomed]) {
+  box-shadow: var(--surface-shadow-soft);
+}
 /* PathBar scrolls with the content; document and directory toolbars share the sticky surface. */
 .status { @apply flex min-h-36 items-center justify-center gap-[11px] p-[22px]; }
 .empty-repository { @apply flex-col text-muted; }
