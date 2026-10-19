@@ -54,6 +54,22 @@ fn original_thumbnail(bytes: u64, width: u32, height: u32) -> bool {
     bytes <= LARGE_BYTES && u64::from(width) * u64::from(height) <= LARGE_PIXELS
 }
 
+fn resize_heif_thumbnail(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let mut reader = ImageReader::open(path)?.with_guessed_format()?;
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(512 * 1024 * 1024);
+    reader.limits(limits);
+    let decoded = reader.decode()?;
+    let thumbnail = decoded.thumbnail(
+        MAX_EDGE.min(decoded.width()),
+        MAX_EDGE.min(decoded.height()),
+    );
+    drop(decoded);
+    image::codecs::jpeg::JpegEncoder::new_with_quality(fs::File::create(path)?, 80)
+        .encode_image(&thumbnail)?;
+    Ok(())
+}
+
 pub fn thumbnail(path: &Path, data: &Path) -> Result<PathBuf, String> {
     generate(path, data, false, time::OffsetDateTime::now_utc().date()).map_err(|e| e.to_string())
 }
@@ -73,7 +89,7 @@ fn generate(
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let metadata = fs::metadata(path)?;
     let key = typst::utils::hash128(&(
-        "gallery-v1",
+        "gallery-v2",
         path,
         metadata.len(),
         metadata.modified()?,
@@ -163,12 +179,10 @@ fn generate(
                     "-i",
                 ])
                 .arg(crate::client_path(path));
-            if !full {
+            if !full && video {
                 command.args([
-                    "-filter_complex",
-                    "[0:v:0]scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2[thumbnail]",
-                    "-map",
-                    "[thumbnail]",
+                    "-vf",
+                    "scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
                 ]);
             }
             command
@@ -204,6 +218,9 @@ fn generate(
                     "Could not decode HEIC/HEIF. Use FFmpeg 8.1 or newer with HEVC support."
                 }
                 .into());
+            }
+            if !full && is_heif(path) {
+                resize_heif_thumbnail(&temporary)?;
             }
         }
         fs::rename(&temporary, &cached)?;
