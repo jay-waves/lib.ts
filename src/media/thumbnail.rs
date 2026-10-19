@@ -14,6 +14,27 @@ const LARGE_PIXELS: u64 = 8_000_000;
 const LARGE_BYTES: u64 = 8 * 1024 * 1024;
 static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
 
+fn ffmpeg_error_summary(stderr: &[u8]) -> String {
+    const MAX_CHARS: usize = 1200;
+    let summary = String::from_utf8_lossy(stderr)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(8)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let truncated = summary.chars().count() > MAX_CHARS;
+    let mut summary: String = summary.chars().take(MAX_CHARS).collect();
+    if truncated {
+        summary.push_str(" …");
+    }
+    if summary.is_empty() {
+        "no diagnostic output".to_owned()
+    } else {
+        summary
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ImagePreview {
@@ -145,7 +166,7 @@ fn generate(
             if !full {
                 command.args([
                     "-vf",
-                    "scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease",
+                    "scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
                 ]);
             }
             command
@@ -165,8 +186,16 @@ fn generate(
                 ])
                 .arg(crate::client_path(&temporary))
                 .stdout(Stdio::null());
-            let output = super::process::run(&mut command, Duration::from_secs(30))?;
+            let output =
+                super::process::run(&mut command, Duration::from_secs(30)).map_err(|error| {
+                    tracing::warn!(%error, "FFmpeg thumbnail process failed");
+                    error
+                })?;
             if !output.status.success() {
+                tracing::warn!(
+                    error = %ffmpeg_error_summary(&output.stderr),
+                    "FFmpeg failed to generate media thumbnail"
+                );
                 return Err(if video {
                     "Could not extract video cover"
                 } else {
