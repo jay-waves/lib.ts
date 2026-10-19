@@ -209,9 +209,9 @@ mod tests {
 
     #[test]
     fn official_tags_queries_cover_supported_languages() {
-        let cache = tempfile::tempdir().unwrap();
+        let cache = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/test-grammars");
         tree_sitter_language_pack::configure(&tree_sitter_language_pack::PackConfig {
-            cache_dir: Some(cache.path().to_path_buf()),
+            cache_dir: Some(cache),
             ..Default::default()
         })
         .unwrap();
@@ -286,6 +286,8 @@ mod tests {
             ),
             ("cpp", "class App { void run() {} };", vec!["App", "run"]),
         ] {
+            tree_sitter_language_pack::get_language(language_name(extension).unwrap())
+                .unwrap_or_else(|error| panic!("Could not load {extension} grammar: {error}"));
             let symbols = extract(extension, source);
             assert_eq!(
                 symbols

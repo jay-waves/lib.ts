@@ -1,70 +1,55 @@
-// Owns restoration, view/scale changes and navigation scheduling for all renderers.
+// Owns restoration, view/scale changes and navigation scheduling for documents.
 // Keep only the latest navigation request; do not persist intermediate restoration positions.
 // Tracking and resource watching remain separate from renderer layout.
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SessionActivity } from './session-activity';
-import { apiBase, pageBase } from './urls.mjs';
-import { readingKey, readPosition, loadPosition, savePosition } from './reading-state.mjs';
+import { pageBase } from './urls.mjs';
+import { readingKey, readPosition, savePosition } from './reading-state.mjs';
 import { readerPosition, restoreReaderPosition, navigateReaderSymbol } from './reader-position.mjs';
 import { readerView, createReaderNavigation } from './reader-session.mjs';
 import { symbolSelectionAt } from './active-symbol.mjs';
 import { useReaderTracking } from './use-reader-tracking.jsx';
 import { updateHeadingAvailability } from './markdown/preview.jsx';
 
-export function useReaderSession({ document, root, request, onActivity }) {
+export function useReaderSession({ document, root, request, view, onViewChange, onProgress }) {
   const active = useContext(SessionActivity);
-  const [ready, setReady] = useState(false);
-  const [view, setView] = useState(() => readerView(document, request?.view));
-  const [scale, setScale] = useState(1);
+  const key = readingKey(pageBase, document.path);
+  const [saved] = useState(() => readPosition(key));
+  const [scale, setScale] = useState(saved.scale || 1);
   const [fitRequest, setFitRequest] = useState(0);
-  const latest = useRef(null), initial = useRef(null), consumed = useRef(null), previousDocument = useRef(document);
+  const latest = useRef(null), initial = useRef({ line: saved.line || 1, page: saved.page }), consumed = useRef(null), previousDocument = useRef(document);
   const selectedSymbol = useRef(null);
   const [navigation] = useState(() => createReaderNavigation(requestAnimationFrame, cancelAnimationFrame));
-  const key = readingKey(pageBase, document.path);
-  latest.current = { document, view, scale, ready, active, request, onActivity };
+  latest.current = { document, view, scale, active, request, onProgress };
   const panel = () => root.current?.closest('.main-panel');
   const inset = () => (panel()?.querySelector('.file-toolbar')?.getBoundingClientRect().height || 0) + 12;
-  const notify = activity => latest.current.onActivity(activity.kind === 'position'
-    ? { ...activity, symbolId: selectedSymbol.current?.id } : activity);
+  const notify = progress => latest.current.onProgress({ ...progress, symbolId: selectedSymbol.current?.id });
   const capture = () => {
     const state = latest.current;
-    if (!state.ready || navigation.pending || !panel()) return;
+    if (navigation.pending || !panel()) return;
     const position = readerPosition(panel(), state.document, state.view, inset());
     if (position.line) position.line = Math.max(1, Math.min(state.document.lineCount || position.line, position.line));
     if (position.line || position.page) savePosition(key, { ...position, scale: state.scale });
     // Publish only the settled position, after restoration/initial fitting.
     // This also handles saved progress without requiring a user scroll.
     selectedSymbol.current = symbolSelectionAt(selectedSymbol.current, panel().scrollTop);
-    notify({ kind: 'position', line: position.line || null,
-      page: position.page ? position.page.index + 1 : null, bookmarkPage: position.page, view: state.view, pending: false });
+    notify({ line: position.line || null,
+      page: position.page ? position.page.index + 1 : null, bookmarkPage: position.page, pending: false });
   };
-  const scheduleCapture = useReaderTracking({ root, active: active && ready, document, view, capture,
-    retry: () => navigation.retry(), onPending: () => notify({ kind: 'position', view: latest.current.view, pending: true }),
+  const scheduleCapture = useReaderTracking({ root, active, document, view, capture,
+    retry: () => navigation.retry(), onPending: () => notify({ pending: true }),
     onScroll: top => {
       selectedSymbol.current = symbolSelectionAt(selectedSymbol.current, top);
     } });
 
-  useEffect(() => {
-    let disposed = false;
-    loadPosition(key, apiBase, document.path).then(saved => {
-      if (disposed) return;
-      initial.current = { line: saved.line || 1, page: saved.page };
-      const currentRequest = latest.current.request;
-      const requestedPosition = currentRequest?.path === document.path
-        ? currentRequest.page ? { page: currentRequest.page }
-          : currentRequest.line ? { line: currentRequest.line } : saved
-        : saved;
-      const atTop = isTopPosition(requestedPosition);
-      panel()?.classList.toggle('pathbar-hidden', !atTop);
-      setView(readerView(document, currentRequest?.path === document.path ? currentRequest.view || saved.view : saved.view));
-      setScale(document.type === 'image' ? 1 : saved.scale || 1);
-      setReady(true);
-    });
-    return () => { disposed = true; };
+  useLayoutEffect(() => {
+    const requestedPosition = request?.path === document.path
+      ? request.page ? { page: request.page } : request.line ? { line: request.line } : saved : saved;
+    panel()?.classList.toggle('pathbar-hidden', !isTopPosition(requestedPosition));
   }, [key]);
 
   useEffect(() => {
-    if (!ready || !active) return;
+    if (!active) return;
     const viewport = panel();
     if (!viewport) return;
     const updatePathBar = () => viewport.classList.toggle('pathbar-hidden',
@@ -74,21 +59,12 @@ export function useReaderSession({ document, root, request, onActivity }) {
       viewport.removeEventListener('scroll', updatePathBar);
       viewport.classList.remove('pathbar-hidden');
     };
-  }, [ready, active, document.path]);
+  }, [active, document.path]);
 
   const restore = position => {
     selectedSymbol.current = null;
     const state = latest.current;
-    if (!panel() || !state.ready || !state.active) return false;
-    if (state.document.type === 'image') {
-      const page = panel().querySelector('.document-page[data-page="1"]');
-      // Known dimensions are sufficient; decoding the thumbnail or original
-      // must not delay or change reading-position restoration.
-      if (!page?.offsetWidth || !page.offsetHeight) {
-        const image = page?.querySelector('.image-preview-full');
-        return Boolean(image?.complete && !image.naturalWidth);
-      }
-    }
+    if (!panel() || !state.active) return false;
     if (restoreReaderPosition(panel(), state.document, state.view, position, inset()) === false) {
       navigation.retry();
       return false;
@@ -99,24 +75,23 @@ export function useReaderSession({ document, root, request, onActivity }) {
     return true;
   };
   const navigateSymbol = symbol => {
-    if (!panel() || !latest.current.ready || !latest.current.active) return false;
+    if (!panel() || !latest.current.active) return false;
     const found = navigateReaderSymbol(panel(), latest.current.document, latest.current.view, symbol, inset(), updateHeadingAvailability);
     selectedSymbol.current = found ? { id: symbol.id, top: panel().scrollTop } : null;
-    notify({ kind: 'position', view: latest.current.view, pending: true });
+    notify({ pending: true });
     scheduleCapture();
     // A missing outline target completes the attempt instead of indefinitely
     // suppressing position saves. Unmounted content is retried above.
     return true;
   };
   useEffect(() => {
-    if (!ready || !active) { navigation.suspend(); return; }
+    if (!active) { navigation.suspend(); return; }
     const documentChanged = previousDocument.current !== document;
     previousDocument.current = document;
     if (request?.path === document.path && consumed.current !== request) {
       selectedSymbol.current = null;
       consumed.current = request;
-      const nextView = readerView(document, request.view || view);
-      if (nextView !== view) setView(nextView);
+      const nextView = view;
       const position = request.page ? { page: request.page } : request.line ? { line: request.line } : initial.current;
       initial.current = null;
       navigation.request(() => {
@@ -131,8 +106,8 @@ export function useReaderSession({ document, root, request, onActivity }) {
       const position = readPosition(key);
       navigation.request(() => restore(position));
     } else navigation.retry();
-    notify({ kind: 'position', view, pending: navigation.pending });
-  }, [document, request, ready, active, view]);
+    notify({ pending: navigation.pending });
+  }, [document, request, active, view]);
   useEffect(() => () => navigation.clear(), [navigation]);
 
   const switchView = requested => {
@@ -144,9 +119,9 @@ export function useReaderSession({ document, root, request, onActivity }) {
     const headerTop = panel() && panel().scrollTop < (panel().querySelector('.page-header')?.offsetHeight || 0)
       ? panel().scrollTop : null;
     capture(); selectedSymbol.current = null;
-    setView(next);
+    onViewChange(next);
     // Keep the toolbar and preview styling in sync with the reader content.
-    notify({ kind: 'position', view: next, pending: true });
+    notify({ pending: true });
     navigation.request(() => {
       if (latest.current.view !== next || !restore(position)) return false;
       if (headerTop !== null) panel().scrollTop = headerTop;
@@ -163,7 +138,7 @@ export function useReaderSession({ document, root, request, onActivity }) {
     navigation.request(() => restore({ line: 1, position: { page, y: Number(link.dataset.typstY) / size.height }, behavior: 'smooth' }));
   };
   return {
-    ready, view, targetLine: request?.path === document.path ? request.line : null, click,
+    targetLine: request?.path === document.path ? request.line : null, click,
     actions: { capture, switchView, fit: () => setFitRequest(value => value + 1),
       toTop: () => panel()?.scrollTo({ top: 0, behavior: 'smooth' }) },
     viewport: {

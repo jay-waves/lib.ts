@@ -1,5 +1,8 @@
 .media-details { position: relative; min-width: 0; }
-.media-details-trigger { cursor: help; white-space: nowrap; }
+.media-details-trigger {
+  cursor: help;
+  white-space: nowrap;
+}
 .media-details-popover {
   display: none;
   position: absolute;

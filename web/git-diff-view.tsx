@@ -15,7 +15,7 @@ function Hunk({ hunk }: { hunk: GitHunk }) {
   const contentId = useId();
   const toggle = () => setExpanded(value => !value);
   return <>
-    <button type="button" className="ui-focus flex min-h-row w-full box-border cursor-pointer items-center gap-2 border-0 bg-selected px-3.5 py-0 text-left font-code text-ui! leading-5 text-muted [overflow-wrap:anywhere] hover:text-accent focus-visible:text-accent" aria-expanded={expanded} aria-controls={contentId} onClick={toggle}>
+    <button type="button" className="ui-disclosure bg-selected px-3.5 font-code" aria-expanded={expanded} aria-controls={contentId} onClick={toggle}>
       <span className="flex w-4 flex-none items-center justify-center" aria-hidden="true">{expanded ? <FoldIcon size={16} /> : <UnfoldIcon size={16} />}</span>
       <span>{hunk.header}</span>
     </button>
@@ -32,9 +32,9 @@ function Hunk({ hunk }: { hunk: GitHunk }) {
 
 function Section({ section }: { section: GitSection }) {
   return <section className="border-0 [&+section]:border-t [&+section]:border-solid [&+section]:border-border" aria-label={section.label}>
-      {section.binary ? <p className="m-0 px-3.5 py-3 text-ui text-muted [overflow-wrap:anywhere]">Binary file changed. Text diff is unavailable.</p>
-        : section.tooLarge ? <p className="m-0 px-3.5 py-3 text-ui text-muted [overflow-wrap:anywhere]">This diff exceeds the 2 MB preview limit. View it with a local Git client.</p>
-        : !section.hunks.length ? section.metadata.length ? null : <p className="m-0 px-3.5 py-3 text-ui text-muted [overflow-wrap:anywhere]">No text changes.</p>
+      {section.binary ? <p className="ui-message">Binary file changed. Text diff is unavailable.</p>
+        : section.tooLarge ? <p className="ui-message">This diff exceeds the 2 MB preview limit. View it with a local Git client.</p>
+        : !section.hunks.length ? section.metadata.length ? null : <p className="ui-message">No text changes.</p>
         : section.hunks.map((hunk, index) => <Hunk key={`${index}:${hunk.header}`} hunk={hunk} />)}
   </section>;
 }
@@ -77,9 +77,9 @@ export default function GitDiffView({ path, scope, active, revision, onOpen, onC
     <FileToolbar sentinelRef={sentinelRef} className="items-center gap-1 [&>button]:flex-none">
       <strong className="me-1 flex-none">{label}</strong>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 py-1">
-      {renamedFrom && <span className="min-w-0 text-muted [overflow-wrap:anywhere]">{renamedFrom} → {renamedTo}</span>}
+      {renamedFrom && <span className="min-w-0 text-muted wrap-anywhere">{renamedFrom} → {renamedTo}</span>}
       {deleted && <span className="text-muted">deleted</span>}
-      {details.map(text => <span key={text} className="min-w-0 text-muted [overflow-wrap:anywhere]">{text}</span>)}
+      {details.map(text => <span key={text} className="min-w-0 text-muted wrap-anywhere">{text}</span>)}
       {data && ((!renamedFrom && !deleted) || additions > 0 || deletions > 0) && <>
         <span className="text-ui! leading-none font-semibold text-[var(--git-added-fg)]"
           aria-label={`${additions} added lines`}>+{additions}</span>
@@ -92,10 +92,10 @@ export default function GitDiffView({ path, scope, active, revision, onOpen, onC
       <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={XIcon} aria-label="Close diff" onClick={onClose} />
     </FileToolbar>
     {error && <Banner variant="critical" layout="compact" title="Could not load diff" description={error} />}
-    {!data && !error && <div className="m-0 px-3.5 py-3 text-ui text-muted [overflow-wrap:anywhere]" role="status"><Spinner size="small" /> Loading diff…</div>}
+    {!data && !error && <div className="ui-message" role="status"><Spinner size="small" /> Loading diff…</div>}
     {data?.conflict && <Banner variant="warning" layout="compact" title="Unresolved conflict"
       description="The working file is compared with our side of the merge." />}
-    {data?.clean && <p className="m-0 px-3.5 py-3 text-ui text-muted [overflow-wrap:anywhere]">This file no longer has changes in {label}.</p>}
+    {data?.clean && <p className="ui-message">This file no longer has changes in {label}.</p>}
     {sections.map(section => <Section key={section.id} section={section} />)}
   </div>;
 }

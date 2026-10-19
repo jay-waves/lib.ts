@@ -7,8 +7,7 @@ export const mediaFileUrl = (apiBase, media) => mediaUrl(apiBase, media);
 
 export function imagePreviewUrls(apiBase, document) {
   const thumbnail = thumbnailUrl(apiBase, document);
-  const source = document.preview === 'thumbnail' ? thumbnail
-    : document.preview === 'converted' ? mediaUrl(apiBase, document, 'preview')
+  const source = document.preview === 'converted' ? mediaUrl(apiBase, document, 'preview')
       : mediaFileUrl(apiBase, document);
   return { thumbnail, source };
 }

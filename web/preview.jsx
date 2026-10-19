@@ -1,16 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import './html-preview.css';
 import { DocumentPreview } from './document-preview.jsx';
-import { MarkdownPreview } from './markdown/preview.jsx';
 import { TypstPages } from './typst/typst-view.jsx';
 import { PdfPages } from './pdf/pdf-view.jsx';
-import { ImagePreview } from './image-view.jsx';
 import { pagedDocumentLayout } from './document-preview.mjs';
-import { useReader } from './reader-context.jsx';
-import { OpenMedia } from './open-media';
-import { isVideoMedia, isBrowserVideo } from './gallery-images';
-import { apiBase } from './urls.mjs';
-import { thumbnailUrl, mediaFileUrl } from './media-urls.mjs';
+import { usePreview } from './preview-context.jsx';
 
 function diagnosticExcerpt(source, range) {
   const start = Number(range?.start?.line);
@@ -28,9 +22,9 @@ function diagnosticExcerpt(source, range) {
 }
 
 function TypstPreview() {
-  const { document, viewport, onExpired } = useReader();
+  const { document, viewport, onExpired } = usePreview();
   return <DocumentPreview layout={pagedDocumentLayout(document.pages)}>
-    <div className="typst-pages">
+    <div className="typst-pages document-pages">
       {document.compile?.diagnostics?.length > 0 && <section className="diagnostics" role="alert">
         <h2>Typst compilation failed</h2>
         <p className="diagnostics-summary">{document.compile.diagnostics.length} error{document.compile.diagnostics.length === 1 ? '' : 's'} prevented this document from rendering.</p>
@@ -52,36 +46,13 @@ function TypstPreview() {
   </DocumentPreview>;
 }
 
-function VideoPreview({ document }) {
-  const { mediaDimensions } = useReader();
-  const [error, setError] = useState(false);
-  const [coverError, setCoverError] = useState(false);
-  const native = isBrowserVideo(document);
-  const poster = thumbnailUrl(apiBase, document);
-  return <div className="p-4">
-    {native ? <video className="w-full max-h-[80vh]" controls playsInline preload="metadata" poster={poster}
-      onLoadedMetadata={event => mediaDimensions.report(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
-      onError={() => setError(true)} src={mediaFileUrl(apiBase, document)} />
-      : !coverError && <img className="w-full max-h-[80vh] object-contain" src={poster} alt={document.name}
-        onError={() => setCoverError(true)} />}
-    {(!native || error) && <>
-      <p>{error ? 'Could not play this video in your browser.' : 'Open this video with a system application.'}</p>
-      <OpenMedia path={document.path} />
-      <a href={document.url} download={document.name}>Download original</a>
-    </>}
-  </div>;
-}
-
 export function Preview() {
-  const { document, viewport } = useReader();
-  if (document.type === 'markdown') return <MarkdownPreview />;
+  const { document, viewport } = usePreview();
   if (document.type === 'typst') return <TypstPreview />;
   if (document.type === 'pdf') return <DocumentPreview layout={pagedDocumentLayout(document.pages)}>
     <PdfPages key={`${document.path}:${document.revision || document.modified}`} pages={document.pages}
       scale={viewport.scale} modified={document.modified} revision={document.revision || document.modified} />
   </DocumentPreview>;
-  if (document.type === 'image') return <ImagePreview key={`${document.path}:${document.modified}`} />;
-  if (document.type === 'binary' && isVideoMedia(document)) return <VideoPreview key={`${document.path}:${document.modified}`} document={document} />;
   if (document.type === 'html') return <iframe className="html-preview" aria-label={document.name}
     sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer"
     src={`${document.url}&v=${encodeURIComponent(document.modified)}`} />;

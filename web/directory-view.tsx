@@ -1,20 +1,21 @@
 import { ActionList, ActionMenu, IconButton } from '@primer/react';
-import { startTransition, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { CheckIcon, KebabHorizontalIcon, SortDescIcon, FileDirectoryIcon, FileIcon, MarkdownIcon, MaximizeIcon, MinimizeIcon } from '@primer/octicons-react';
-import { apiBase, fileUrl, pageBase } from './urls.mjs';
+import { fileUrl, pageBase } from './urls.mjs';
 import { readDirectoryState, readRepositoryDisplayState, saveDirectoryState } from './directory-state.mjs';
 import { useDirectoryScroll } from './use-directory-scroll';
 import { formatRelativeModified } from './time-labels.mjs';
 import type { TreeNode } from './api/contracts';
-import { openDirectory } from './api/library';
+import { useSystemOpen } from './use-system-open';
 import { useClipboard } from './use-clipboard';
 import { DirectoryGallery } from './directory-gallery';
 import { useGalleryMedia } from './use-gallery-media';
 import { FileToolbar, MoveToTopButton, useToolbarStuck } from './file-toolbar';
 import { bindGalleryZoom, gallerySize, resizeGallery } from './gallery-zoom.mjs';
-import { directorySortOptions, gallerySortOptions, galleryImages, sortDirectoryNodes } from './gallery-images';
+import { directorySortOptions, gallerySortOptions, galleryImages, isBrowserVideo, sortDirectoryNodes } from './gallery-images';
 import type { DirectorySort } from './gallery-images';
+import { preloadVideoPlayer } from './video-player-loader';
 
 interface DirectoryViewProps {
   directory: { path?: string; absolutePath?: string; children?: TreeNode[] };
@@ -38,9 +39,13 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
     saveDirectoryState(pageBase, directory.path, { width, sort });
   }, [directory.path, width, sort]);
   const activeSort = !gallery && sort.startsWith('taken-') ? sort === 'taken-asc' ? 'time-asc' : 'time-desc' : sort;
-  const entries = useMemo(() => sortDirectoryNodes(children, activeSort), [children, activeSort]);
+  const entries = useMemo(() => gallery ? [] : sortDirectoryNodes(children, activeSort), [children, activeSort, gallery]);
   const candidates = useMemo(() => gallery ? galleryImages(children, recursive) : [],
     [children, recursive, gallery]);
+  const hasPlayableVideo = candidates.some(isBrowserVideo);
+  useEffect(() => {
+    if (hasPlayableVideo) preloadVideoPlayer();
+  }, [hasPlayableVideo]);
   const { images, ratios, loading: dimensionsLoading, hasMore, loadMore, error: metadataError } = useGalleryMedia(candidates, sort);
   useDirectoryScroll(directoryRef, pageBase, directory.path ?? '',
     !gallery || availableWidth > 0 && !dimensionsLoading, !gallery || !hasMore, loadMore);
@@ -59,12 +64,7 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
     return bindGalleryZoom(viewport, changeSize, { isEnabled: () => !directoryRef.current?.closest('[hidden]') });
   }, [gallery, changeSize]);
   const { copied, error: copyError, copy } = useClipboard();
-  const [openError, open, opening] = useActionState(async () => {
-    try {
-      await openDirectory(apiBase, directory.path);
-      return '';
-    } catch (error) { return `Could not open directory: ${error instanceof Error ? error.message : String(error)}`; }
-  }, '');
+  const { error: openError, open, pending: opening } = useSystemOpen('directory', directory.path);
   return <div ref={directoryRef}>
     <FileToolbar sentinelRef={sentinelRef} className="flex-wrap items-center gap-3 text-muted">
       <span className="me-auto whitespace-nowrap">{children.length} items</span>
@@ -97,7 +97,7 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
           </ActionMenu.Anchor>
           <ActionMenu.Overlay>
             <ActionList>
-              <ActionList.Item disabled={opening} onSelect={() => startTransition(() => open())}>
+              <ActionList.Item disabled={opening} onSelect={open}>
                 {opening ? 'Opening…' : 'Open in system explorer'}
               </ActionList.Item>
               <ActionList.LinkItem href={fileUrl(directory.path ?? '', true)} target="_blank" rel="noopener noreferrer">Open in new tab</ActionList.LinkItem>

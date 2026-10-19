@@ -1,14 +1,14 @@
 import type { TreeNode } from './api/contracts';
 
 // The browser decides decode support. Unsupported files remain accessible cards.
-const imageExtension = /\.(?:avif|bmp|gif|ico|jpe?g|jfif|png|svg|webp|apng|tiff?|heic|heif|jxl)$/i;
+export const isGalleryImage = (name: string) => /\.(?:avif|bmp|gif|ico|jpe?g|jfif|png|svg|webp|apng|tiff?|heic|heif|jxl)$/i.test(name);
 export const isGalleryVideo = (name: string) => /\.(?:mp4|m4v|mov|webm|ogv|mkv|avi|mpg|mpeg|mts|m2ts|flv|wmv|3gp|3g2)$/i.test(name);
 
-export const isVideoMedia = (node: { name: string; transportStream?: boolean; mime?: string }) =>
-  isGalleryVideo(node.name) || node.transportStream === true || node.mime?.startsWith('video/') === true;
+export const isVideoMedia = (node: { name: string; transportStream?: boolean; mime?: string; media?: 'image' | 'video' | null }) =>
+  node.media !== undefined ? node.media === 'video' : isGalleryVideo(node.name) || node.transportStream === true || node.mime?.startsWith('video/') === true;
 
-export const isBrowserVideo = (node: { name: string; transportStream?: boolean; mime?: string }) =>
-  !node.transportStream && node.mime !== 'video/mp2t' && /\.(?:mp4|m4v|mov|webm|ogv)$/i.test(node.name);
+export const isBrowserVideo = (node: { name: string; transportStream?: boolean; mime?: string; playable?: boolean }) =>
+  node.playable ?? (!node.transportStream && node.mime !== 'video/mp2t' && /\.(?:mp4|m4v|mov|webm|ogv)$/i.test(node.name));
 
 export const directorySortOptions = {
   'name-asc': 'Name: A–Z',
@@ -22,7 +22,7 @@ export const gallerySortOptions = {
   'taken-asc': 'Captured: Oldest',
 } as const;
 export type DirectorySort = keyof typeof gallerySortOptions;
-export type GalleryImage = TreeNode & { liveVideo?: TreeNode };
+export type GalleryImage = TreeNode & { liveVideo?: TreeNode; mime?: string; media?: 'image' | 'video' | null; playable?: boolean };
 export const mediaKey = (node: GalleryImage) => `${node.path}:${node.modified}${node.liveVideo ? `:${node.liveVideo.path}:${node.liveVideo.modified}` : ''}`;
 
 const names = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -63,7 +63,7 @@ export function galleryImages(nodes: readonly TreeNode[], recursive: boolean): G
   for (const node of nodes) {
     if (node.type === 'directory') {
       if (recursive) images.push(...galleryImages(node.children ?? [], true));
-    } else if (!pairedVideos.has(node) && (imageExtension.test(node.name) || isVideoMedia(node))) {
+    } else if (!pairedVideos.has(node) && (isGalleryImage(node.name) || isVideoMedia(node))) {
       const liveVideo = livePhotos.get(node);
       images.push(liveVideo ? { ...node, liveVideo } : node);
     }

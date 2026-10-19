@@ -129,3 +129,11 @@ test('TS and external containers have covers but cannot autoplay in the browser'
     assert.equal(isBrowserVideo({ name }), true);
   }
 });
+
+
+test('server gallery descriptions override filename hints', () => {
+  assert.equal(isVideoMedia({ name: 'misnamed.mp4', media: null }), false);
+  assert.equal(isVideoMedia({ name: 'renamed.bin', media: 'video' }), true);
+  assert.equal(isBrowserVideo({ name: 'misnamed.mp4', playable: false }), false);
+  assert.equal(isBrowserVideo({ name: 'renamed.bin', playable: true }), true);
+});

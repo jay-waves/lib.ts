@@ -1,0 +1,44 @@
+@reference "./tailwind.css";
+
+/* Native application controls share a baseline. Utilities remain available for
+   local layout; renderer typography and Primer adapters stay outside this layer. */
+@layer components {
+  :where(.ui-button, .ui-icon-button, .ui-row-button, .ui-disclosure, .ui-text-button) {
+    @apply cursor-pointer border-0 bg-transparent font-ui text-ui;
+    &:disabled { cursor: default; opacity: .55; }
+    &:focus-visible {
+      outline: 2px solid var(--fgColor-accent);
+      outline-offset: var(--ui-focus-offset, -2px);
+    }
+  }
+  :is(.ui-button, .ui-icon-button, .ui-row-button, .ui-disclosure, .ui-text-button)[hidden] { display: none; }
+
+  .ui-button {
+    @apply h-7 box-border flex-none rounded-ui border border-solid border-border bg-subtle px-2.5 py-0 text-fg hover:bg-hover;
+  }
+  .ui-button[data-variant="ghost"] { border-color: transparent; background: transparent; }
+  .ui-button[data-variant="accent"] { @apply border-divider bg-selected font-medium; }
+  .ui-icon-button {
+    @apply grid size-8 flex-none place-items-center p-0;
+    border-radius: var(--ui-control-radius, var(--radius-ui));
+    color: var(--ui-control-color, var(--fgColor-muted));
+  }
+  .ui-icon-button:hover, .ui-icon-button[aria-expanded="true"] {
+    background: var(--ui-control-hover-bg, var(--control-transparent-bgColor-hover));
+    color: var(--ui-control-hover-color, var(--fgColor-default));
+  }
+  .ui-row-button, .ui-disclosure { @apply flex min-h-row w-full box-border items-center gap-2 text-muted; }
+  .ui-row-button { @apply flex-none rounded-ui px-2 py-1.5 text-start hover:bg-subtle hover:text-fg; }
+  .ui-row-button > svg { flex-shrink: 0; color: var(--fgColor-muted); }
+  .ui-disclosure { @apply py-0 text-start wrap-anywhere hover:text-accent focus-visible:text-accent; }
+  .ui-text-button { @apply p-0 text-muted hover:underline; }
+  .ui-text-button:disabled { cursor: wait; }
+
+  .ui-message { @apply m-0 px-3.5 py-3 text-ui text-muted wrap-anywhere; }
+  .ui-empty { @apply flex flex-col items-center gap-3 text-center text-muted; }
+  .ui-empty :is(code, kbd) { @apply rounded border border-solid border-divider bg-subtle px-[5px] py-0.5 text-meta text-fg; }
+}
+
+/* Primer's typography needs one explicit adapter, rather than per-tag utilities. */
+.path-bar :where(a, button, span) { font-size: var(--text-ui) !important; }
+.path-bar [aria-current="page"] { color: var(--fgColor-default); font-weight: 600; }

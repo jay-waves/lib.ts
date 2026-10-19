@@ -1,5 +1,4 @@
 import { IconButton } from '@primer/react';
-import { useDocumentLease } from './use-document-lease';
 import { BrowserSession, SessionActivity } from './session-activity';
 import { HISTORY_GROUPS } from './time-labels.mjs';
 import { visibleEvents } from './visible-events.mjs';
@@ -21,19 +20,14 @@ import { useWorkspaceSearch } from './workspace-search.tsx';
 import { useGitStatus } from './use-git-status.tsx';
 import { readSidebarState, saveSidebarState } from './sidebar-state.mjs';
 import { readRepositoryDisplayState, saveRepositoryDisplayState } from './directory-state.mjs';
-import { Reader } from './reader.jsx';
-import { hasDocumentViewport } from './preview-kind.mjs';
-import { syncReadingPositions } from './reading-state.mjs';
-import { useDocument } from './use-document.ts';
+import { flushReadingPositions } from './reading-state.mjs';
 import { readerRouteRequest } from './reader-session.mjs';
 import { randomId } from './random-id.mjs';
 import { FileTree } from './file-tree-view.tsx';
 import { BookmarkList } from './bookmark-list';
-import { documentSymbols, SymbolsPanel } from './symbols-panel.tsx';
-import { useMediaDimensions } from './use-media-dimensions';
-import { DocumentToolbar } from './document-toolbar.tsx';
+import { SymbolsPanel } from './symbols-panel.tsx';
 import { DirectoryView } from './directory-view.tsx';
-import { useToolbarStuck } from './file-toolbar';
+import { FilePage } from './file-page.jsx';
 import '@primer/primitives/dist/css/functional/themes/light.css';
 import '@primer/primitives/dist/css/functional/themes/dark.css';
 import '@primer/primitives/dist/css/base/motion/motion.css';
@@ -44,13 +38,16 @@ import './markdown/footnotes.css';
 import 'katex/dist/katex.min.css';
 import './theme.css';
 import './image-theme.css';
-import { ThemeProvider, useTheme } from '@primer/react/next';
+import { ThemeProvider } from '@primer/react/next';
 import './style.css';
+import './ui.css';
 import './sidebar.css';
 import './tailwind.css';
 
 const GitPanel = lazy(() => import('./git-panel.tsx'));
 const GitDiffView = lazy(() => import('./git-diff-view'));
+
+const emptySymbols = [];
 
 const sidebarViews = [
   { id: 'files', label: 'Files', icon: FileDirectoryIcon },
@@ -84,26 +81,6 @@ function expandedPathEntries(path) {
   return entries;
 }
 
-function LibraryError({ error, path, navigate }) {
-  const detail = error instanceof Error ? error.message : String(error || 'Unknown error');
-  const missing = /not found|does not exist|enoent/i.test(detail);
-  const parent = path?.split('/').slice(0, -1).join('/') || '';
-  return <section className="status error library-error" role="alert">
-    <div>
-      <h2>{missing ? 'File not found' : 'Could not load this content'}</h2>
-      <p>{missing ? <>
-        This file may have been moved, renamed, or deleted. <a className="error-inline-link" href={fileUrl(parent, true)}
-          onClick={event => { event.preventDefault(); navigate(parent, true); }}>Return to the parent folder</a>.
-      </> : 'The library could not load the requested content. The technical details are available below.'}</p>
-      {path && <code className="error-path">{path}</code>}
-      <details className="error-details">
-        <summary>Technical details</summary>
-        <pre>{detail}</pre>
-      </details>
-    </div>
-  </section>;
-}
-
 function App() {
   const active = useContext(SessionActivity);
   const [initialSidebar] = useState(() => readSidebarState(apiBase));
@@ -127,19 +104,14 @@ function App() {
   const [recentOnly, setRecentOnly] = useState(() => Boolean(initialSidebar.recentOnly));
   const [documentRevision, setDocumentRevision] = useState(0);
   const [expandedPaths, setExpandedPaths] = useState(() => expandedPathEntries(currentPath()));
-  const [readerStatus, setReaderStatus] = useState({ view: 'preview', line: null, page: null, pending: true });
   const readerRef = useRef(null);
-  const { colorScheme: theme } = useTheme();
   const selectedNode = treeIndex.get(selected);
-  const { document, loading, error, setError } = useDocument({
-    apiBase, pageBase, path: selected, active, treeReady: Boolean(tree), treeLoading,
-    node: selectedNode, revision: documentRevision, theme, view: readerStatus.view, request: readerRequest,
-    capture: () => readerRef.current?.capture(),
-    onOpen: view => setReaderStatus({ view, line: null, page: null, pending: true }),
-  });
-  const mediaDimensions = useMediaDimensions(document);
-  const recentState = useRecentFiles(active && Boolean(apiBase), document?.path === selected ? selected : null);
-  const activeView = document?.type === 'text' ? 'raw' : document?.type === 'binary' ? 'preview' : readerStatus.view;
+  const [pageState, setPageState] = useState(null);
+  const currentPage = pageState?.path === selected ? pageState : null;
+  const progress = currentPage?.progress ?? {};
+  const activeView = currentPage?.view ?? 'preview';
+  const symbols = currentPage?.symbols ?? emptySymbols;
+  const recentState = useRecentFiles(active && Boolean(apiBase), currentPage?.loaded ? selected : null);
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 960px)').matches);
   const [filesVisible, setFilesVisible] = useState(() => initialSidebar.filesVisible ?? !narrow);
   const sidebarToggleRef = useRef(null);
@@ -165,25 +137,7 @@ function App() {
     if (element) element.scrollTop = filesScrollTop.current;
   }, []);
   const searchMode = sidebarTab === 'search';
-  const { stuck: toolbarStuck, sentinelRef: toolbarSentinelRef } = useToolbarStuck(!searchMode && gitPath === null && Boolean(document));
   const mainPanelRef = useRef(null);
-
-  useEffect(() => {
-    setReaderStatus(status => ({ view: status.view, line: null, page: null, pending: true }));
-  }, [document?.path]);
-
-  function reloadDocument() {
-    setDocumentRevision(value => value + 1);
-  }
-
-  function readerActivity(activity) {
-    if (activity.kind === 'position') {
-      setReaderStatus(status => ({ view: activity.view, pending: activity.pending,
-        symbolId: activity.symbolId, bookmarkPage: activity.bookmarkPage,
-        line: activity.pending ? status.line : activity.line || null,
-        page: activity.pending ? status.page : activity.page || null }));
-    }
-  }
 
   function resizeSidebar(event) {
     const workspace = event.currentTarget.parentElement;
@@ -215,8 +169,8 @@ function App() {
     const openDocument = event => {
       const request = parseDocumentOpenEvent(event);
       if (!request) return;
-      readerRef.current?.capture();
-      if (request.repo !== repo && repo) { syncReadingPositions().then(() => location.assign(request.url)).catch(cause => setError(String(cause))); return; }
+      readerRef.current?.capture?.();
+      if (request.repo !== repo && repo) { flushReadingPositions(); location.assign(request.url); return; }
       const target = new URL(request.url, location.origin);
       history.pushState(null, '', target.pathname + target.search);
       dispatchEvent(new PopStateEvent('popstate'));
@@ -240,7 +194,7 @@ function App() {
       setGitPath(kind === 'git' ? params.get('path') : null);
       if (kind === 'git') setGitScope(params.get('scope') || 'unstaged');
       if (kind === 'search') setSearchConfig({ query: params.get('q') || '', scope: params.get('scope') || '' });
-      readerRef.current?.capture();
+      readerRef.current?.capture?.();
       const path = currentPath();
       setExpandedPaths(paths => ({ ...paths, ...expandedPathEntries(path) }));
       setSidebarTab(tab => kind === 'search' || kind === 'git' ? kind : ['search', 'git'].includes(tab) ? 'files' : tab);
@@ -250,13 +204,12 @@ function App() {
     addEventListener('popstate', pop);
     return () => removeEventListener('popstate', pop);
   }, []);
-  useDocumentLease(apiBase, apiBase && document?.path === selected ? selected : null);
   useEffect(() => {
     const name = selected.split('/').filter(Boolean).at(-1) || tree?.name || 'Notes';
     if (active) window.document.title = name;
   }, [selected, tree?.name, active]);
   function navigate(path, directory = false, line = null, page = null) {
-    readerRef.current?.capture();
+    readerRef.current?.capture?.();
     setGitPath(null);
     setSidebarTab(tab => tab === 'search' ? 'files' : tab);
     setReaderRequest({ path, line, page, view: line ? 'raw' : null });
@@ -267,7 +220,6 @@ function App() {
     if (directory) setSidebarTab('files');
   }
   const parts = (gitPath ?? selected).split('/').filter(Boolean);
-  const entries = selectedNode?.type === 'directory' ? selectedNode.children ?? [] : !selected ? tree?.children : null;
   const filteredTree = useMemo(() => {
     const nodes = sortMode === 'name' ? tree?.children : sortFileTree(tree?.children);
     return fileTreeForView(nodes, { bookmarksOnly, bookmarks: bookmarkState.bookmarks });
@@ -283,7 +235,6 @@ function App() {
       - (panel.clientHeight - row.getBoundingClientRect().height) / 2;
     filesScrollTop.current = panel.scrollTop;
   }, [locateRequest]);
-  const symbols = useMemo(() => document ? documentSymbols(document) : [], [document]);
 
   function jumpToSymbol(symbol) {
     setReaderRequest({ path: selected, symbol, view: activeView });
@@ -304,7 +255,7 @@ function App() {
     currentFile: selected, scrollRef: mainPanelRef, treeIndex, bookmarks: bookmarkState.bookmarks,
     symbols, onSelectSymbol: jumpToSymbol });
   function selectSidebarView(id, collapse = true, searchScope) {
-    readerRef.current?.capture();
+    readerRef.current?.capture?.();
     if (id === 'search' && searchScope !== undefined) setSearchConfig(config => ({ ...config, scope: searchScope }));
     if (id === 'search' && currentRouteKind() !== 'search') history.pushState(null, '', searchUrl(repoId, searchConfig.query, searchScope ?? searchConfig.scope, selected));
     else if (id === 'git' && currentRouteKind() !== 'git') history.pushState(null, '', gitUrl(repoId, gitPath || '', gitScope));
@@ -318,7 +269,7 @@ function App() {
   const sidebarContent = <>
           {sidebarTab === 'git' && filesVisible && active && <Suspense fallback={<div className="sidebar-loading"><Spinner size="small" /></div>}>
             <GitPanel state={gitState} selected={gitPath} scope={gitScope} onSelect={(path, scope) => {
-              readerRef.current?.capture();
+              readerRef.current?.capture?.();
               history.pushState(null, '', gitUrl(repoId, path, scope));
               setGitPath(path);
               setGitScope(scope);
@@ -326,7 +277,7 @@ function App() {
               if (narrow) setFilesVisible(false);
             }} />
           </Suspense>}
-          {active && <RepoPicker hidden={sidebarTab !== 'repos'} beforeNavigate={syncReadingPositions} />}
+          {active && <RepoPicker hidden={sidebarTab !== 'repos'} />}
           {sidebarTab === 'search' ? codeSearch.sidebar : sidebarTab === 'files' || bookmarksOnly ? <>
           {!bookmarksOnly && <div className="relative flex min-h-toolbar flex-none box-border items-center justify-center border-0 border-b border-solid border-divider px-[clamp(24px,12%,36px)] py-1 [&_button]:flex-none [&_button]:text-muted! [&_button[aria-pressed=true]]:bg-selected! [&_button[aria-pressed=true]]:text-accent!" role="toolbar" aria-label="File tree actions">
             <div className="flex w-full flex-wrap items-center justify-between gap-y-2">
@@ -361,7 +312,7 @@ function App() {
               expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />
             : <div className="sidebar-empty">{bookmarksOnly ? bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="sidebar-loading"><Spinner size="small" /></div> : null}</div>
           </> : null}
-    <SymbolsPanel symbols={symbols} status={readerStatus} onSelect={jumpToSymbol}
+    <SymbolsPanel symbols={symbols} status={progress} onSelect={jumpToSymbol}
       hidden={sidebarTab !== 'symbols'} visible={filesVisible} />
   </>;
   return <BaseStyles>
@@ -390,21 +341,9 @@ function App() {
             const width = Math.max(180, Math.min(480, sidebarWidth + (event.key === 'ArrowRight' ? 10 : -10)));
             setSidebarWidth(width);
           }} />
-        <main className={`main-panel col-start-4 row-start-1 h-dvh max-h-dvh min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-none bg-surface${gitPath === null && !searchMode && activeView === 'preview' && hasDocumentViewport(document) ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}
+        <main className={`main-panel col-start-4 row-start-1 h-dvh max-h-dvh min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-none bg-surface${gitPath === null && !searchMode && currentPage?.viewport ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}
           onKeyDown={event => {
-            if (event.code !== 'Space' || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
-            const target = event.target;
-            if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, button, a[href], [role="button"]'))) return;
-            if (searchMode || gitPath !== null || !document) return;
-            event.preventDefault();
-            const video = document.type === 'binary' && mainPanelRef.current?.querySelector('video');
-            if (video) {
-              if (video.paused) video.play().catch(() => {});
-              else video.pause();
-              return;
-            }
-            if (activeView === 'raw' || ['pdf', 'typst', 'markdown', 'html', 'image'].includes(document.type))
-              mainPanelRef.current?.scrollBy({ top: mainPanelRef.current.clientHeight * 0.9, behavior: 'smooth' });
+            if (!searchMode && gitPath === null) readerRef.current?.handleKeyDown?.(event);
           }}>
           {(!searchMode || narrow) && <div className="page-header mx-auto flex h-toolbar min-h-0 w-[var(--content-width)] flex-none box-border items-center gap-2 p-0 text-ui">
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2.5 [&>nav]:min-w-0 [&>nav]:flex-auto [&>nav]:overflow-hidden">
@@ -416,7 +355,7 @@ function App() {
                 }),
               ]} onNavigate={path => navigate(path)} />}
               <div className="ms-auto flex flex-none items-center gap-1">
-                {narrow && (gitPath !== null || searchMode || !document) && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible}
+                {narrow && (gitPath !== null || searchMode || !currentPage?.file) && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible}
                   size="small" variant="invisible" className="sidebar-toggle" icon={SidebarExpandIcon}
                   aria-label="Show sidebar" aria-expanded={filesVisible}
                   aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />}
@@ -436,20 +375,14 @@ function App() {
             </div>}
             {Boolean(repoId) && <>
             {bookmarkState.error && !bookmarksOnly && <div className="action-error" role="alert">{bookmarkState.error}</div>}
-            {loading && !document && <div className="status" role="status"><span className="rendering-label">Rendering</span></div>}
-            {!loading && error && (document ? <div className="action-error" role="alert">{error}</div>
-              : <LibraryError error={error} path={selected} navigate={navigate} />)}
-            {!loading && !error && entries && <DirectoryView key={selected} directory={selectedNode || tree} navigate={navigate}
-              display={display} onDisplayChange={changeDisplay} />}
-            {document && <>
-              <DocumentToolbar key={document.path} document={document} dimensions={mediaDimensions.dimensions} status={{ ...readerStatus, view: activeView }}
-                stuck={toolbarStuck} readerRef={readerRef} sentinelRef={toolbarSentinelRef} bookmarkState={bookmarkState}
-                sidebarToggle={narrow && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible} size="small" variant="invisible"
-                  className="sidebar-toggle" icon={SidebarExpandIcon} aria-label="Show sidebar"
-                  aria-expanded={filesVisible} aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />} />
-              <Reader ref={readerRef} key={document.path} document={document} mediaDimensions={mediaDimensions} request={readerRequest} bookmarkState={bookmarkState}
-                navigate={navigate} onReload={reloadDocument} onActivity={readerActivity} />
-            </>}
+            {selected ? <FilePage key={`${apiBase}:${selected}`} ref={readerRef} path={selected} request={readerRequest}
+              externalRevision={documentRevision} visible={!searchMode && gitPath === null}
+              directory={selectedNode?.type === 'directory' ? selectedNode : null} treeError={treeError}
+              navigate={navigate} display={display} onDisplayChange={changeDisplay} bookmarkState={bookmarkState} onState={setPageState}
+              sidebarToggle={narrow && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible} size="small" variant="invisible"
+                className="sidebar-toggle" icon={SidebarExpandIcon} aria-label="Show sidebar"
+                aria-expanded={filesVisible} aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />} />
+              : tree && <DirectoryView key="root" directory={tree} navigate={navigate} display={display} onDisplayChange={changeDisplay} />}
             </>}
           </div>
         </main>

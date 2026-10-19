@@ -9,7 +9,6 @@ import { enhanceMarkdown } from './enhance.mjs';
 import { navigateMarkdownFragment } from './fragment-navigation.mjs';
 import { toggleFootnote } from './footnotes.mjs';
 import './preview.css';
-import { useReader } from '../reader-context.jsx';
 
 export function updateHeadingAvailability(root) {
   root.querySelectorAll('section.heading-section').forEach(section => {
@@ -23,8 +22,7 @@ export function updateHeadingAvailability(root) {
   });
 }
 
-export function MarkdownPreview() {
-  const { prepared, navigate, assetVersions, document: { path } } = useReader();
+export function MarkdownPreview({ prepared, navigate, assetVersions, path }) {
   const active = useContext(SessionActivity);
   const contentRef = useRef(null);
   useLayoutEffect(() => {

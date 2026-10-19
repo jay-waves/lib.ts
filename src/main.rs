@@ -56,13 +56,13 @@ fn stream_file(
 
 mod access;
 mod documents;
+mod file_history;
 mod file_kind;
 mod git;
 mod html;
 mod markdown;
 mod media;
 mod pdf;
-mod reading;
 mod render;
 mod repositories;
 mod resources;
@@ -80,6 +80,7 @@ struct AppState {
     dist: Arc<PathBuf>,
     document_workers: worker::WorkerPool,
     media_workers: worker::WorkerPool,
+    media_metadata_workers: worker::WorkerPool,
     media_metadata: Arc<media::MetadataService>,
     rendering: Arc<render::RenderService>,
     shutdown: tokio::sync::watch::Sender<bool>,
@@ -89,7 +90,7 @@ struct AppState {
     access: Arc<access::AccessPolicy>,
     trees: tree::Service,
     repositories: Arc<repositories::RepositoryStore>,
-    reading: Arc<reading::ReadingStore>,
+    file_history: Arc<file_history::FileHistory>,
     runtime: Arc<RuntimeState>,
     base_url: Arc<String>,
 }
@@ -590,11 +591,6 @@ struct SetBookmarkRequest {
 }
 
 #[derive(Deserialize)]
-struct ReadingPositionsRequest {
-    positions: serde_json::Value,
-}
-
-#[derive(Deserialize)]
 struct RecentFileRequest {
     path: String,
 }
@@ -1052,34 +1048,6 @@ async fn set_bookmark(
     }
 }
 
-async fn get_reading(State(state): State<AppState>, OriginalUri(uri): OriginalUri) -> Response {
-    let Some(repo) = state.repository_for_uri(uri.path()) else {
-        return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
-    };
-    match state.reading.read(&repo.id) {
-        Ok(value) => Json(value).into_response(),
-        Err(error) => json_error(StatusCode::BAD_REQUEST, error).into_response(),
-    }
-}
-
-async fn put_reading(
-    State(state): State<AppState>,
-    OriginalUri(uri): OriginalUri,
-    headers: HeaderMap,
-    Json(request): Json<ReadingPositionsRequest>,
-) -> Response {
-    if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
-    let Some(repo) = state.repository_for_uri(uri.path()) else {
-        return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
-    };
-    match state.reading.save_positions(&repo.id, request.positions) {
-        Ok(()) => Json(serde_json::json!({"ok":true})).into_response(),
-        Err(error) => json_error(StatusCode::BAD_REQUEST, error).into_response(),
-    }
-}
-
 async fn get_recent_files(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -1087,7 +1055,7 @@ async fn get_recent_files(
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
     };
-    match state.reading.recent(&repo.id) {
+    match state.file_history.recent(&repo.id) {
         Ok(value) => Json(value).into_response(),
         Err(error) => json_error(StatusCode::BAD_REQUEST, error).into_response(),
     }
@@ -1113,7 +1081,7 @@ async fn add_recent_file(
         }
         Err((status, error)) => return json_error(status, error).into_response(),
     }
-    match state.reading.visit(&repo.id, &request.path) {
+    match state.file_history.visit(&repo.id, &request.path) {
         Ok(()) => get_recent_files(State(state), OriginalUri(uri)).await,
         Err(error) => json_error(StatusCode::BAD_REQUEST, error).into_response(),
     }
@@ -1130,7 +1098,7 @@ async fn clear_recent_files(
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
     };
-    match state.reading.clear_recent(&repo.id) {
+    match state.file_history.clear_recent(&repo.id) {
         Ok(value) => Json(value).into_response(),
         Err(error) => json_error(StatusCode::BAD_REQUEST, error).into_response(),
     }
@@ -1471,7 +1439,7 @@ async fn open_directory(
     if !directory.is_dir() {
         return json_error(StatusCode::BAD_REQUEST, "Not a directory").into_response();
     }
-    let result = system_open::open(&directory);
+    let result = system_open::open(&directory).await;
     match result {
         Ok(()) => Json(serde_json::json!({"ok":true})).into_response(),
         Err(error) => {
@@ -1989,7 +1957,6 @@ fn build_router(state: AppState) -> Router {
         .route("/", get(repository_metadata))
         .route("/use", axum::routing::post(use_repository))
         .route("/bookmarks", get(list_bookmarks).put(set_bookmark))
-        .route("/reading", get(get_reading).put(put_reading))
         .route(
             "/recent-files",
             get(get_recent_files)
@@ -2005,6 +1972,7 @@ fn build_router(state: AppState) -> Router {
         .route("/git/diff", get(git_diff))
         .route("/search", get(search))
         .route("/document", get(documents::document))
+        .route("/document/info", get(documents::information))
         .route("/library/events", get(library_events))
         .route("/library/tree-events", get(tree_events))
         .route("/html", get(html::html_document))
@@ -2141,6 +2109,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState {
         document_workers: worker::WorkerPool::new("document", 1, 16),
         media_workers: worker::WorkerPool::new("media", 1, 256),
+        media_metadata_workers: worker::WorkerPool::new("media-metadata", 1, 256),
         media_metadata: Arc::new(media::MetadataService::default()),
         rendering: Arc::new(render::RenderService::default()),
         shutdown: tokio::sync::watch::channel(false).0,
@@ -2156,7 +2125,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         ),
         trees: tree::Service::default(),
         repositories,
-        reading: Arc::new(reading::ReadingStore::new(data_directory.clone())),
+        file_history: Arc::new(file_history::FileHistory::new(data_directory.clone())),
         runtime: Arc::new(RuntimeState::default()),
         base_url,
     };
@@ -2202,6 +2171,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let _ = maintenance.await;
     state.document_workers.shutdown().await;
     state.media_workers.shutdown().await;
+    state.media_metadata_workers.shutdown().await;
     state.rendering.close().await;
     served?;
     Ok(())

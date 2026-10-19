@@ -4,6 +4,10 @@ export function readerView(document, requested = 'preview') {
   return requested === 'raw' ? 'raw' : 'preview';
 }
 
+export function readerViews(document) {
+  return /** @type {const} */ (['preview', 'raw']).filter(view => readerView(document, view) === view);
+}
+
 export function readerRouteRequest(path, search) {
   const query = new URLSearchParams(search);
   const line = Number(query.get('line')) || null;

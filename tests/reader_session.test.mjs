@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createReaderNavigation, readerView, readerRouteRequest } from '../web/reader-session.mjs';
+import { createReaderNavigation, readerView, readerViews, readerRouteRequest } from '../web/reader-session.mjs';
 
 function fixture() {
   const frames = new Map();
@@ -62,8 +62,11 @@ test('an action cannot clear newer navigation requested while it is running', ()
 
 test('view policy keeps source-only and preview-only formats consistent with routes', () => {
   assert.equal(readerView({ type: 'text' }, 'preview'), 'raw');
+  assert.deepEqual(readerViews({ type: 'text' }), ['raw']);
   for (const type of ['image', 'pdf', 'binary']) assert.equal(readerView({ type }, 'raw'), 'preview');
+  for (const type of ['image', 'pdf', 'binary']) assert.deepEqual(readerViews({ type }), ['preview']);
   for (const type of ['markdown', 'typst']) {
+    assert.deepEqual(readerViews({ type }), ['preview', 'raw']);
     assert.equal(readerView({ type }, 'raw'), 'raw');
     assert.equal(readerView({ type }, null), 'preview');
   }

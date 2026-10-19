@@ -1,27 +1,22 @@
 //! Desktop opening is performed on the service host. Keep this boundary separate
 //! from media handling so another launch target can be added without changing previews.
-use std::{io, path::Path, process::Stdio};
+use std::{io, path::Path};
 
-pub fn open(path: &Path) -> io::Result<()> {
+#[cfg(not(target_os = "windows"))]
+mod desktop;
+#[cfg(target_os = "windows")]
+mod windows;
+
+/// Dispatch an explicit user request on the service host. Foreground activation
+/// is best effort: desktop focus policy still applies.
+pub async fn open(path: &Path) -> io::Result<()> {
     #[cfg(target_os = "windows")]
-    let mut command = tokio::process::Command::new("explorer.exe");
-    #[cfg(target_os = "macos")]
-    let mut command = tokio::process::Command::new("open");
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let mut command = tokio::process::Command::new("xdg-open");
-    let mut child = command
-        .arg(dunce::simplified(path))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
-    // A successful response acknowledges dispatch, not that the viewer displayed
-    // the file. Reap the launcher even if it stays alive for the viewer's lifetime.
-    tokio::spawn(async move {
-        match child.wait().await {
-            Ok(status) if status.success() => {}
-            result => tracing::warn!(?result, "System opener failed"),
-        }
-    });
-    Ok(())
+    {
+        let path = path.to_owned();
+        tokio::task::spawn_blocking(move || windows::open(&path))
+            .await
+            .map_err(io::Error::other)?
+    }
+    #[cfg(not(target_os = "windows"))]
+    desktop::open(path)
 }

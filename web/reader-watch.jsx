@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { watchDocument } from './api/documents.ts';
 import { apiBase } from './urls.mjs';
 import { changedAssetPaths } from './document-content.ts';
 
-export function useReaderWatch(document, assets, active, onReload) {
-  const { path } = document;
+export function useReaderWatch(path, modified, assets, active, onReload, revalidateDependencies = false) {
   const [versions, setVersions] = useState({});
-  const reload = useRef(onReload);
+  const reload = useEffectEvent(onReload);
   const assetSnapshot = useRef({});
-  reload.current = onReload;
+  const connected = useRef(false);
+  const checkVersion = useEffectEvent(serverModified => {
+    if ((modified && modified !== serverModified) || (connected.current && revalidateDependencies)) reload();
+    connected.current = true;
+  });
   const assetKey = assets.join('\0');
   useEffect(() => {
     if (!active) return;
@@ -18,14 +21,13 @@ export function useReaderWatch(document, assets, active, onReload) {
       for (const file of changed) next[file] = now;
       return next;
     });
-    // Every format revalidates in the background; useDocument retains unchanged
-    // content. Asset snapshots catch edits missed while the watcher was paused.
+    // The connection snapshot closes the HTTP/SSE gap without reloading unchanged files.
     const stream = watchDocument(apiBase, path, paths, {
-      document: () => reload.current(),
-      connected: ({ assets }) => {
+      document: () => reload(),
+      connected: ({ modified, assets }) => {
         invalidate(changedAssetPaths(assetSnapshot.current, assets));
         assetSnapshot.current = assets;
-        reload.current();
+        checkVersion(modified);
       },
       assets: ({ paths }) => invalidate(paths),
     });

@@ -1,17 +1,17 @@
 import { mediaKey, sortDirectoryNodes, type DirectorySort, type GalleryImage } from './gallery-images.ts';
 import { galleryBatchSize } from './gallery-layout.mjs';
+import type { FileDescriptor } from './document-info';
 
-type Size = { width: number; height: number } | null;
-type Metadata = { dimensions: Record<string, Size>; capturedAt: Record<string, number | null> };
+type Metadata = { files: FileDescriptor[] };
 export type GalleryItem = { node: GalleryImage; ratio: number };
-type Update = { items: GalleryItem[]; error: string };
+type Update = { items: GalleryItem[]; error: string; files: FileDescriptor[] };
 
 // One loader owns ordering, metadata and its cursor. Each call prepares at most
 // 64 cards; the view decides when another batch is needed.
 export function createGalleryLoader(candidates: GalleryImage[], sort: DirectorySort,
   request: (paths: string[], signal: AbortSignal, capture?: boolean) => Promise<Metadata>,
   publish: (update: Update) => void, signal: AbortSignal) {
-  const dimensions: Record<string, Size> = {};
+  const files: Record<string, FileDescriptor> = {};
   let ordered = sortDirectoryNodes(candidates, sort);
   let items: GalleryItem[] = [];
   let busy = false;
@@ -22,11 +22,11 @@ export function createGalleryLoader(candidates: GalleryImage[], sort: DirectoryS
     if (busy || signal.aborted || items.length >= ordered.length) return;
     busy = true;
     const batch = ordered.slice(items.length, items.length + galleryBatchSize);
-    const missing = batch.filter(node => !Object.hasOwn(dimensions, node.path));
+    const missing = batch.filter(node => !Object.hasOwn(files, node.path));
     try {
       if (missing.length) {
         const response = await request(missing.map(node => node.path), signal);
-        Object.assign(dimensions, response.dimensions);
+        for (const file of response.files) files[file.path] = file;
       }
     } catch (cause) {
       if (signal.aborted) return;
@@ -35,10 +35,11 @@ export function createGalleryLoader(candidates: GalleryImage[], sort: DirectoryS
     }
     if (signal.aborted) return;
     items = [...items, ...batch.map(node => {
-      const size = dimensions[node.path];
-      return { node, ratio: size ? size.width / size.height : 4 / 3 };
+      const info = files[node.path], size = info?.dimensions;
+      return { node: info ? { ...node, modified: info.modified, mime: info.mime, media: info.media, playable: info.playable } : node,
+        ratio: size ? size.width / size.height : 4 / 3 };
     })];
-    publish({ items, error });
+    publish({ items, error, files: batch.flatMap(node => files[node.path] ? [files[node.path]] : []) });
     busy = false;
   };
 
@@ -53,8 +54,8 @@ export function createGalleryLoader(candidates: GalleryImage[], sort: DirectoryS
           const batch = candidates.slice(index, index + galleryBatchSize);
           const response = await request(batch.map(node => node.path), signal, true);
           if (signal.aborted) return;
-          Object.assign(dimensions, response.dimensions);
-          for (const node of batch) dates[mediaKey(node)] = response.capturedAt[node.path] ?? null;
+          for (const file of response.files) files[file.path] = file;
+          for (const node of batch) dates[mediaKey(node)] = files[node.path]?.capturedAt ?? null;
         }
         ordered = sortDirectoryNodes(candidates, sort, dates);
       } catch (cause) {

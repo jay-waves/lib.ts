@@ -118,6 +118,7 @@ fn test_state(temporary: &tempfile::TempDir) -> (AppState, String) {
             dist: Arc::new(web),
             document_workers: worker::WorkerPool::new("document", 1, 16),
             media_workers: worker::WorkerPool::new("media", 1, 256),
+            media_metadata_workers: worker::WorkerPool::new("media-metadata", 1, 256),
             media_metadata: Arc::new(media::MetadataService::default()),
             rendering: Arc::new(render::RenderService::default()),
             shutdown: tokio::sync::watch::channel(false).0,
@@ -129,7 +130,7 @@ fn test_state(temporary: &tempfile::TempDir) -> (AppState, String) {
             ),
             trees: tree::Service::default(),
             repositories,
-            reading: Arc::new(reading::ReadingStore::new(data)),
+            file_history: Arc::new(file_history::FileHistory::new(data)),
             runtime: Arc::new(RuntimeState::default()),
             base_url: Arc::new("http://127.0.0.1:49191".into()),
         },
@@ -449,7 +450,10 @@ async fn migrated_http_routes_match_frontend_repository_flows() {
         "{}",
         String::from_utf8_lossy(&to_bytes(css.into_body(), usize::MAX).await.unwrap())
     );
-    assert_eq!(css.headers().get("content-type").unwrap(), "text/css");
+    assert_eq!(
+        css.headers().get("content-type").unwrap(),
+        "text/css; charset=utf-8"
+    );
     let denied = request(
         &app,
         "GET",
@@ -541,22 +545,6 @@ async fn migrated_http_routes_match_frontend_repository_flows() {
     .await;
     assert_eq!(bookmark.status(), StatusCode::OK);
     assert_eq!(json(request(&app, "GET", &format!("/{slug}/api/bookmarks"), None).await).await["bookmarks"].as_array().unwrap().len(), 1);
-    let positions = serde_json::json!({"positions":{"note.md":{"line":12,"view":"raw"}}});
-    assert_eq!(
-        request(
-            &app,
-            "PUT",
-            &format!("/{slug}/api/reading"),
-            Some(positions)
-        )
-        .await
-        .status(),
-        StatusCode::OK
-    );
-    assert_eq!(
-        json(request(&app, "GET", &format!("/{slug}/api/reading"), None).await).await["note.md"]["line"],
-        12
-    );
     let recent = request(
         &app,
         "POST",

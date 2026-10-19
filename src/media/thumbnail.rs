@@ -1,4 +1,4 @@
-use super::{Dimensions, is_heif, is_video};
+use super::{is_heif, is_video};
 use image::{ImageEncoder, ImageReader};
 use serde::Serialize;
 use std::{
@@ -16,19 +16,12 @@ const LARGE_BYTES: u64 = 8 * 1024 * 1024;
 #[serde(rename_all = "lowercase")]
 pub enum ImagePreview {
     Original,
-    Thumbnail,
     Converted,
 }
 
-pub fn image_preview(path: &Path, bytes: u64, size: Option<Dimensions>) -> ImagePreview {
+pub fn image_preview(path: &Path) -> ImagePreview {
     if is_heif(path) {
         ImagePreview::Converted
-    } else if path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-        || size.is_some_and(|size| original_thumbnail(bytes, size.width, size.height))
-    {
-        ImagePreview::Thumbnail
     } else {
         ImagePreview::Original
     }
@@ -183,41 +176,18 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn preview_policy_uses_the_same_thresholds_as_thumbnail_generation() {
-        let size = Some(Dimensions {
-            width: 4000,
-            height: 2000,
-        });
+    fn preview_policy_does_not_require_dimensions_or_metadata() {
         assert_eq!(
-            image_preview(Path::new("photo.jpg"), LARGE_BYTES, size),
-            ImagePreview::Thumbnail
-        );
-        assert_eq!(
-            image_preview(Path::new("photo.jpg"), LARGE_BYTES + 1, size),
+            image_preview(Path::new("photo.jpg")),
             ImagePreview::Original
         );
         assert_eq!(
-            image_preview(
-                Path::new("photo.jpg"),
-                10,
-                Some(Dimensions {
-                    width: 4001,
-                    height: 2000
-                })
-            ),
+            image_preview(Path::new("drawing.svg")),
             ImagePreview::Original
         );
         assert_eq!(
-            image_preview(Path::new("photo.jpg"), 10, None),
-            ImagePreview::Original
-        );
-        assert_eq!(
-            image_preview(Path::new("photo.HEIC"), 10, size),
+            image_preview(Path::new("photo.HEIC")),
             ImagePreview::Converted
-        );
-        assert_eq!(
-            image_preview(Path::new("drawing.svg"), 10, None),
-            ImagePreview::Thumbnail
         );
     }
 

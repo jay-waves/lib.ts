@@ -5,7 +5,7 @@ use axum::{
     body::Body,
     extract::{OriginalUri, Query, Request, State},
     http::{HeaderValue, StatusCode, Uri, header::CACHE_CONTROL},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -62,9 +62,7 @@ pub(crate) struct MediaDimensionsRequest {
 
 #[derive(Serialize)]
 struct MediaDimensionsResponse {
-    dimensions: std::collections::HashMap<String, Option<super::Dimensions>>,
-    #[serde(rename = "capturedAt")]
-    captured_at: std::collections::HashMap<String, Option<i64>>,
+    files: Vec<crate::documents::DocumentInformation>,
 }
 
 pub(crate) async fn dimensions(
@@ -94,11 +92,14 @@ pub(crate) async fn dimensions(
     }
     let metadata = state.media_metadata.clone();
     match state
-        .media_workers
+        .media_metadata_workers
         .run(move || {
-            let mut dimensions = std::collections::HashMap::new();
-            let mut captured_at = std::collections::HashMap::new();
+            let mut files = Vec::new();
             for (key, path) in paths {
+                let before = crate::file_signature(&path);
+                let Ok(mut info) = crate::documents::inspect_document(&root, &key, &private) else {
+                    continue;
+                };
                 if request.include_capture_time
                     && !super::is_video(&path)
                     && !path
@@ -106,17 +107,17 @@ pub(crate) async fn dimensions(
                         .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
                 {
                     let value = metadata.image_metadata(&path);
-                    captured_at.insert(key.clone(), value.captured_at);
-                    dimensions.insert(key, value.dimensions);
+                    info.captured_at = value.captured_at;
+                    info.dimensions = value.dimensions;
                 } else {
-                    captured_at.insert(key.clone(), None);
-                    dimensions.insert(key, metadata.dimensions(&path));
+                    info.dimensions = metadata.dimensions(&path);
+                }
+                // Descriptions and dimensions must refer to the same file version.
+                if before == crate::file_signature(&path) {
+                    files.push(info);
                 }
             }
-            MediaDimensionsResponse {
-                dimensions,
-                captured_at,
-            }
+            MediaDimensionsResponse { files }
         })
         .await
     {
@@ -176,11 +177,32 @@ async fn render(
     {
         Ok(Ok(path)) => {
             let policy = cache_policy(&source, query.v.as_deref());
-            serve_media_path(path, request, policy).await
+            if path == source {
+                original_media_redirect(&uri, policy)
+            } else {
+                serve_media_path(path, request, policy).await
+            }
         }
         Ok(Err(message)) => json_error(StatusCode::UNPROCESSABLE_ENTITY, message).into_response(),
         Err(error) => worker_error(error),
     }
+}
+
+// Small Gallery images and full previews share the original resource's cache key.
+fn original_media_redirect(uri: &Uri, policy: &'static str) -> Response {
+    let base = uri
+        .path()
+        .rsplit_once('/')
+        .map_or(uri.path(), |(base, _)| base);
+    let target = match uri.query() {
+        Some(query) => format!("{base}?{query}"),
+        None => base.to_owned(),
+    };
+    let mut response = Redirect::temporary(&target).into_response();
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(policy));
+    response
 }
 
 pub(crate) async fn metadata(
@@ -190,24 +212,97 @@ pub(crate) async fn metadata(
 ) -> Response {
     let root = state.root_for_uri(uri.path());
     let path = match checked_library_path(&root, &query.path, &state.data_directory) {
-        Ok(path) if super::is_video(&path) && path.is_file() => path,
-        Ok(_) => return json_error(StatusCode::BAD_REQUEST, "Not a video file").into_response(),
+        Ok(path) if path.is_file() => path,
+        Ok(_) => return json_error(StatusCode::BAD_REQUEST, "Not a media file").into_response(),
         Err((status, message)) => return json_error(status, message).into_response(),
     };
     let metadata = state.media_metadata.clone();
     match state
-        .media_workers
-        .run(move || metadata.video_metadata(&path))
+        .media_metadata_workers
+        .run(move || {
+            let before = crate::file_signature(&path);
+            let modified = modified_rfc3339(&path);
+            let value = read_metadata(&path, &metadata)?;
+            if before != crate::file_signature(&path) {
+                return Err("Media changed while reading metadata".to_owned());
+            }
+            Ok(serde_json::json!({ "path": query.path, "modified": modified, "media": value }))
+        })
         .await
     {
-        Ok(value) => Json(value).into_response(),
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(message)) => json_error(StatusCode::BAD_REQUEST, message).into_response(),
         Err(error) => worker_error(error),
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", content = "details", rename_all = "lowercase")]
+enum MetadataResponse {
+    Image(super::ImageMetadata),
+    Video(super::VideoMetadata),
+}
+
+fn read_metadata(
+    path: &Path,
+    service: &super::MetadataService,
+) -> Result<MetadataResponse, String> {
+    let kind = crate::file_kind::from_path(path).map_err(|error| error.to_string())?;
+    if kind.mime.starts_with("image/") {
+        // SVG dimensions belong to the browser; do not parse it as raster/EXIF.
+        Ok(MetadataResponse::Image(if kind.mime == "image/svg+xml" {
+            super::ImageMetadata::default()
+        } else {
+            service.image_metadata(path)
+        }))
+    } else if kind.binary && (kind.mime.starts_with("video/") || super::is_video(path)) {
+        Ok(MetadataResponse::Video(service.video_metadata(path)))
+    } else {
+        Err("Not an image or video file".into())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn small_gallery_images_redirect_to_the_versioned_original_cache_key() {
+        let uri: Uri = "/notes/api/media/thumbnail?path=photos%2Fa+%26+b.jpg&v=version"
+            .parse()
+            .unwrap();
+        let response = original_media_redirect(&uri, "private, max-age=31536000, immutable");
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            response.headers()["location"],
+            "/notes/api/media?path=photos%2Fa+%26+b.jpg&v=version"
+        );
+        assert_eq!(
+            response.headers()[CACHE_CONTROL],
+            "private, max-age=31536000, immutable"
+        );
+    }
+
+    #[test]
+    fn image_metadata_is_independent_and_source_files_are_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.png");
+        image::RgbImage::new(2, 3).save(&path).unwrap();
+        let service = super::super::MetadataService::default();
+        let value = serde_json::to_value(read_metadata(&path, &service).unwrap()).unwrap();
+        assert_eq!(
+            value["details"]["dimensions"],
+            serde_json::json!({"width":2,"height":3})
+        );
+        assert_eq!(value["details"]["exif"], serde_json::json!([]));
+        let svg = dir.path().join("drawing.svg");
+        std::fs::write(&svg, "<svg/>").unwrap();
+        let value = serde_json::to_value(read_metadata(&svg, &service).unwrap()).unwrap();
+        assert!(value["details"].get("dimensions").is_none());
+        let source = dir.path().join("source.ts");
+        std::fs::write(&source, "export const value = 1;").unwrap();
+        assert!(read_metadata(&source, &service).is_err());
+    }
 
     #[tokio::test]
     async fn versioned_media_remains_cacheable_for_ranges_and_revalidation() {
@@ -278,7 +373,7 @@ pub(crate) async fn open(
         }
         Err(error) => return worker_error(error),
     }
-    match crate::system_open::open(&path) {
+    match crate::system_open::open(&path).await {
         Ok(()) => Json(serde_json::json!({"ok": true, "target": "server"})).into_response(),
         Err(error) => json_error(
             StatusCode::BAD_REQUEST,

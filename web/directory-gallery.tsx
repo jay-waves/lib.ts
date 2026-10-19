@@ -54,7 +54,7 @@ function ImageCard({ node, autoplayVideos, navigate, style }: {
       if (element) { element.pause(); element.removeAttribute('src'); element.load(); }
     };
   }, [playing]);
-  return <a className="gallery-card ui-focus" href={fileUrl(node.path)}
+  return <a className="gallery-card absolute box-border overflow-hidden rounded-lg border border-solid border-divider bg-subtle text-fg no-underline transition-[border-color,box-shadow] duration-160 ease-[ease] hover:z-2 focus-visible:z-2 motion-reduce:transition-none" href={fileUrl(node.path)}
     style={style}
     ref={card} onMouseEnter={() => {
       hovering.current = true;
@@ -66,16 +66,16 @@ function ImageCard({ node, autoplayVideos, navigate, style }: {
       if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); navigate(node.path, false);
     }}>
-    <div className="gallery-image">
-      {!imageError && <img src={thumbnailUrl(apiBase, node)}
+    <div className="relative h-full overflow-hidden">
+      {!imageError && <img className="block size-full object-contain" src={thumbnailUrl(apiBase, node)}
         alt="" loading="lazy" decoding="async" onError={() => setImageError(true)} />}
-      {imageError && <span className="gallery-image-error"><ImageIcon size={24} />
+      {imageError && <span className="flex h-full box-border flex-col items-center justify-center gap-2 p-4 text-center text-ui text-muted wrap-anywhere"><ImageIcon size={24} />
         <span>{video && !node.liveVideo ? 'Could not load video cover' : 'Could not display image'}</span>
       </span>}
-      {video && <span className="gallery-video-badge" role="img" aria-label={videoLabel} title={videoLabel}>
+      {video && <span className="absolute right-2 bottom-2 z-1 flex rounded bg-[#0004] p-[3px] text-white opacity-65" role="img" aria-label={videoLabel} title={videoLabel}>
         {node.liveVideo ? <BroadcastIcon size={14} /> : <TriangleIcon size={16} />}
       </span>}
-      {playable && playing && <video ref={player} className={`gallery-video${videoReady ? ' gallery-video-ready' : ''}`} src={mediaFileUrl(apiBase, videoNode)}
+      {playable && playing && <video ref={player} className={`pointer-events-none absolute inset-0 size-full bg-subtle object-contain ${videoReady ? 'visible' : 'invisible'}`} src={mediaFileUrl(apiBase, videoNode)}
         muted loop playsInline onPlaying={() => setVideoReady(true)}
         onError={() => { stop(); setPlayError(true); }} />}
     </div>
@@ -120,16 +120,16 @@ export function DirectoryGallery({ images, total, hasMore, loadMore, width, avai
     observer.observe(target);
     return () => observer.disconnect();
   }, [showLoading, hasMore, images.length, availableWidth, loadMore]);
-  return <section ref={container} className="directory-gallery" aria-label="Media gallery" data-loading={showLoading && total ? '' : undefined}>
+  return <section ref={container} className="directory-gallery relative m-3.5 min-h-[var(--gallery-min-height,120px)]" aria-label="Media gallery" data-loading={showLoading && total ? '' : undefined}>
     {total ? <>
-      <div className="gallery-loading" role="status"><span className="rendering-label">Rendering</span></div>
-      <div className="gallery-content" style={{ height: layout.height }} aria-busy={hasMore}>
+      <div className="gallery-loading absolute inset-x-0 top-0 hidden h-[var(--gallery-min-height,120px)] place-items-center" role="status"><span className="rendering-label">Rendering</span></div>
+      <div className="gallery-content relative" style={{ height: layout.height }} aria-busy={hasMore}>
         {images.map((node, index) => <ImageCard key={mediaKey(node)} node={node} autoplayVideos={autoplayVideos}
           navigate={navigate} style={layout.items[index]} />)}
       </div>
-      {hasMore && !showLoading && <div ref={end} className="gallery-next" aria-hidden="true" />}
-    </> : <div className="gallery-empty" role="status"><ImageIcon size={40} />
-      <strong>No images or videos in this folder</strong>
+      {hasMore && !showLoading && <div ref={end} className="h-px" aria-hidden="true" />}
+    </> : <div className="ui-empty px-6 py-16 text-ui" role="status"><ImageIcon size={40} />
+      <strong className="text-base leading-5 text-fg">No images or videos in this folder</strong>
       <span>{recursive ? 'Try another folder or return to the file list.' : 'Enable Include subdirectories in the menu to look for more media.'}</span>
     </div>}
   </section>;

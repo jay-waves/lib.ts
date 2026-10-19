@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { documentSchema, getDocument, watchDocument } from '../web/api/documents.ts';
+import { documentSchema, getDocument, getDocumentInfo, watchDocument } from '../web/api/documents.ts';
 
 const identity = { path: '文档/a & b.md', absolutePath: '/notes/文档/a & b.md', name: 'a & b.md' };
 const metadata = { size: 12, modified: '2026-10-16T00:00:00Z' };
@@ -8,6 +8,21 @@ const source = { source: '# Heading\n', lineCount: 1 };
 const page = { url: '/notes/api/pdf/page?path=a.pdf&page=1', width: 600, height: 800 };
 const markdown = { ...identity, ...metadata, ...source, type: 'markdown', html: '<h1>Heading</h1>' };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+
+test('lightweight information requests need no source, pages or compiled preview', async t => {
+  const controller = new AbortController();
+  const info = { ...identity, ...metadata, type: 'markdown', mime: 'text/markdown', format: 'md', media: null, playable: false };
+  const mock = t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const target = new URL(url, 'http://localhost');
+    assert.equal(target.pathname, '/notes/api/document/info');
+    assert.deepEqual(Object.fromEntries(target.searchParams), { path: identity.path });
+    assert.equal(init.signal, controller.signal);
+    return json(info);
+  });
+  assert.deepEqual(await getDocumentInfo('/notes/api', identity.path, controller.signal), info);
+  mock.mock.mockImplementation(async () => json({ ...info, size: '12' }));
+  await assert.rejects(getDocumentInfo('/notes/api', identity.path), /Invalid API response/);
+});
 
 test('document contract accepts all formats and both raw and compiled Typst', () => {
   const typst = { ...identity, ...metadata, ...source, type: 'typst', pages: [], outline: [], anchors: [], compile: null };
@@ -18,7 +33,7 @@ test('document contract accepts all formats and both raw and compiled Typst', ()
     { ...identity, ...metadata, type: 'text', source: 'class App { run() {} }', lineCount: 1,
       outline: [{ name: 'App', level: 1, line: 1 }, { name: 'run', level: 2, line: 1 }] },
     { ...identity, ...metadata, ...source, type: 'html', url: '/notes/api/html?path=a.html' },
-    { ...identity, ...metadata, type: 'image', mime: 'image/png', format: 'png', url: '/notes/api/asset?path=a.png' },
+    { ...identity, ...metadata, type: 'image', mime: 'image/png', format: 'png', preview: 'original', url: '/notes/api/asset?path=a.png' },
     { ...identity, ...metadata, type: 'binary', mime: 'application/octet-stream', url: '/notes/api/asset?path=a.bin' },
     { ...identity, ...metadata, type: 'pdf', revision: 'snapshot', pages: [page], outline: [
       { name: 'Group', level: 1 }, { name: 'Page', level: 2, page: 1, y: 0.5 },

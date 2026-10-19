@@ -1,5 +1,5 @@
 # Main builds the reusable Windows artifact; tags publish the matching commit
-# into a major.minor rolling release instead of rebuilding it.
+# into a stable rolling release or a versioned prerelease instead of rebuilding it.
 name: Windows native build
 
 on:
@@ -202,9 +202,10 @@ jobs:
         with:
           script: |
             const version = context.ref.replace('refs/tags/', '');
-            const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version);
-            if (!match) throw new Error(`Expected a stable version tag such as 0.2.2, got ${version}`);
-            const tag = `${match[1]}.${match[2]}-latest`;
+            const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(alpha|beta)(?:\.(0|[1-9]\d*))?)?$/.exec(version);
+            if (!match) throw new Error(`Expected a version tag such as 0.3.2, 0.3.2-alpha or 0.3.2-beta.1, got ${version}`);
+            const prerelease = Boolean(match[4]);
+            const tag = prerelease ? version : `${match[1]}.${match[2]}-latest`;
             const repo = { owner: context.repo.owner, repo: context.repo.repo };
             // Resolve annotated tags to the commit, rather than using the tag object SHA.
             const { data: commit } = await github.rest.repos.getCommit({ ...repo, ref: version });
@@ -217,6 +218,8 @@ jobs:
             } catch (error) {
               if (error.status !== 404) throw error;
             }
+            core.setOutput('prerelease', String(prerelease));
+            core.setOutput('description', prerelease ? 'This is a prerelease for testing.' : 'This release tracks the latest stable version in this series. Its download is replaced on each release.');
             core.setOutput('tag', tag);
             core.setOutput('version', version);
             core.setOutput('sha', commit.sha);
@@ -286,15 +289,18 @@ jobs:
           tag_name: ${{ steps.series.outputs.tag }}
           target_commitish: ${{ steps.series.outputs.sha }}
           name: lib.ts ${{ steps.series.outputs.tag }}
+          prerelease: ${{ steps.series.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.series.outputs.prerelease == 'true' && 'false' || 'true' }}
           body: |
             Actual version: [${{ steps.series.outputs.version }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ steps.series.outputs.version }})
 
-            This release tracks the latest stable version in this series. Its download is replaced on each release.
+            ${{ steps.series.outputs.description }}
           files: ${{ runner.temp }}/${{ steps.series.outputs.asset }}
           overwrite_files: true
           fail_on_unmatched_files: true
 
       - name: Point rolling tag at the published version
+        if: steps.series.outputs.prerelease == 'false'
         uses: actions/github-script@v9
         env:
           ROLLING_TAG: ${{ steps.series.outputs.tag }}

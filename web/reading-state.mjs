@@ -1,89 +1,59 @@
-// Bound browser position and pending-sync maps together. Flush on repository switches
-// and page exit as well as the timer; exit synchronization uses keepalive.
+// Positions are local to this browser. Keep only 100 recent files and coalesce
+// frequent captures into one synchronous storage write per 500 ms.
 const READING_RECORD_LIMIT = 100;
-const READING_FLUSH_INTERVAL = 2000;
+const READING_WRITE_INTERVAL = 500;
+const READING_CACHE_KEY = 'library-reading-cache';
+const positions = new Map();
+let hydrated = false, changed = false, writeTimer;
+const isPosition = value => value && typeof value === 'object' && !Array.isArray(value);
 
 export function readingKey(repo, path) { return `library-reading:${repo || 'default'}:${path}`; }
 
-const positions = new Map();
-const dirty = new Map();
-let loaded, endpoint, syncTimer, syncing;
-function scheduleSync() {
-  if (!endpoint || !dirty.size || syncTimer !== undefined) return;
-  syncTimer = setTimeout(() => {
-    syncTimer = undefined;
-    void syncReadingPositions().catch(() => {}).finally(scheduleSync);
-  }, READING_FLUSH_INTERVAL);
-  syncTimer?.unref?.();
-}
 function trimPositions() {
-  while (positions.size > READING_RECORD_LIMIT) {
-    const key = positions.keys().next().value;
-    positions.delete(key);
-    dirty.delete(key.slice(key.indexOf(':', 'library-reading:'.length) + 1));
-  }
+  while (positions.size > READING_RECORD_LIMIT) positions.delete(positions.keys().next().value);
+}
+function scheduleWrite() {
+  if (writeTimer !== undefined) return;
+  writeTimer = setTimeout(flushReadingPositions, READING_WRITE_INTERVAL);
+  writeTimer?.unref?.();
+}
+function hydratePositions() {
+  if (hydrated) return;
+  hydrated = true;
+  try {
+    const cached = JSON.parse(globalThis.localStorage?.getItem(READING_CACHE_KEY) || '{}');
+    for (const [key, value] of (cached.positions || []).slice(-READING_RECORD_LIMIT)) {
+      if (typeof key === 'string' && key.startsWith('library-reading:') && isPosition(value)) positions.set(key, value);
+    }
+  } catch { /* Corrupt or unavailable storage falls back to memory. */ }
+  trimPositions();
 }
 export function readPosition(key, storage) {
-  if (!storage) return positions.get(key) || {};
-  try { return JSON.parse(storage.getItem(key) || '{}'); } catch { return {}; }
-}
-export async function loadPosition(key, apiBase, path) {
-  endpoint = `${apiBase}/reading`;
-  if (!loaded) loaded = (async () => {
-    const response = await fetch(endpoint);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const saved = await response.json();
-    const prefix = key.slice(0, -path.length);
-    for (const [file, position] of Object.entries(saved)) positions.set(prefix + file, position);
-    // Old tab-local state is migrated with the next repository/exit sync.
-    try {
-      const storage = globalThis.sessionStorage;
-      for (let index = 0; index < storage.length; index++) {
-        const oldKey = storage.key(index);
-        if (oldKey.startsWith(prefix)) {
-          const position = { ...positions.get(oldKey), ...JSON.parse(storage.getItem(oldKey)) };
-          positions.set(oldKey, position);
-          dirty.set(oldKey.slice(prefix.length), { position, legacyKey: oldKey });
-        }
-      }
-    } catch { /* Browser storage can be unavailable. */ }
-  })().catch(() => { loaded = undefined; });
-  await loaded;
-  trimPositions(); scheduleSync();
-  return readPosition(key);
-}
-export async function syncReadingPositions(exiting = false) {
-  if (syncing && !exiting) { await syncing; if (dirty.size) return syncReadingPositions(); return; }
-  if (!endpoint || !dirty.size) return;
-  if (syncTimer !== undefined) { clearTimeout(syncTimer); syncTimer = undefined; }
-  const batch = new Map(dirty);
-  const operation = (async () => {
-    const response = await fetch(endpoint, { method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ positions: Object.fromEntries([...batch].map(([path, entry]) => [path, entry.position])) }),
-      keepalive: exiting });
-    if (!response.ok) throw new Error(`Reading state sync failed: HTTP ${response.status}`);
-    for (const [path, entry] of batch) {
-      if (dirty.get(path) === entry) dirty.delete(path);
-      if (entry.legacyKey) { try { globalThis.sessionStorage.removeItem(entry.legacyKey); } catch {} }
-    }
-  })();
-  if (!exiting) syncing = operation;
-  try { await operation; }
-  finally { if (syncing === operation) syncing = undefined; scheduleSync(); }
+  if (!storage) { hydratePositions(); return positions.get(key) || {}; }
+  try { const value = JSON.parse(storage.getItem(key) || '{}'); return isPosition(value) ? value : {}; }
+  catch { return {}; }
 }
 export function savePosition(key, updates, storage) {
-  const next = { ...readPosition(key, storage), ...updates };
+  const previous = readPosition(key, storage);
+  const next = { ...previous, ...updates };
+  if (JSON.stringify(previous) === JSON.stringify(next)) return previous;
   if (storage) {
-    try { storage.setItem(key, JSON.stringify(next)); } catch { /* Storage may be unavailable. */ }
+    try { storage.setItem(key, JSON.stringify(next)); } catch { /* Storage can be unavailable. */ }
   } else {
     positions.delete(key); positions.set(key, next);
-    // Keys contain the page base followed by the repository-relative path.
-    const prefix = key.indexOf(':', 'library-reading:'.length);
-    const path = key.slice(prefix + 1);
-    dirty.set(path, { position: { ...dirty.get(path)?.position, ...updates }, legacyKey: dirty.get(path)?.legacyKey });
-    trimPositions(); scheduleSync();
+    trimPositions(); changed = true; scheduleWrite();
   }
   return next;
+}
+export function flushReadingPositions() {
+  clearTimeout(writeTimer); writeTimer = undefined;
+  if (!changed) return;
+  try {
+    const storage = globalThis.localStorage;
+    if (!storage) return;
+    storage.setItem(READING_CACHE_KEY, JSON.stringify({ positions: [...positions] }));
+    changed = false;
+  } catch { /* Reading continues in memory if storage is unavailable or full. */ }
 }
 
 // Pages are laid out vertically in DOM order, including unloaded placeholders.

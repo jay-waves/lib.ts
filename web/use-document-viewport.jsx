@@ -2,10 +2,10 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState }
 import { bindViewportGestures, clampScale, fitDocumentPage } from './document-viewport.mjs';
 import { pagePosition, restorePagePosition } from './reading-state.mjs';
 import { SessionActivity } from './session-activity';
-import { useReader } from './reader-context.jsx';
+import { usePreview } from './preview-context.jsx';
 
 export function useDocumentViewport(layout) {
-  const { viewport: { scale, onScale, fitRequest } } = useReader();
+  const { viewport: { scale, onScale, fitRequest } } = usePreview();
   const { pageCount, initialFit } = layout;
   const ref = useRef(null), canvas = useRef(null), pending = useRef(null), current = useRef(null);
   const attach = useCallback(element => {

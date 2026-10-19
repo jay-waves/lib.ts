@@ -70,8 +70,6 @@ enum DocumentContent {
         mime: &'static str,
         format: String,
         url: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        image_metadata: Option<crate::media::ImageMetadata>,
         preview: crate::media::ImagePreview,
     },
     Pdf {
@@ -83,8 +81,6 @@ enum DocumentContent {
         mime: &'static str,
         #[serde(skip_serializing_if = "Option::is_none")]
         format: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        video_metadata: Option<crate::media::VideoMetadata>,
         url: String,
     },
     Markdown {
@@ -131,6 +127,134 @@ enum CompileStatus {
     Failed,
 }
 
+// This response only stats and sniffs a bounded header, without rendering or
+// media probing. Keep it off the document worker queue so slow previews cannot
+// delay the page framework.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DocumentInformation {
+    path: String,
+    absolute_path: String,
+    name: String,
+    size: u64,
+    modified: String,
+    #[serde(rename = "type")]
+    kind: &'static str,
+    mime: &'static str,
+    format: String,
+    media: Option<&'static str>,
+    playable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preview: Option<crate::media::ImagePreview>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) dimensions: Option<crate::media::Dimensions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) captured_at: Option<i64>,
+}
+
+pub(crate) fn inspect_document(
+    root: &Path,
+    requested_path: &str,
+    private: &Path,
+) -> Result<DocumentInformation, (StatusCode, String)> {
+    let path = checked_library_path(root, requested_path, private)?;
+    let metadata = path
+        .metadata()
+        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+    if metadata.is_dir() {
+        return Ok(DocumentInformation {
+            path: requested_path.to_owned(),
+            absolute_path: client_path(&path),
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            size: 0,
+            modified: modified_rfc3339(&path),
+            kind: "directory",
+            mime: "inode/directory",
+            format: String::new(),
+            media: None,
+            playable: false,
+            preview: None,
+            dimensions: None,
+            captured_at: None,
+        });
+    }
+    if !metadata.is_file() {
+        return Err((StatusCode::BAD_REQUEST, "Not a file".into()));
+    }
+    let detected = file_kind::from_path(&path)
+        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+    let kind = if detected.mime == "text/html" && !detected.binary {
+        "html"
+    } else if detected.mime.starts_with("image/") {
+        "image"
+    } else if detected.mime == "application/pdf" {
+        "pdf"
+    } else if detected.binary {
+        "binary"
+    } else {
+        match detected.format.as_str() {
+            "md" | "markdown" => "markdown",
+            "typ" => "typst",
+            _ => "text",
+        }
+    };
+    let media = if kind == "image" {
+        Some("image")
+    } else if kind == "binary"
+        && (detected.mime.starts_with("video/") || crate::media::is_video(&path))
+    {
+        Some("video")
+    } else {
+        None
+    };
+    let playable = media == Some("video")
+        && detected.mime != "video/mp2t"
+        && matches!(
+            detected.format.as_str(),
+            "mp4" | "m4v" | "mov" | "webm" | "ogv" | "ogg"
+        );
+    Ok(DocumentInformation {
+        path: requested_path.to_owned(),
+        absolute_path: client_path(&path),
+        name: path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        size: metadata.len(),
+        modified: modified_rfc3339(&path),
+        kind,
+        mime: detected.mime,
+        format: detected.format,
+        media,
+        playable,
+        preview: (kind == "image").then(|| crate::media::image_preview(&path)),
+        dimensions: None,
+        captured_at: None,
+    })
+}
+
+pub(super) async fn information(
+    State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+    Query(query): Query<PathQuery>,
+) -> impl IntoResponse {
+    let root = state.root_for_uri(uri.path());
+    let private = state.data_directory.clone();
+    match tokio::task::spawn_blocking(move || inspect_document(&root, &query.path, &private)).await
+    {
+        Ok(Ok(info)) => Json(info).into_response(),
+        Ok(Err((status, error))) => json_error(status, error).into_response(),
+        Err(error) => {
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+        }
+    }
+}
+
 pub(super) async fn document(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -152,7 +276,6 @@ pub(super) async fn document(
         .unwrap_or("")
         .to_owned();
     let compile_prefix = api_prefix.clone();
-    let media_metadata = state.media_metadata.clone();
     let result = state
         .document_workers
         .run_cancellable(0, move |cancellation| {
@@ -163,7 +286,6 @@ pub(super) async fn document(
                 &private,
                 &api_prefix,
                 &pdf_renderer,
-                &media_metadata,
                 &cancellation,
             )
         })
@@ -197,29 +319,16 @@ fn load_document(
     private: &Path,
     api_prefix: &str,
     pdf_renderer: &pdf::NativePdfRenderer,
-    media_metadata: &crate::media::MetadataService,
     cancellation: &resources::Cancellation,
 ) -> Result<DocumentResponse, (StatusCode, String)> {
-    let path = checked_library_path(&root, &requested_path, &private)?;
-    if !path.is_file() {
+    let info = inspect_document(root, requested_path, private)?;
+    if info.kind == "directory" {
         return Err((StatusCode::BAD_REQUEST, "Not a file".into()));
     }
-    let metadata = path
-        .metadata()
-        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-    let size = metadata.len();
-    let name = path
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
-    let absolute_path = client_path(&path);
-    let modified = modified_rfc3339(&path);
-    let detected = file_kind::from_path(&path)
-        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-    let mime = detected.mime;
+    let path = checked_library_path(root, requested_path, private)?;
+    let mime = info.mime;
 
-    let response = if mime == "text/html" && !detected.binary {
+    let response = if info.kind == "html" {
         let source = String::from_utf8(read_document_source(&path)?)
             .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
         DocumentContent::Html {
@@ -230,27 +339,18 @@ fn load_document(
                 encode_query_component(&requested_path)
             ),
         }
-    } else if mime.starts_with("image/") {
-        let image_metadata =
-            (mime != "image/svg+xml").then(|| media_metadata.image_metadata(&path));
-        let preview = crate::media::image_preview(
-            &path,
-            size,
-            image_metadata
-                .as_ref()
-                .and_then(|metadata| metadata.dimensions),
-        );
+    } else if info.kind == "image" {
+        let preview = crate::media::image_preview(&path);
         DocumentContent::Image {
             mime,
-            format: detected.format,
-            image_metadata,
+            format: info.format,
             preview,
             url: format!(
                 "{api_prefix}/api/asset?path={}",
                 encode_query_component(&requested_path)
             ),
         }
-    } else if mime == "application/pdf" {
+    } else if info.kind == "pdf" {
         let revision =
             pdf::revision(&path).map_err(|error| (pdf_error_status(&error), error.to_string()))?;
         let info = pdf_renderer
@@ -275,11 +375,10 @@ fn load_document(
             outline: info.outline,
             pages,
         }
-    } else if detected.binary {
+    } else if info.kind == "binary" {
         DocumentContent::Binary {
             mime,
-            format: Some(detected.format),
-            video_metadata: None,
+            format: Some(info.format),
             url: format!(
                 "{api_prefix}/api/asset?path={}",
                 encode_query_component(&requested_path)
@@ -291,7 +390,6 @@ fn load_document(
             DocumentContent::Binary {
                 mime: "application/octet-stream",
                 format: None,
-                video_metadata: None,
                 url: format!(
                     "{api_prefix}/api/asset?path={}",
                     encode_query_component(&requested_path)
@@ -300,7 +398,7 @@ fn load_document(
         } else {
             let source = String::from_utf8(bytes).expect("validated UTF-8 document");
             let line_count = source.lines().count();
-            match detected.format.as_str() {
+            match info.format.as_str() {
                 "md" | "markdown" => {
                     let html = if view == Some("raw") {
                         None
@@ -325,7 +423,7 @@ fn load_document(
                     compile: None,
                 },
                 _ => DocumentContent::Text {
-                    outline: crate::symbols::extract(&detected.format, &source),
+                    outline: crate::symbols::extract(&info.format, &source),
                     line_count,
                     source,
                 },
@@ -334,10 +432,10 @@ fn load_document(
     };
     Ok(DocumentResponse {
         path: requested_path.to_owned(),
-        absolute_path,
-        name,
-        size,
-        modified,
+        absolute_path: info.absolute_path,
+        name: info.name,
+        size: info.size,
+        modified: info.modified,
         content: response,
     })
 }
@@ -418,6 +516,103 @@ async fn compile_document(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_documents_return_resource_policy_without_media_metadata() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        image::RgbImage::new(2, 3)
+            .save(root.path().join("photo.png"))
+            .unwrap();
+        // Even an unprobeable HEIF returns its conversion URL policy immediately.
+        std::fs::write(root.path().join("photo.heic"), "").unwrap();
+        for (path, preview) in [("photo.png", "original"), ("photo.heic", "converted")] {
+            let document = load_document(
+                root.path(),
+                path,
+                None,
+                private.path(),
+                "/notes",
+                &pdf::NativePdfRenderer::default(),
+                &resources::Cancellation::default(),
+            )
+            .unwrap();
+            let value = serde_json::to_value(document).unwrap();
+            assert_eq!(value["type"], "image");
+            assert_eq!(value["preview"], preview);
+            assert!(value.get("imageMetadata").is_none());
+            assert!(value.get("videoMetadata").is_none());
+        }
+    }
+
+    #[test]
+    fn information_does_not_load_or_render_content() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        // Deliberately incomplete PDF: information must not invoke a renderer.
+        std::fs::write(root.path().join("sample.pdf"), b"%PDF-1.7\n").unwrap();
+        let info = inspect_document(root.path(), "sample.pdf", private.path()).unwrap();
+        let value = serde_json::to_value(info).unwrap();
+        assert_eq!(value["type"], "pdf");
+        assert_eq!(value["size"], 9);
+        assert!(value.get("pages").is_none());
+        assert!(value.get("source").is_none());
+
+        // Source exceeding the preview limit still has immediately usable info.
+        let file = std::fs::File::create(root.path().join("large.md")).unwrap();
+        file.set_len(17 * 1024 * 1024).unwrap();
+        let info = inspect_document(root.path(), "large.md", private.path()).unwrap();
+        assert_eq!(info.size, 17 * 1024 * 1024);
+    }
+
+    #[test]
+    fn information_identifies_content_and_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("source.ts"), b"export const value = 1;").unwrap();
+        let mut stream = vec![0xff; 188 * 4];
+        for offset in (0..stream.len()).step_by(188) {
+            stream[offset] = 0x47;
+        }
+        std::fs::write(root.path().join("video.ts"), stream).unwrap();
+        assert_eq!(
+            inspect_document(root.path(), "source.ts", private.path())
+                .unwrap()
+                .kind,
+            "text"
+        );
+        assert_eq!(
+            inspect_document(root.path(), "video.ts", private.path())
+                .unwrap()
+                .mime,
+            "video/mp2t"
+        );
+        std::fs::create_dir(root.path().join("folder")).unwrap();
+        assert_eq!(
+            inspect_document(root.path(), "folder", private.path())
+                .unwrap()
+                .kind,
+            "directory"
+        );
+        let video = inspect_document(root.path(), "video.ts", private.path()).unwrap();
+        assert_eq!(video.media, Some("video"));
+        assert!(!video.playable);
+        std::fs::write(root.path().join("same.ts"), b"export const value = 1;").unwrap();
+        assert_eq!(
+            inspect_document(root.path(), "same.ts", private.path())
+                .unwrap()
+                .kind,
+            "text"
+        );
+        image::RgbImage::new(2, 3)
+            .save_with_format(root.path().join("same.ts"), image::ImageFormat::Png)
+            .unwrap();
+        let image = inspect_document(root.path(), "same.ts", private.path()).unwrap();
+        assert_eq!(image.kind, "image");
+        assert_eq!(image.media, Some("image"));
+        assert!(image.preview.is_some());
+        assert!(inspect_document(root.path(), "../outside", private.path()).is_err());
+    }
 
     #[test]
     fn document_metadata_stays_flat_with_typed_content() {

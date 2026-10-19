@@ -2,7 +2,7 @@
    Keep utility names literal for scanning, and pass dynamic values through inline styles.
    Toolbar container queries use reader width, not the overall window width. */
 /* Keep Primer and document defaults; deliberately omit Preflight. */
-@layer theme, utilities;
+@layer theme, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @source "./";
@@ -42,7 +42,7 @@
 }
 
 @utility ui-focus {
-  &:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
+  &:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: var(--ui-focus-offset, -2px); }
 }
 
 /* Logical path order stays inside bdi; clip the start of long paths. */
@@ -54,14 +54,6 @@
   white-space: nowrap;
   direction: rtl;
   text-align: left;
-}
-
-@utility ui-icon-button {
-  @apply ui-focus grid size-8 flex-none cursor-pointer place-items-center rounded-ui border-0 bg-transparent p-0 font-ui text-ui text-muted hover:bg-hover hover:text-fg disabled:cursor-default disabled:opacity-55;
-}
-
-@utility ui-button {
-  @apply ui-focus box-border h-7 flex-none cursor-pointer rounded-ui border border-solid border-border bg-subtle px-2.5 py-0 font-ui text-[11px]! leading-4 text-fg hover:bg-hover disabled:cursor-default disabled:opacity-55;
 }
 
 @utility sidebar-scroll {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { syncReadingPositions } from './reading-state.mjs';
+import { flushReadingPositions } from './reading-state.mjs';
 import { enableSmoothWheel } from './smooth-scroll.mjs';
 
 export function useReaderTracking({ root, active, document, view, capture, retry, onPending, onScroll }) {
@@ -43,13 +43,13 @@ export function useReaderTracking({ root, active, document, view, capture, retry
       clearTimeout(timer.current); timer.current = null;
       latest.current.capture();
     };
-    const exit = () => { captureNow(); syncReadingPositions(true).catch(() => {}); };
+    const exit = () => { captureNow(); flushReadingPositions(); };
     const hidden = () => { if (window.document.hidden) exit(); };
     addEventListener('reading-capture', captureNow);
     addEventListener('pagehide', exit);
     window.document.addEventListener('visibilitychange', hidden);
     return () => {
-      captureNow();
+      captureNow(); flushReadingPositions();
       removeEventListener('reading-capture', captureNow); removeEventListener('pagehide', exit);
       window.document.removeEventListener('visibilitychange', hidden);
     };

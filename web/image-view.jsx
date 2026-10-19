@@ -2,12 +2,12 @@ import { OpenMedia } from './open-media';
 import React, { useMemo, useState } from 'react';
 import { DocumentPreview } from './document-preview.jsx';
 import { imageDocumentLayout } from './document-preview.mjs';
-import { useReader } from './reader-context.jsx';
+import { usePreview } from './preview-context.jsx';
 import { apiBase } from './urls.mjs';
 import { imagePreviewUrls } from './media-urls.mjs';
 
 export function ImagePreview() {
-  const { document, viewport, mediaDimensions } = useReader();
+  const { document, viewport, mediaDimensions } = usePreview();
   const [status, setStatus] = useState('loading');
   const size = mediaDimensions.dimensions;
   const layout = useMemo(() => imageDocumentLayout(size), [size]);
@@ -29,7 +29,7 @@ export function ImagePreview() {
       </div>
       {status === 'error' && <div className="status" role="alert"><p>{/\.(heic|heif)$/i.test(document.name)
         ? 'Could not preview HEIC/HEIF. The server needs FFmpeg 8.1 or newer with HEVC support.'
-        : 'Could not display image'}</p><OpenMedia path={document.path} /><a href={document.url} download={document.name}>Download original</a></div>}
+        : 'Could not display image'}</p><OpenMedia path={document.path} /></div>}
     </div>
   </DocumentPreview>;
 }

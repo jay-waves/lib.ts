@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction, MouseEvent, KeyboardEvent } from 'react';
+import type { Dispatch, SetStateAction, MouseEvent, KeyboardEvent, ReactNode } from 'react';
 import { TreeView } from '@primer/react';
 import { FileTypeIcon } from './file-type-icon';
 import { fileUrl } from './urls.mjs';
@@ -20,6 +20,12 @@ interface FileTreeProps {
   navigateDirectories?: boolean;
   expandedPaths: Record<string, boolean>;
   setExpandedPaths: Dispatch<SetStateAction<Record<string, boolean>>>;
+}
+
+// SubTree mounts its children only when expanded. Defer recursion until then,
+// rather than allocating React elements for every descendant of a closed folder.
+function TreeChildren({ nodes, renderNode }: { nodes: FileTreeNode[]; renderNode(node: FileTreeNode): ReactNode }) {
+  return nodes.map(renderNode);
 }
 
 export function FileTree({ nodes, label, selected, navigate, searching = false, variant = 'sidebar', navigateDirectories = true, expandedPaths, setExpandedPaths }: FileTreeProps) {
@@ -44,7 +50,7 @@ export function FileTree({ nodes, label, selected, navigate, searching = false, 
         onSelect={activate}>
         <TreeView.LeadingVisual><span className="inline-flex [&_svg]:size-3.5!">{directory ? <TreeView.DirectoryIcon /> : <FileTypeIcon name={node.name} />}</span></TreeView.LeadingVisual>
         {node.virtual || (directory && !navigateDirectories) ? <span className="file-tree-link">{node.name}</span> : link}
-        {directory && <TreeView.SubTree>{node.children?.map(renderNode)}</TreeView.SubTree>}
+        {directory && <TreeView.SubTree>{node.children?.length ? <TreeChildren nodes={node.children} renderNode={renderNode} /> : null}</TreeView.SubTree>}
       </TreeView.Item>
     );
   }

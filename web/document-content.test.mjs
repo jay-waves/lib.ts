@@ -24,7 +24,7 @@ test('changes beyond source modification time still replace content', () => {
     [{ type: 'typst', compile: { id: 'compile-1' } }, { type: 'typst', compile: { id: 'compile-2' } }],
     [{ type: 'text', source: 'before' }, { type: 'text', source: 'after' }],
     [{ type: 'markdown', source: 'hello' }, { type: 'markdown', source: 'hello', html: '<p>hello</p>' }],
-    [{ type: 'image', imageMetadata: { exif: [] } }, { type: 'image', imageMetadata: { exif: ['changed'] } }],
+    [{ type: 'image', preview: 'original' }, { type: 'image', preview: 'converted' }],
   ]) assert.equal(sameDocumentContent({ ...base, ...previous }, { ...base, ...next }), false);
 });
 

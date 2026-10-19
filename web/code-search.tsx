@@ -71,8 +71,8 @@ function SearchTips({ active }: { active: boolean }) {
     if (active && !wasActive.current) setIndex(Math.floor(Math.random() * searchTips.length));
     wasActive.current = active;
   }, [active]);
-  return <div className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui flex min-h-[clamp(200px,45dvh,420px)] box-border flex-col justify-center px-5! py-8!" aria-label="Search tips">
-    <p className="mx-auto! my-0! min-h-[3em] max-w-[560px] leading-relaxed [overflow-wrap:anywhere] [&_code]:rounded [&_code]:border [&_code]:border-solid [&_code]:border-divider [&_code]:bg-subtle [&_code]:px-[5px] [&_code]:py-0.5 [&_code]:text-meta [&_code]:text-fg [&_kbd]:rounded [&_kbd]:border [&_kbd]:border-solid [&_kbd]:border-divider [&_kbd]:bg-subtle [&_kbd]:px-[5px] [&_kbd]:py-0.5 [&_kbd]:text-meta [&_kbd]:text-fg">{searchTips[index]}</p>
+  return <div className="ui-empty min-h-[clamp(200px,45dvh,420px)] box-border justify-center px-5 py-8" aria-label="Search tips">
+    <p className="m-0 min-h-[3em] max-w-[560px] leading-relaxed wrap-anywhere">{searchTips[index]}</p>
   </div>;
 }
 
@@ -155,7 +155,7 @@ function ResultCard({ file, navigate, selected = false, onFocus }: { file: Searc
   const lines = useMemo(() => cardMatchLines(file, expanded), [file, expanded]);
   return <article className={`min-w-0 overflow-hidden rounded-lg border border-solid border-border bg-surface${selected ? ' outline-2 outline-solid outline-accent outline-offset-2' : ''}`} aria-label={file.path}
     tabIndex={selected ? 0 : -1} data-search-result onFocus={onFocus}>
-    <header className="flex min-h-row box-border items-center gap-2 border-0 border-b border-solid border-divider bg-surface px-3 py-1 text-ui [&>svg]:shrink-0 [&>svg]:text-muted [&>a]:flex [&>a]:min-w-0 [&>a]:flex-wrap [&>a]:items-baseline [&>a]:gap-x-2 [&>a]:font-semibold [&>a]:[overflow-wrap:anywhere] max-[960px]:flex-wrap max-[960px]:[&>a]:flex-1">
+    <header className="flex min-h-row box-border items-center gap-2 border-0 border-b border-solid border-divider bg-surface px-3 py-1 text-ui [&>svg]:shrink-0 [&>svg]:text-muted [&>a]:flex [&>a]:min-w-0 [&>a]:flex-wrap [&>a]:items-baseline [&>a]:gap-x-2 [&>a]:font-semibold [&>a]:wrap-anywhere max-[960px]:flex-wrap max-[960px]:[&>a]:flex-1">
       <FileCodeIcon />
       <Link href={fileUrl(file.path, firstLine)} onClick={event => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -169,7 +169,7 @@ function ResultCard({ file, navigate, selected = false, onFocus }: { file: Searc
     <footer className="bg-subtle text-meta empty:hidden">
       {file.snippetsTruncated && <p className="m-0 px-3 py-1 text-muted">Preview limited. Open the file to see all matches.</p>}
       {allLines.length > 5 &&
-        <button type="button" className="ui-focus flex min-h-row w-full box-border cursor-pointer items-center border-0 border-t border-solid border-divider bg-transparent py-0 ps-0 pe-4 text-start font-ui text-meta leading-5 text-muted hover:bg-selected hover:text-accent focus-visible:bg-selected focus-visible:text-accent" aria-expanded={expanded} aria-controls={snippetId}
+        <button type="button" className="ui-disclosure gap-0 border-t border-solid border-divider ps-0 pe-4 text-meta hover:bg-selected focus-visible:bg-selected" aria-expanded={expanded} aria-controls={snippetId}
           onClick={() => setExpanded(value => !value)}>
           <span className="flex w-14 flex-none items-center justify-end pe-3.5" aria-hidden="true">{expanded ? <FoldIcon size={16} /> : <UnfoldIcon size={16} />}</span>
           <span>{expanded ? 'Show less' : `Show ${allLines.length - 5} more ${allLines.length - 5 === 1 ? 'line' : 'lines'}`}</span>
@@ -216,6 +216,7 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
   const path = syntax.parsed.paths.at(-1)?.value || '';
   const textQuery = syntax.parsed.text;
   const fileSearch = scope === 'files';
+  const searchingFiles = fileSearch && Boolean(query.trim());
   const pathSearch = fileSearch || scope === 'bookmarks';
   const symbolSearch = scope === 'symbols';
   const repositoryScope = fileSearch ? 'paths' : scope === 'bookmarks' || scope === 'symbols' ? '' : scope;
@@ -235,8 +236,8 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
   const [revision, setRevision] = useState(0);
   const [state, dispatch] = useReducer(searchReducer, initialSearchState);
   const result = state.status === 'ready' ? state.result : null;
-  const pathResults = useMemo(() => fileSearch ? result?.files || []
-    : scope === 'bookmarks' && !syntax.error ? filterSearchPaths(paths, query) : [], [fileSearch, result, scope, syntax.error, paths, query]);
+  const pathResults = useMemo(() => searchingFiles ? result?.files || []
+    : pathSearch && !syntax.error ? filterSearchPaths(paths, query) : [], [searchingFiles, result, pathSearch, syntax.error, paths, query]);
   const resultTree = useMemo(() => fileTreeFromPaths(pathResults.map(file => file.path)), [pathResults]);
 
   const loading = state.status === 'loading';
@@ -280,7 +281,7 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
     moreRequest.current?.abort();
     moreRequest.current = null;
     scrollRef.current?.scrollTo({ top: 0 });
-    if (scope === 'bookmarks' || symbolSearch || (!fileSearch && !textQuery.trim()) || syntax.error) {
+    if (scope === 'bookmarks' || symbolSearch || (fileSearch ? !searchingFiles : !textQuery.trim()) || syntax.error) {
       dispatch({ type: 'search-idle' });
       return () => controller.abort();
     }
@@ -302,10 +303,12 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
       } else dispatch({ type: 'search-error', error: errorMessage(cause) });
     });
     return () => { controller.abort(); moreRequest.current?.abort(); };
-  }, [active, query, textQuery, currentFile, revision, scope, syntax.error, scrollRef, symbolSearch, repositoryScope, fileSearch]);
+  }, [active, query, textQuery, currentFile, revision, scope, syntax.error, scrollRef, symbolSearch, repositoryScope, fileSearch, searchingFiles]);
 
   const loadMore = useCallback(async () => {
     if (scope === 'bookmarks' || symbolSearch || !result || result.nextOffset === null || moreRequest.current) return;
+    if (snapshot.current?.identity !== JSON.stringify([query, currentFile, revision, scope])
+      || snapshot.current.searchId !== result.searchId) return;
     const id = generation.current;
     const controller = new AbortController();
     moreRequest.current = controller;
@@ -322,19 +325,23 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
     } finally {
       if (moreRequest.current === controller) moreRequest.current = null;
     }
-  }, [result, query, currentFile, repositoryScope, symbolSearch, scope]);
+  }, [result, query, currentFile, revision, repositoryScope, symbolSearch, scope]);
 
   useEffect(() => {
-    if (scope === 'bookmarks' || symbolSearch || !active || !sentinelRef.current || !result || result.nextOffset === null || pageError || loadingMore) return;
-    // A collapsed tree can keep the sentinel visible forever; wait for a
-    // directory to open or an explicit request rather than draining every page.
-    if (fileSearch && !query.trim() && !Object.values(expandedResultPaths).some(Boolean)) return;
+    if (scope === 'bookmarks' || symbolSearch || !active || !result || result.nextOffset === null || pageError || loadingMore) return;
+    // File searches show all matches automatically; browsing an empty query
+    // uses the existing tree index and mounts only expanded branches.
+    if (fileSearch) {
+      if (searchingFiles) void loadMore();
+      return;
+    }
+    if (!sentinelRef.current) return;
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) void loadMore();
     }, { root: scrollRef.current, rootMargin: '350px' });
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [active, result, loadMore, loadingMore, pageError, scrollRef, symbolSearch, scope, fileSearch, query, expandedResultPaths]);
+  }, [active, result, loadMore, loadingMore, pageError, scrollRef, symbolSearch, scope, fileSearch, searchingFiles]);
 
   function restartSearch() {
     snapshot.current = null;
@@ -386,7 +393,7 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
   </>;
   const pagination = result?.nextOffset != null && <div className="flex min-h-[100px] flex-col items-center justify-center gap-2" ref={sentinelRef}>
     {pageError && <p role="alert">{pageError}</p>}
-    {loadingMore ? <Spinner size="small" /> : <Button onClick={pageExpired ? restartSearch : loadMore}>{pageExpired ? 'Search again' : pageError ? 'Retry loading' : 'Load more results'}</Button>}
+    {loadingMore ? <Spinner size="small" /> : (!fileSearch || pageError) && <Button onClick={pageExpired ? restartSearch : loadMore}>{pageExpired ? 'Search again' : pageError ? 'Retry loading' : 'Load more results'}</Button>}
   </div>;
   const results = <SearchResultsLayout label="Search results" busy={loading}
     summary={loading ? <><Spinner size="small" /> Searching…</> : result ?
@@ -402,9 +409,9 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
     </div>
     {pagination}
   </SearchResultsLayout>;
-  const filteredResults = <SearchResultsLayout label="Filtered files" busy={fileSearch && loading} summary={fileSearch && loading ? <><Spinner size="small" /> Searching…</> : <strong>{fileSearch ? result?.total ?? 0 : pathResults.length}{fileSearch && result?.truncated ? '+' : ''} files</strong>}>
-    {(fileSearch ? error : syntax.error) && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{fileSearch ? error : syntax.error}</p>}
-    {!error && !loading && !pathResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">No matching files.</p>}
+  const filteredResults = <SearchResultsLayout label="Filtered files" busy={searchingFiles && loading} summary={searchingFiles && loading ? <><Spinner size="small" /> Searching…</> : <strong>{searchingFiles ? result?.total ?? 0 : pathResults.length}{searchingFiles && result?.truncated ? '+' : ''} files</strong>}>
+    {(searchingFiles ? error : syntax.error) && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{searchingFiles ? error : syntax.error}</p>}
+    {!(searchingFiles ? error || loading : syntax.error) && !pathResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">No matching files.</p>}
     {scope === 'files' ? <FileTree nodes={resultTree} label="Matching files" selected={currentFile}
       navigate={navigate} searching={Boolean(query.trim())} variant="results" navigateDirectories={false}
       expandedPaths={expandedResultPaths} setExpandedPaths={setExpandedResultPaths} />
@@ -412,8 +419,8 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
       <ActionList.LeadingVisual>{scope === 'bookmarks' ? <BookmarkIcon /> : <FileCodeIcon />}</ActionList.LeadingVisual>
       {file.path}
     </ActionList.Item>)}</ActionList>}
-    {fileSearch && result?.truncated && <p className="px-3 text-ui text-muted">Results are limited. Refine the search to find more files.</p>}
-    {fileSearch && pagination}
+    {searchingFiles && result?.truncated && <p className="px-3 text-ui text-muted">Results are limited. Refine the search to find more files.</p>}
+    {searchingFiles && pagination}
   </SearchResultsLayout>;
   const filteredSymbols = <SearchResultsLayout label="Filtered symbols" summary={<strong>{symbolResults.length} symbols</strong>}>
     {syntax.error && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{syntax.error}</p>}

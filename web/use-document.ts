@@ -1,105 +1,66 @@
-import { isVideoMedia } from './gallery-images';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { getDocument, type DocumentView, type LibraryDocument } from './api/documents.ts';
-import { getVideoMetadata } from './api/media.ts';
-import { loadPosition, readingKey } from './reading-state.mjs';
+import type { FileDescriptor } from './document-info';
+import { readerView } from './reader-session.mjs';
+import { readPosition, readingKey } from './reading-state.mjs';
 import { sameDocumentContent } from './document-content.ts';
 
 interface DocumentOptions {
   apiBase: string;
   pageBase: string;
-  path: string;
+  info: FileDescriptor | null;
   active: boolean;
-  treeReady: boolean;
-  treeLoading: boolean;
-  node?: { path: string; type: 'directory' | 'file' };
   revision: number;
   theme: string;
-  view: DocumentView;
   request?: { path: string; view?: DocumentView | null } | null;
-  capture: () => void;
-  onOpen: (view: DocumentView) => void;
+  capture(): void;
+  refreshInfo(): void;
 }
 
-function hasContent(document: LibraryDocument, view: DocumentView | null) {
+function hasContent(document: LibraryDocument, view: DocumentView) {
   if (view === 'raw') return true;
   if (document.type === 'markdown') return document.html !== undefined;
   if (document.type === 'typst') return document.compile !== null;
   return true;
 }
 
-export function useDocument(options: DocumentOptions) {
-  const { apiBase, pageBase, path, active, treeReady, treeLoading, node, revision, theme, request } = options;
+export function useDocument({ apiBase, pageBase, info, active, revision, theme, request, capture: onCapture, refreshInfo: onRefreshInfo }: DocumentOptions) {
   const [document, setDocument] = useState<LibraryDocument | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const loadedRequest = useRef<string | null>(null);
-  const capture = useEffectEvent(options.capture);
-  const onOpen = useEffectEvent(options.onOpen);
-  const view = document?.path === path
-    ? document.type === 'text' ? 'raw' : document.type === 'binary' ? 'preview' : options.view
-    : request?.path === path ? request.view ?? null : null;
-  const nodePath = node?.path, nodeType = node?.type;
-  const waitingForTree = Boolean(path && !node && treeLoading);
-
+  const [choice, setChoice] = useState<{ request: DocumentOptions['request']; view: DocumentView } | null>(null);
+  const loadedRequest = useRef('');
+  const capture = useEffectEvent(onCapture);
+  const refreshInfo = useEffectEvent(onRefreshInfo);
+  const path = info?.path ?? '';
+  const type = info?.type;
+  const requestedView = choice && choice.request === request ? choice.view
+    : request?.view || (info && !info.media ? readPosition(readingKey(pageBase, path)).view : undefined);
+  // Full source validation can identify binary data beyond the inspected header.
+  const descriptor = document?.type === 'binary' && document.modified === info?.modified && !info?.media ? document : info;
+  const view = readerView(descriptor ?? {}, requestedView) as DocumentView;
+  const contentTheme = type === 'typst' ? theme : '';
+  const needsContent = Boolean(info && !info.media && type !== 'directory');
   useEffect(() => {
-    if (document?.path !== path) {
-      setDocument(null); setError('');
-    }
-    if (!apiBase) {
-      loadedRequest.current = null;
-      setDocument(null); setLoading(false); setError('');
-      return;
-    }
-    if (!active) {
-      // Visibility suspends work, never the current content.
-      setLoading(false);
-      return;
-    }
-    if (!treeReady) return;
-    if (waitingForTree) {
-      setLoading(true); setError('');
-      return;
-    }
-    // Direct links and search results may refer to files omitted from the tree.
-    if (!path || nodeType === 'directory') {
-      setDocument(null); setLoading(false); setError('');
-      return;
-    }
-    const key = JSON.stringify([apiBase, path, nodePath, nodeType, revision, theme]);
-    if (loadedRequest.current === key && document?.path === path && hasContent(document, view)) {
-      setLoading(false); setError('');
-      return;
-    }
+    if (!active || !needsContent) return;
+    const key = JSON.stringify([path, type, info?.modified, revision, contentTheme]);
+    if (loadedRequest.current === key && document && hasContent(document, view)) return;
     const controller = new AbortController();
-    setLoading(true); setError('');
-    async function load() {
-      const savedView = view || (await loadPosition(readingKey(pageBase, path), apiBase, path)).view;
-      const fetchedView: DocumentView = savedView === 'raw' ? 'raw' : 'preview';
-      controller.signal.throwIfAborted();
-      const value = await getDocument(apiBase, path, fetchedView, theme, controller.signal);
+    setError('');
+    void getDocument(apiBase, path, view, contentTheme, controller.signal).then(value => {
       if (controller.signal.aborted) return;
+      // Reconcile only responses that crossed a file change, not old content
+      // retained on screen while a newer descriptor is already loading.
+      if (value.modified !== info?.modified) refreshInfo();
       loadedRequest.current = key;
-      if (!(document && sameDocumentContent(document, value))) {
-        if (document?.path === value.path) capture();
-        if (document?.path !== value.path) onOpen(fetchedView);
+      if (!document || !sameDocumentContent(document, value)) {
+        capture();
         setDocument(value);
       }
-      if (value.type === 'binary' && isVideoMedia(value)) {
-        void getVideoMetadata(apiBase, path, controller.signal).then(videoMetadata => {
-          if (controller.signal.aborted) return;
-          setDocument(previous => previous?.path === value.path && previous.modified === value.modified
-            ? { ...previous, videoMetadata } : previous);
-        }).catch(() => {});
-      }
-    }
-    void load().catch(cause => {
+    }).catch(cause => {
       if (!controller.signal.aborted) setError(String(cause));
-    }).finally(() => {
-      if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-    // Document updates are results, rather than new request triggers.
-  }, [apiBase, pageBase, active, treeReady, path, nodePath, nodeType, revision, view, theme, waitingForTree]);
-  return { document: document?.path === path ? document : null, loading, error, setError };
+  }, [apiBase, path, type, info?.modified, active, needsContent, revision, view, contentTheme]);
+  return { document: needsContent ? document : null, view,
+    changeView: (view: DocumentView) => setChoice({ request, view }), error: needsContent ? error : '' };
 }

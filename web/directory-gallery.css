@@ -1,39 +1,15 @@
+/* Primer menu internals and cross-component restoration state. */
 .gallery-menu-toggle [data-component="ActionList.Selection"] { display: none; }
 .gallery-menu-toggle [data-component="ActionList.Item.Label"] { text-align: left; }
-.directory-gallery { position: relative; min-height: var(--gallery-min-height, 120px); margin: 14px; }
-.gallery-content { position: relative; }
-.gallery-next { height: 1px; }
-.gallery-loading { position: absolute; inset: 0 0 auto; height: var(--gallery-min-height, 120px); display: none; place-items: center; }
 .directory-gallery[data-loading] > .gallery-loading,
 [data-restoring] .directory-gallery > .gallery-loading { display: grid; }
 .directory-gallery[data-loading] > .gallery-content,
 [data-restoring] .directory-gallery > .gallery-content { visibility: hidden; }
-.gallery-card {
-  position: absolute;
-  box-sizing: border-box;
-  overflow: hidden;
-  border: 1px solid var(--borderColor-muted);
-  border-radius: 8px;
-  background: var(--bgColor-muted);
-  color: var(--fgColor-default);
-  text-decoration: none;
-  transition: border-color .16s ease, box-shadow .16s ease;
-}
+
+/* Keep the same light/dark-aware mixed-color border and focus treatment. */
 .gallery-card:is(:hover, :focus-visible) {
-  z-index: 2;
   border-color: color-mix(in srgb, var(--borderColor-default) 55%, var(--fgColor-muted));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--fgColor-muted) 12%, transparent),
     0 0 8px 2px color-mix(in srgb, var(--fgColor-muted) 10%, transparent);
 }
 .gallery-card:focus-visible { outline: 2px solid color-mix(in srgb, var(--fgColor-accent) 65%, transparent); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) {
-  .gallery-card { transition: none; }
-}
-.gallery-image { position: relative; height: 100%; overflow: hidden; }
-.gallery-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--bgColor-muted); pointer-events: none; visibility: hidden; }
-.gallery-video-ready { visibility: visible; }
-.gallery-video-badge { position: absolute; z-index: 1; bottom: 8px; right: 8px; display: flex; padding: 3px; border-radius: 4px; background: #0004; color: white; opacity: .65; }
-.gallery-image img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.gallery-image-error { display: flex; box-sizing: border-box; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; color: var(--fgColor-muted); font-size: 12px; overflow-wrap: anywhere; text-align: center; }
-.gallery-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 64px 24px; color: var(--fgColor-muted); text-align: center; font-size: 13px; }
-.gallery-empty strong { color: var(--fgColor-default); font-size: 16px; }

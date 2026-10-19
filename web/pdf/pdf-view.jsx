@@ -3,7 +3,6 @@ import { Spinner } from '@primer/react';
 import { createByteCache } from '../byte-cache.ts';
 import { PDF_PAGE_WIDTH, pdfRenderWidth } from './render.ts';
 import { usePageWindow } from '../page-window.jsx';
-import './preview.css';
 
 const PdfPage = memo(function PdfPage({ page, index, scale, active, cache, revision }) {
   const [image, setImage] = useState(null), [error, setError] = useState('');
@@ -30,10 +29,10 @@ const PdfPage = memo(function PdfPage({ page, index, scale, active, cache, revis
   }, [active, page.url, revision, cache, width]);
   return <div className="pdf-page document-page" data-page={index + 1}
     style={{ aspectRatio: `${page.width} / ${page.height}`, width: `${PDF_PAGE_WIDTH * scale}px` }} aria-label={`Page ${index + 1}`}>
-    {active && image && <img src={image} alt={`Page ${index + 1}`} draggable={false}
+    {active && image && <img className="document-page-image" src={image} alt={`Page ${index + 1}`} draggable={false}
       onError={() => setError('Could not display page image')} />}
-    {active && error ? <div className="pdf-page-status pdf-page-error" role="alert">{error}</div>
-      : active && !image ? <div className="pdf-page-status"><Spinner size="small" /></div> : null}
+    {active && error ? <div className="document-page-status document-page-error" role="alert">{error}</div>
+      : active && !image ? <div className="document-page-status"><Spinner size="small" /></div> : null}
   </div>;
 });
 
@@ -43,7 +42,7 @@ export function PdfPages({ pages, scale, modified, revision = modified }) {
   const cache = useMemo(() => createByteCache({ maxEntries: 12, maxBytes: 16 * 1024 * 1024,
     sizeOf: blob => blob.size }), [pages, revision]);
   useEffect(() => () => cache.clear(), [cache]);
-  return <div ref={ref} className="pdf-pages">{pages.map((page, index) =>
+  return <div ref={ref} className="document-pages">{pages.map((page, index) =>
     <PdfPage key={page.url} page={page} index={index} scale={scale} revision={revision} cache={cache}
       active={index + 1 >= window.first && index + 1 <= window.last} />)}</div>;
 }

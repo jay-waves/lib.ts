@@ -1,33 +1,35 @@
-import React, { useCallback, useContext, useImperativeHandle, useMemo, useRef } from 'react';
-import { ReaderContext } from './reader-context.jsx';
-import { SessionActivity } from './session-activity';
+import React, { useCallback, useImperativeHandle, useRef } from 'react';
 import { Preview } from './preview.jsx';
 import { RawView } from './raw-view.jsx';
-import { prepareMarkdown } from './markdown/markdown.mjs';
-import { useReaderWatch } from './reader-watch.jsx';
 import { useReaderSession } from './use-reader-session.jsx';
-import { apiBase, fileUrl } from './urls.mjs';
+import { pageReaderOnSpace } from './reader-keyboard.mjs';
+import { PreviewContext } from './preview-context.jsx';
+import { MediaReader } from './media-reader.jsx';
+import { isMediaPreview } from './preview-kind.mjs';
+import { MarkdownPreview } from './markdown/preview.jsx';
 
-function documentLink(path) {
-  return /\.(?:md|typ|html?)$/i.test(path) ? fileUrl(path) : `${apiBase}/asset?path=${encodeURIComponent(path)}`;
+export function Reader(props) {
+  if (isMediaPreview(props.document)) return <MediaReader {...props} />;
+  return <DocumentReader {...props} />;
 }
 
-export function Reader({ ref, document, request, navigate, onReload, onActivity, bookmarkState, mediaDimensions }) {
+function DocumentReader({ ref, document, request, view, onViewChange, navigate, onReload, onProgress, bookmarkState, prepared, assetVersions }) {
   const root = useRef(null);
-  const active = useContext(SessionActivity);
-  const session = useReaderSession({ document, root, request, onActivity });
-  useImperativeHandle(ref, () => session.actions);
-  const prepared = useMemo(() => document.type === 'markdown' && typeof document.html === 'string'
-    ? prepareMarkdown(document, documentLink) : null, [document]);
-  const assetVersions = useReaderWatch(document, prepared?.assets || [], active, onReload);
+  const session = useReaderSession({ document, root, request, view, onViewChange, onProgress });
+  useImperativeHandle(ref, () => ({
+    ...session.actions,
+    handleKeyDown: event => pageReaderOnSpace(event, root.current?.closest('.main-panel'), document.type, view),
+  }));
   const onExpired = useExpiredPages(onReload);
-  return <ReaderContext value={{ document, viewport: session.viewport, prepared, assetVersions, navigate, onExpired, mediaDimensions }}>
+  return <PreviewContext value={{ document, viewport: session.viewport, onExpired }}>
     <div ref={root} className="reader" onClick={session.click}>
-      {!session.ready ? <div className="status">Loading reading position…</div>
-        : session.view === 'raw' ? <RawView document={document} targetLine={session.targetLine} navigationRequest={request} bookmarkState={bookmarkState} />
-          : document.type === 'markdown' && !prepared ? <div className="status">Loading preview…</div> : <Preview />}
+      {view === 'raw' ? <RawView document={document} targetLine={session.targetLine} navigationRequest={request} bookmarkState={bookmarkState} />
+        : document.type === 'markdown' ? prepared
+          ? <MarkdownPreview path={document.path} prepared={prepared} assetVersions={assetVersions} navigate={navigate} />
+          : <div className="status">Loading preview…</div>
+        : <Preview />}
     </div>
-  </ReaderContext>;
+  </PreviewContext>;
 }
 
 function useExpiredPages(onReload) {

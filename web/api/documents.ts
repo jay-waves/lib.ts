@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { requestJson } from './client.ts';
-import { dimensionsSchema, videoMetadataSchema } from './media.ts';
 import { documentEvents } from './contracts.ts';
 import { subscribeEvents } from './events.ts';
 
@@ -13,20 +12,22 @@ const diagnosticSchema = z.object({
 });
 const identity = { path: z.string(), absolutePath: z.string(), name: z.string() };
 const documentBase = z.object({ ...identity, size: z.number().int().nonnegative(), modified: z.string() });
+export const documentInfoSchema = documentBase.extend({
+  type: z.enum(['html', 'image', 'pdf', 'binary', 'markdown', 'typst', 'text', 'directory']),
+  mime: z.string(), format: z.string(),
+  media: z.enum(['image', 'video']).nullable(), playable: z.boolean(),
+  preview: z.enum(['original', 'converted']).optional(),
+  dimensions: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
+  capturedAt: z.number().int().optional(),
+});
 const source = { lineCount: z.number().int().nonnegative(), source: z.string() };
 
 export const documentSchema = z.discriminatedUnion('type', [
   documentBase.extend({ ...source, type: z.literal('html'), url: z.string() }),
   documentBase.extend({ type: z.literal('image'), mime: z.string(), format: z.string(), url: z.string(),
-    preview: z.enum(['original', 'thumbnail', 'converted']).optional(),
-    imageMetadata: z.object({
-      dimensions: dimensionsSchema.optional(),
-      exif: z.array(z.string()),
-      capturedAt: z.number().int().optional(),
-    }).optional(),
+    preview: z.enum(['original', 'converted']),
   }),
   documentBase.extend({ type: z.literal('binary'), mime: z.string(), format: z.string().optional(), url: z.string(),
-    videoMetadata: videoMetadataSchema.optional(),
   }),
   documentBase.extend({ ...source, type: z.literal('markdown'), html: z.string().optional() }),
   documentBase.extend({ ...source, type: z.literal('text'),
@@ -48,6 +49,10 @@ export const documentSchema = z.discriminatedUnion('type', [
 ]);
 export type LibraryDocument = z.infer<typeof documentSchema>;
 export type DocumentView = 'raw' | 'preview';
+
+export function getDocumentInfo(apiBase: string, path: string, signal?: AbortSignal) {
+  return requestJson(`${apiBase}/document/info?${new URLSearchParams({ path })}`, documentInfoSchema, { signal });
+}
 
 export function getDocument(apiBase: string, path: string, view: DocumentView, theme: string, signal?: AbortSignal) {
   const query = new URLSearchParams({ path, view, theme });
