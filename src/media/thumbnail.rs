@@ -165,8 +165,10 @@ fn generate(
                 .arg(crate::client_path(path));
             if !full {
                 command.args([
-                    "-vf",
-                    "scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+                    "-filter_complex",
+                    "[0:v:0]scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2[thumbnail]",
+                    "-map",
+                    "[thumbnail]",
                 ]);
             }
             command
