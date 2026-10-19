@@ -9,7 +9,7 @@ export default defineConfig({
   plugins: [tailwindcss()],
   root: here,
   base: '/',
-  esbuild: { legalComments: 'eof' },
+  esbuild: { jsx: 'automatic', legalComments: 'eof' },
   build: {
     target: 'esnext',
     cssTarget: 'esnext',

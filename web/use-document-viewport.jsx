@@ -14,10 +14,13 @@ export function useDocumentViewport(layout) {
   }, []);
   const active = useContext(SessionActivity);
   const initiallyFitted = useRef(false);
+  const automaticFit = useRef(true);
+  const fittedSize = useRef(null);
   const lastFitRequest = useRef(fitRequest);
   const [revision, setRevision] = useState(0);
-  current.current = { scale, onScale };
+  current.current = { scale, onScale, fitSize: layout.fitSize };
   const zoom = (next, point, previousPoint = point) => {
+    automaticFit.current = false;
     const viewport = ref.current;
     const rect = viewport.getBoundingClientRect();
     point ||= { x: rect.left + viewport.clientWidth / 2, y: rect.top + viewport.clientHeight / 2 };
@@ -55,11 +58,13 @@ export function useDocumentViewport(layout) {
     current.current.onScale(fit.scale);
     setRevision(value => value + 1);
     initiallyFitted.current = true;
+    fittedSize.current = current.current.fitSize;
     return true;
   }, []);
   useEffect(() => {
     if (fitRequest === lastFitRequest.current) return;
     lastFitRequest.current = fitRequest;
+    automaticFit.current = false;
     fitAndRecenter();
   }, [fitRequest, fitAndRecenter]);
   useEffect(() => {
@@ -80,12 +85,13 @@ export function useDocumentViewport(layout) {
     return () => viewport.style.removeProperty('--document-width');
   }, [layout.contentWidth, scale]);
   useLayoutEffect(() => {
-    // Images only acquire dimensions on load. Fit that first measured layout
-    // before painting rather than displaying the native-size image for two frames.
-    if (layout.fitBeforePaint && active && pageCount && !initiallyFitted.current) {
+    // Decoded images can be larger than the backend placeholder (e.g. HEIC).
+    // Refit corrected dimensions before paint until the user adjusts the zoom.
+    if (layout.fitBeforePaint && active && pageCount && (!initiallyFitted.current
+      || (automaticFit.current && fittedSize.current !== layout.fitSize))) {
       fitAndRecenter(initialFit, true);
     }
-  }, [layout.fitBeforePaint, active, pageCount, initialFit, fitAndRecenter]);
+  }, [layout.fitBeforePaint, layout.fitSize, active, pageCount, initialFit, fitAndRecenter]);
   useLayoutEffect(() => {
     const point = pending.current;
     if (point?.saved) restorePagePosition(ref.current, point.saved, point.x, point.y);

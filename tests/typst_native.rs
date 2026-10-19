@@ -1,6 +1,6 @@
 #[path = "../src/resources.rs"]
 mod resources;
-#[path = "../src/typst.rs"]
+#[path = "../src/typst/mod.rs"]
 mod typst;
 
 use std::{fs, path::PathBuf};

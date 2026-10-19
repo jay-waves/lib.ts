@@ -1,131 +1,13 @@
 //! Markdown parsing and HTML output. Formula spans remain source text in marked
 //! elements so the browser can add KaTeX rendering independently.
 
-#[path = "markdown_ast.rs"]
 mod ast;
 
-use comrak::{
-    Arena, Options,
-    adapters::{HeadingAdapter, HeadingMeta},
-    format_html_with_plugins,
-    nodes::Sourcepos,
-    options::Plugins,
-    parse_document,
-};
-use regex::Regex;
-use std::{
-    collections::HashMap,
-    fmt,
-    sync::{LazyLock, Mutex},
-};
+mod headings;
+mod postprocess;
+use headings::{HeadingIds, slugify};
 
-static SOURCEPOS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"<(p|li|table|blockquote|pre)\b([^>]*?)\sdata-sourcepos="(\d+):[^"]*"([^>]*)>"#)
-        .expect("valid source position regex")
-});
-static CODE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?s)<pre([^>]*)><code([^>]*)>(.*?)</code></pre>"#)
-        .expect("valid code block regex")
-});
-static SOURCE_LINE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r##"data-source-line="(\d+)""##).expect("valid source line regex"));
-static LANGUAGE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r##"class="language-([^"]*)""##).expect("valid language regex"));
-
-#[derive(Default)]
-struct HeadingIds(Mutex<HashMap<String, usize>>);
-
-impl HeadingAdapter for HeadingIds {
-    fn enter(
-        &self,
-        output: &mut dyn fmt::Write,
-        heading: &HeadingMeta,
-        sourcepos: Option<Sourcepos>,
-    ) -> fmt::Result {
-        let base = slugify(&heading.content);
-        let mut ids = self.0.lock().map_err(|_| fmt::Error)?;
-        let occurrence = ids.entry(base.clone()).or_default();
-        let id = if *occurrence == 0 {
-            base
-        } else {
-            format!("{base}-{}", *occurrence)
-        };
-        *occurrence += 1;
-        let line = sourcepos.map(|position| position.start.line.saturating_sub(1));
-        write!(output, "<h{} id=\"{}\"", heading.level, id)?;
-        if let Some(line) = line {
-            write!(output, " data-source-line=\"{line}\"")?;
-        }
-        output.write_str(">")
-    }
-
-    fn exit(&self, output: &mut dyn fmt::Write, heading: &HeadingMeta) -> fmt::Result {
-        write!(output, "</h{}>", heading.level)
-    }
-}
-
-fn slugify(text: &str) -> String {
-    let mut slug = String::new();
-    let mut pending_dash = false;
-    for ch in text.trim().to_lowercase().chars() {
-        if ch.is_whitespace() {
-            pending_dash = !slug.is_empty();
-        } else if ch.is_alphanumeric() || ch == '_' || ch == '-' {
-            if pending_dash && !slug.ends_with('-') {
-                slug.push('-');
-            }
-            pending_dash = false;
-            slug.push(ch);
-        }
-    }
-    if slug.is_empty() {
-        "heading".into()
-    } else {
-        slug
-    }
-}
-
-fn postprocess_html(html: String) -> String {
-    let html = SOURCEPOS_RE
-        .replace_all(&html, |captures: &regex::Captures<'_>| {
-            let line = captures[3].parse::<usize>().unwrap_or(1).saturating_sub(1);
-            format!(
-                "<{}{} data-source-line=\"{}\"{}>",
-                &captures[1], &captures[2], line, &captures[4]
-            )
-        })
-        .into_owned();
-    CODE_RE
-        .replace_all(&html, |captures: &regex::Captures<'_>| {
-            let attributes = &captures[1];
-            let code_attributes = &captures[2];
-            if attributes.contains("data-math-style=\"display\"")
-                || code_attributes.contains("data-math-style=\"display\"")
-            {
-                return format!("<pre{attributes}><code{code_attributes}>{}</code></pre>", &captures[3]);
-            }
-            let source_line = SOURCE_LINE_RE
-                .captures(attributes)
-                .and_then(|found| found[1].parse::<usize>().ok())
-                .map(|line| format!(" data-source-line=\"{line}\""))
-                .unwrap_or_default();
-            let lang = LANGUAGE_RE
-                .captures(code_attributes)
-                .map(|found| found[1].to_owned())
-                .unwrap_or_default();
-            let label = if lang.is_empty() {
-                String::new()
-            } else {
-                format!("<span class=\"code-lang\">{lang}</span>")
-            };
-            format!(
-                "<div class=\"code-wrap\"><pre{source_line}><code{code_attributes}>{}</code></pre>{label}</div>",
-                &captures[3]
-            )
-        })
-        .into_owned()
-}
-
+use comrak::{Arena, Options, format_html_with_plugins, options::Plugins, parse_document};
 pub fn render_markdown(source: &str, allow_raw_html: bool) -> Result<String, String> {
     let arena = Arena::new();
     let mut options = Options::default();
@@ -147,7 +29,7 @@ pub fn render_markdown(source: &str, allow_raw_html: bool) -> Result<String, Str
     let mut html = String::new();
     format_html_with_plugins(root, &options, &mut html, &plugins)
         .map_err(|error| error.to_string())?;
-    Ok(postprocess_html(html))
+    Ok(postprocess::postprocess_html(html))
 }
 
 #[cfg(test)]

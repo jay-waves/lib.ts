@@ -56,7 +56,8 @@ impl AccessPolicy {
         let authority = parse_authority(host).map_err(|_| "Invalid Host")?;
         let name = normalize_host(authority.host()).map_err(|_| "Invalid Host")?;
         let local_ip = name.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback());
-        if !local_ip && !self.hosts.contains(&name) {
+        let local_name = name == "localhost" || name.ends_with(".localhost");
+        if !local_ip && !local_name && !self.hosts.contains(&name) {
             return Err("Host is not allowed");
         }
         let origin = single_header(headers, header::ORIGIN);
@@ -156,6 +157,9 @@ mod tests {
         let policy = policy(&["192.168.0.163", "notes.example", "2001:db8::1"]);
         for host in [
             "localhost:49191",
+            "lib.localhost:49191",
+            "nested.lib.localhost:49191",
+            "LIB.LOCALHOST.:49191",
             "127.0.0.1:49191",
             "[::1]:49191",
             "MY-PC:49191",
@@ -184,6 +188,10 @@ mod tests {
         for (host, origin) in [
             ("evil.example", "http://evil.example"),
             ("sub.notes.example", "http://sub.notes.example"),
+            ("lib.localhost.evil", "http://lib.localhost.evil"),
+            ("evil-localhost", "http://evil-localhost"),
+            ("lib.localhost:49191", "http://localhost:49191"),
+            ("lib.localhost:49191", "http://other.localhost:49191"),
             ("localhost:49191", "http://localhost:49192"),
             ("localhost:49191", "http://127.0.0.1:49191"),
             ("localhost:49191", "https://localhost:49191"),

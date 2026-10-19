@@ -5,12 +5,14 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
 
 const MAX_EDGE: u32 = 800;
 const LARGE_PIXELS: u64 = 8_000_000;
 const LARGE_BYTES: u64 = 8 * 1024 * 1024;
+static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -93,7 +95,11 @@ fn generate(
         Some(reader)
     };
     fs::create_dir_all(&folder)?;
-    let temporary = cached.with_extension("tmp");
+    let temporary = cached.with_extension(format!(
+        "{}-{}.tmp",
+        std::process::id(),
+        NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed)
+    ));
     let result: Result<(), Box<dyn std::error::Error>> = (|| {
         if let Some(mut reader) = reader {
             let mut limits = image::Limits::default();
@@ -125,7 +131,16 @@ fn generate(
             cached.set_extension("jpg");
             let mut command = Command::new("ffmpeg");
             command
-                .args(["-nostdin", "-v", "error", "-threads", "1", "-i"])
+                .args([
+                    "-nostdin",
+                    "-v",
+                    "error",
+                    "-threads",
+                    "1",
+                    "-filter_threads",
+                    "1",
+                    "-i",
+                ])
                 .arg(crate::client_path(path));
             if !full {
                 command.args([
@@ -188,6 +203,42 @@ mod tests {
         assert_eq!(
             image_preview(Path::new("photo.HEIC")),
             ImagePreview::Converted
+        );
+    }
+
+    #[test]
+    fn concurrent_cache_writers_publish_complete_images_without_temporary_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("photo.jpg");
+        let data = dir.path().join("data");
+        image::RgbImage::new(40, 20).save(&source).unwrap();
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&source)
+            .unwrap()
+            .set_len(LARGE_BYTES + 1)
+            .unwrap();
+        let barrier = std::sync::Barrier::new(4);
+        let outputs = std::thread::scope(|scope| {
+            let jobs: Vec<_> = (0..4)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        thumbnail(&source, &data).unwrap()
+                    })
+                })
+                .collect();
+            jobs.into_iter()
+                .map(|job| job.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        for output in &outputs {
+            assert_eq!(output, &outputs[0]);
+            assert_eq!(image::image_dimensions(output).unwrap(), (40, 20));
+        }
+        assert_eq!(
+            fs::read_dir(outputs[0].parent().unwrap()).unwrap().count(),
+            1
         );
     }
 

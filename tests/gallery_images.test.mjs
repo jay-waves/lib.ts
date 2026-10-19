@@ -81,7 +81,33 @@ test('MOV finds a same-name JPEG and merges into a Live card without mutating fi
   assert.equal(sortDirectoryNodes(galleryImages([video, photo], false), 'name-asc')[0].liveVideo, video);
 });
 
-test('unmatched files stay separate and MOV only pairs with JPEG in its own directory', () => {
+test('HEIC and HEIF pair with same-stem MOV regardless of case or file order', () => {
+  for (const [photoName, videoName] of [
+    ['IMG_0061.HEIC', 'IMG_0061.MOV'],
+    ['img_0061.heic', 'IMG_0061.mov'],
+    ['IMG_0061.HEIF', 'IMG_0061.MOV'],
+    ['IMG_0061.HEIC.heic', 'IMG_0061.HEIC.mov'],
+  ]) {
+    const photo = file(photoName), video = file(videoName);
+    for (const nodes of [[photo, video], [video, photo]]) {
+      assert.deepEqual(galleryImages(nodes, false), [{ ...photo, liveVideo: video }]);
+      assert.equal(photo.liveVideo, undefined);
+    }
+  }
+});
+
+test('HEIC Live pairs remain scoped to their directory and unmatched MOV stays visible', () => {
+  const photo = file('same.HEIC', 'photos/same.HEIC');
+  const video = file('same.MOV', 'videos/same.MOV');
+  const directory = (name, children) => ({ name, path: name, type: 'directory', modified: '', children });
+  assert.deepEqual(galleryImages([directory('photos', [photo]), directory('videos', [video])], true), [photo, video]);
+  const sibling = file('same.MOV', 'photos/same.MOV');
+  const unmatched = file('other.MOV', 'photos/other.MOV');
+  assert.deepEqual(galleryImages([directory('photos', [photo, sibling, unmatched])], true),
+    [{ ...photo, liveVideo: sibling }, unmatched]);
+});
+
+test('unmatched files stay separate and MOV only pairs with supported photos in its own directory', () => {
   const jpeg = file('still.jpeg');
   const mov = file('motion.mov');
   const jpg = file('motion.jpg');

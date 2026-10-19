@@ -18,6 +18,7 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 pub struct WorkerPool {
     owner: Arc<PoolOwner>,
     bytes: Arc<AtomicUsize>,
+    parallelism: usize,
 }
 
 struct PoolOwner {
@@ -104,7 +105,12 @@ impl WorkerPool {
                 threads: Mutex::new(handles),
             }),
             bytes: Arc::new(AtomicUsize::new(0)),
+            parallelism: threads,
         }
+    }
+
+    pub fn parallelism(&self) -> usize {
+        self.parallelism
     }
 
     pub async fn run<F, T>(&self, task: F) -> Result<T, WorkerError>
@@ -253,6 +259,52 @@ mod tests {
     use super::*;
     use std::sync::atomic::AtomicBool;
     use std::sync::mpsc;
+
+    #[tokio::test]
+    async fn workers_overlap_native_jobs_without_exceeding_parallelism() {
+        let pool = WorkerPool::new("parallel-test", 3, 8);
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let (started, mut ready) = tokio::sync::mpsc::unbounded_channel();
+        let mut releases = Vec::new();
+        let mut jobs = Vec::new();
+        for _ in 0..5 {
+            let (release, wait) = mpsc::channel();
+            releases.push(release);
+            let active = active.clone();
+            let peak = peak.clone();
+            let started = started.clone();
+            let mut job = Box::pin(pool.run(move || {
+                peak.fetch_max(active.fetch_add(1, Ordering::AcqRel) + 1, Ordering::AcqRel);
+                started.send(()).unwrap();
+                wait.recv().unwrap();
+                active.fetch_sub(1, Ordering::AcqRel);
+            }));
+            assert!(futures_util::poll!(&mut job).is_pending());
+            jobs.push(job);
+        }
+        let overlapped = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            for _ in 0..pool.parallelism() {
+                ready.recv().await.unwrap();
+            }
+        })
+        .await
+        .is_ok();
+        // Release even on failure so a regression cannot strand native threads.
+        for release in releases {
+            release.send(()).unwrap();
+        }
+        for result in futures_util::future::join_all(jobs).await {
+            result.unwrap();
+        }
+        assert!(
+            overlapped,
+            "independent native jobs must start concurrently"
+        );
+        assert_eq!(peak.load(Ordering::Acquire), pool.parallelism());
+        assert_eq!(active.load(Ordering::Acquire), 0);
+        pool.shutdown().await;
+    }
 
     #[tokio::test]
     async fn running_work_observes_last_subscriber_cancellation_and_shutdown_joins_workers() {

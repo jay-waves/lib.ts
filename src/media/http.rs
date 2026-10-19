@@ -7,6 +7,7 @@ use axum::{
     http::{HeaderValue, StatusCode, Uri, header::CACHE_CONTROL},
     response::{IntoResponse, Redirect, Response},
 };
+use futures_util::{FutureExt, StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -91,16 +92,19 @@ pub(crate) async fn dimensions(
         paths.push((value, path));
     }
     let metadata = state.media_metadata.clone();
-    match state
-        .media_metadata_workers
-        .run(move || {
-            let mut files = Vec::new();
-            for (key, path) in paths {
+    let workers = &state.media_metadata_workers;
+    let capture = request.include_capture_time;
+    let jobs = stream::iter(paths.into_iter().enumerate()).map(|(index, (key, path))| {
+        let root = root.clone();
+        let private = private.clone();
+        let metadata = metadata.clone();
+        workers
+            .run(move || {
                 let before = crate::file_signature(&path);
                 let Ok(mut info) = crate::documents::inspect_document(&root, &key, &private) else {
-                    continue;
+                    return None;
                 };
-                if request.include_capture_time
+                if capture
                     && !super::is_video(&path)
                     && !path
                         .extension()
@@ -113,15 +117,24 @@ pub(crate) async fn dimensions(
                     info.dimensions = metadata.dimensions(&path);
                 }
                 // Descriptions and dimensions must refer to the same file version.
-                if before == crate::file_signature(&path) {
-                    files.push(info);
-                }
-            }
-            MediaDimensionsResponse { files }
-        })
+                (before == crate::file_signature(&path)).then_some(info)
+            })
+            .map(move |result| result.map(|info| (index, info)))
+    });
+    // Submit individual files to the shared pool. A batch never occupies a
+    // worker while waiting for other work, and cancellation drops queued jobs.
+    match jobs
+        .buffer_unordered(workers.parallelism())
+        .try_collect::<Vec<_>>()
         .await
     {
-        Ok(response) => Json(response).into_response(),
+        Ok(mut files) => {
+            files.sort_unstable_by_key(|(index, _)| *index);
+            Json(MediaDimensionsResponse {
+                files: files.into_iter().filter_map(|(_, info)| info).collect(),
+            })
+            .into_response()
+        }
         Err(error) => worker_error(error),
     }
 }
@@ -164,14 +177,20 @@ async fn render(
     };
     let data = state.data_directory.clone();
     let source = path.clone();
+    let key = (path.clone(), crate::file_signature(&path), full);
+    let workers = state.media_workers.clone();
     match state
-        .media_workers
-        .run(move || {
-            if full {
-                super::preview(&path, &data)
-            } else {
-                super::thumbnail(&path, &data)
-            }
+        .media_previews
+        .run(key, async move {
+            workers
+                .run(move || {
+                    if full {
+                        super::preview(&path, &data)
+                    } else {
+                        super::thumbnail(&path, &data)
+                    }
+                })
+                .await
         })
         .await
     {
@@ -373,7 +392,7 @@ pub(crate) async fn open(
         }
         Err(error) => return worker_error(error),
     }
-    match crate::system_open::open(&path).await {
+    match crate::platform::system_open::open(&path).await {
         Ok(()) => Json(serde_json::json!({"ok": true, "target": "server"})).into_response(),
         Err(error) => json_error(
             StatusCode::BAD_REQUEST,

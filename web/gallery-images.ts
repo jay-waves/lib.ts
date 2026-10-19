@@ -48,13 +48,14 @@ export function sortDirectoryNodes<T extends TreeNode>(nodes: readonly T[], sort
 
 export function galleryImages(nodes: readonly TreeNode[], recursive: boolean): GalleryImage[] {
   const images: GalleryImage[] = [];
-  const photos = new Map(nodes.filter(node => node.type === 'file' && /\.jpeg$/i.test(node.name))
-    .map(node => [node.name.slice(0, -5), node]));
+  const photoExtension = /\.(?:jpeg|heic|heif)$/i;
+  const photos = new Map(nodes.filter(node => node.type === 'file' && photoExtension.test(node.name))
+    .map(node => [node.name.replace(photoExtension, '').toLowerCase(), node]));
   const livePhotos = new Map<TreeNode, TreeNode>();
   const pairedVideos = new Set<TreeNode>();
   for (const node of nodes) {
     if (node.type !== 'file' || !/\.mov$/i.test(node.name)) continue;
-    const photo = photos.get(node.name.slice(0, -4));
+    const photo = photos.get(node.name.slice(0, -4).toLowerCase());
     if (photo && !livePhotos.has(photo)) {
       livePhotos.set(photo, node);
       pairedVideos.add(node);

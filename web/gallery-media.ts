@@ -5,6 +5,8 @@ import type { FileDescriptor } from './document-info';
 type Metadata = { files: FileDescriptor[] };
 export type GalleryItem = { node: GalleryImage; ratio: number };
 type Update = { items: GalleryItem[]; error: string; files: FileDescriptor[] };
+export const galleryMetadataConcurrency = 4;
+export const galleryMetadataRequestSize = 16;
 
 // One loader owns ordering, metadata and its cursor. Each call prepares at most
 // 64 cards; the view decides when another batch is needed.
@@ -18,19 +20,37 @@ export function createGalleryLoader(candidates: GalleryImage[], sort: DirectoryS
   let initialized = false;
   let error = '';
 
+  // Keep the 64-card layout batches stable, but read their metadata through
+  // smaller concurrent requests so one slow file cannot serialize the batch.
+  const readMetadata = async (nodes: GalleryImage[], capture = false) => {
+    let cursor = 0;
+    let failed = false;
+    await Promise.all(Array.from({ length: Math.min(galleryMetadataConcurrency,
+      Math.ceil(nodes.length / galleryMetadataRequestSize)) }, async () => {
+      while (!signal.aborted) {
+        const batch = nodes.slice(cursor, cursor + galleryMetadataRequestSize);
+        cursor += galleryMetadataRequestSize;
+        if (!batch.length) return;
+        try {
+          const response = await request(batch.map(node => node.path), signal, capture);
+          if (signal.aborted) return;
+          for (const file of response.files) files[file.path] = file;
+        } catch (cause) {
+          if (signal.aborted) return;
+          failed = true;
+          console.warn('Could not load gallery metadata', cause);
+        }
+      }
+    }));
+    return !failed;
+  };
+
   const loadBatch = async () => {
     if (busy || signal.aborted || items.length >= ordered.length) return;
     busy = true;
     const batch = ordered.slice(items.length, items.length + galleryBatchSize);
     const missing = batch.filter(node => !Object.hasOwn(files, node.path));
-    try {
-      if (missing.length) {
-        const response = await request(missing.map(node => node.path), signal);
-        for (const file of response.files) files[file.path] = file;
-      }
-    } catch (cause) {
-      if (signal.aborted) return;
-      console.warn('Could not load gallery dimensions', cause);
+    if (!await readMetadata(missing)) {
       error = 'Some media dimensions could not be read. Using fixed card proportions.';
     }
     if (signal.aborted) return;
@@ -49,18 +69,11 @@ export function createGalleryLoader(candidates: GalleryImage[], sort: DirectoryS
     // cards, then prepare only the requested batches from the cached sizes.
     if (sort.startsWith('taken-')) {
       const dates: Record<string, number | null> = {};
-      try {
-        for (let index = 0; index < candidates.length; index += galleryBatchSize) {
-          const batch = candidates.slice(index, index + galleryBatchSize);
-          const response = await request(batch.map(node => node.path), signal, true);
-          if (signal.aborted) return;
-          for (const file of response.files) files[file.path] = file;
-          for (const node of batch) dates[mediaKey(node)] = files[node.path]?.capturedAt ?? null;
-        }
-        ordered = sortDirectoryNodes(candidates, sort, dates);
-      } catch (cause) {
+      if (await readMetadata(candidates, true)) {
         if (signal.aborted) return;
-        console.warn('Could not load gallery capture dates', cause);
+        for (const node of candidates) dates[mediaKey(node)] = files[node.path]?.capturedAt ?? null;
+        ordered = sortDirectoryNodes(candidates, sort, dates);
+      } else {
         error = 'Could not load capture dates. Using modification times.';
       }
     }

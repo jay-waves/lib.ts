@@ -54,7 +54,7 @@ fn clean(data: &Path, date: Date) -> io::Result<()> {
 }
 
 // Start once with the service. Only a changed UTC week triggers directory I/O;
-// deletion runs outside both HTTP threads and the serialized media worker.
+// deletion runs outside both HTTP threads and the media worker pool.
 pub async fn maintain(data: PathBuf) {
     let mut interval = tokio::time::interval(Duration::from_secs(3600));
     let mut last_week = String::new();

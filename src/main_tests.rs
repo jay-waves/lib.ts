@@ -120,6 +120,7 @@ fn test_state(temporary: &tempfile::TempDir) -> (AppState, String) {
             media_workers: worker::WorkerPool::new("media", 1, 256),
             media_metadata_workers: worker::WorkerPool::new("media-metadata", 1, 256),
             media_metadata: Arc::new(media::MetadataService::default()),
+            media_previews: Arc::new(media::PreviewFlights::default()),
             rendering: Arc::new(render::RenderService::default()),
             shutdown: tokio::sync::watch::channel(false).0,
             html: html::Service::new().unwrap(),

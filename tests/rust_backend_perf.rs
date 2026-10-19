@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
-#[path = "../src/markdown.rs"]
+#[path = "../src/markdown/mod.rs"]
 mod markdown;
-#[path = "../src/pdf.rs"]
+#[path = "../src/pdf/mod.rs"]
 mod pdf;
 #[path = "../src/resources.rs"]
 mod resources;
-#[path = "../src/typst.rs"]
+#[path = "../src/typst/mod.rs"]
 mod typst;
 
 use comrak::{Arena, Options, parse_document};

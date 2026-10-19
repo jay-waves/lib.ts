@@ -9,6 +9,11 @@ mod thumbnail;
 pub use metadata::MetadataService;
 use serde::Serialize;
 use std::path::Path;
+type PreviewKey = (std::path::PathBuf, Option<(u128, u64)>, bool);
+pub(crate) type PreviewFlights = crate::resources::RequestFlights<
+    PreviewKey,
+    Result<Result<std::path::PathBuf, String>, crate::worker::WorkerError>,
+>;
 pub use thumbnail::{ImagePreview, image_preview, preview, thumbnail};
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
