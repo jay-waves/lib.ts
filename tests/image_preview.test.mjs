@@ -21,6 +21,7 @@ test('ordinary previews use a stable original URL independently of metadata and 
   const url = new URL(source, 'http://localhost');
   assert.equal(url.pathname, '/repo/api/media');
   assert.equal(url.searchParams.get('path'), image.path);
+  assert.equal(url.searchParams.has('conversion'), false);
   assert.deepEqual(url.searchParams.getAll('v'), [image.modified]);
   for (const document of [
     { ...image, imageMetadata: undefined },
@@ -35,4 +36,10 @@ test('HEIF uses the cached Gallery preview while fetching the full conversion', 
   const url = new URL(urls.source, 'http://localhost');
   assert.equal(url.pathname, '/repo/api/media/preview');
   assert.deepEqual(url.searchParams.getAll('v'), [image.modified]);
+  for (const resource of [urls.thumbnail, urls.source]) {
+    assert.equal(new URL(resource, 'http://localhost').searchParams.get('conversion'), 'heif-grid-v1');
+  }
+  // Gallery callers can identify HEIF from its path before metadata arrives.
+  const gallery = new URL(thumbnailUrl('/repo/api', { path: 'photo.HEIF', modified: image.modified }), 'http://localhost');
+  assert.equal(gallery.searchParams.get('conversion'), 'heif-grid-v1');
 });

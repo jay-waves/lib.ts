@@ -89,7 +89,12 @@ fn generate(
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let metadata = fs::metadata(path)?;
     let key = typst::utils::hash128(&(
-        "gallery-v2",
+        // Invalidate old single-tile HEIF conversions, including full previews.
+        if is_heif(path) {
+            "heif-grid-v1"
+        } else {
+            "gallery-v2"
+        },
         path,
         metadata.len(),
         metadata.modified()?,
