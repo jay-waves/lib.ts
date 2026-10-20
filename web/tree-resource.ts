@@ -10,9 +10,11 @@ export function createTreeResource<T extends { children: TreeNode[] }>(load: (si
   let controller: AbortController | undefined;
   let current: string | undefined;
   const queued = new Set<string>();
+  const prefetchPaths = new Set<string>();
   const listeners = new Set<(tree: T) => void>();
-  function request(path = '', again = false): Promise<T> {
+  function request(path = '', again = false, prefetch = false): Promise<T> {
     if (current !== path || again) queued.add(path);
+    if (prefetch) prefetchPaths.add(path);
     if (pending) return pending;
     controller = new AbortController();
     const { signal } = controller;
@@ -24,6 +26,15 @@ export function createTreeResource<T extends { children: TreeNode[] }>(load: (si
         signal.throwIfAborted();
         tree = value;
         index = indexFileTree(value.children);
+        if (prefetchPaths.delete(current)) {
+          const directory = current
+            ? index.get(current)
+            : undefined;
+          const children = directory?.children ?? (!current ? value.children : undefined);
+          for (const child of children ?? []) {
+            if (child.type === 'directory' && child.children === undefined) queued.add(child.path);
+          }
+        }
         for (const listener of listeners) listener(value);
       }
       return tree!;
@@ -35,7 +46,7 @@ export function createTreeResource<T extends { children: TreeNode[] }>(load: (si
   }
   const has = (path: string) => Boolean(tree) && (!path || index.has(path));
   const directoryLoaded = (path: string) => path ? index.get(path)?.children !== undefined : Boolean(tree);
-  const ensureDirectory = (path: string) => directoryLoaded(path) ? Promise.resolve(tree!) : request(path);
+  const ensureDirectory = (path: string) => directoryLoaded(path) ? Promise.resolve(tree!) : request(path, false, true);
   return {
     has,
     get index() { return index; },
@@ -48,7 +59,7 @@ export function createTreeResource<T extends { children: TreeNode[] }>(load: (si
     refresh: () => request(''),
     invalidate: () => request('', true),
     dispose() {
-      controller?.abort(); queued.clear(); pending = tree = current = undefined;
+      controller?.abort(); queued.clear(); prefetchPaths.clear(); pending = tree = current = undefined;
       index = new Map();
     },
   };
