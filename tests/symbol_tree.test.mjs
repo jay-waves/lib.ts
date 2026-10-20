@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSymbolTree, symbolBranch } from '../web/symbol-tree.ts';
+import { buildSymbolTree, symbolBranch } from '../web/symbols/symbol-tree.ts';
 
 test('symbol hierarchy handles skipped levels and siblings without modifying symbols', () => {
   const symbols = [

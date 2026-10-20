@@ -13,7 +13,7 @@ const diagnosticSchema = z.object({
 const identity = { path: z.string(), absolutePath: z.string(), name: z.string() };
 const documentBase = z.object({ ...identity, size: z.number().int().nonnegative(), modified: z.string() });
 export const documentInfoSchema = documentBase.extend({
-  type: z.enum(['html', 'image', 'pdf', 'binary', 'markdown', 'typst', 'text', 'directory']),
+  type: z.enum(['html', 'image', 'pdf', 'binary', 'markdown', 'mermaid', 'typst', 'text', 'directory']),
   mime: z.string(), format: z.string(),
   media: z.enum(['image', 'video']).nullable(), playable: z.boolean(),
   preview: z.enum(['original', 'converted']).optional(),
@@ -29,6 +29,7 @@ export const documentSchema = z.discriminatedUnion('type', [
   }),
   documentBase.extend({ type: z.literal('binary'), mime: z.string(), format: z.string().optional(), url: z.string(),
   }),
+  documentBase.extend({ ...source, type: z.literal('mermaid') }),
   documentBase.extend({ ...source, type: z.literal('markdown'), html: z.string().optional() }),
   documentBase.extend({ ...source, type: z.literal('text'),
     outline: z.array(z.object({ name: z.string(), kind: z.string().optional(), level: z.number().int().positive(),

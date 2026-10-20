@@ -1,0 +1,22 @@
+.diagram-view {
+  --pele-bg: var(--color-bg);
+  --pele-fg: var(--color-text);
+  --pele-muted: var(--color-text-muted);
+  --pele-line: var(--color-text-muted);
+  --pele-surface: var(--color-bg-muted);
+  --pele-surface-alt: var(--color-bg);
+  --pele-border: var(--color-border-default);
+  --pele-accent: var(--color-text-accent);
+  --pele-error: var(--color-text-danger);
+  --pele-font: var(--font-body, sans-serif);
+  --pele-radius: 6px;
+  position: relative;
+  min-inline-size: 0;
+  inline-size: 100%;
+  margin-block: 16px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diagram-view > svg { display: block; margin-inline: auto; }
+.diagram-document { inline-size: 100%; padding: 24px; }

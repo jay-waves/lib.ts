@@ -60,7 +60,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/windows-executable
-          key: windows-executable-v1-rust-1.99.0-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock', 'build.rs', '.cargo/**', 'rust-toolchain*', 'web/image-theme.css', 'fonts/manifest.json') }}
+          key: windows-executable-v1-rust-1.99.0-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock', 'build.rs', '.cargo/**', 'rust-toolchain*', 'web/media/image-theme.css', 'fonts/manifest.json') }}
 
       - name: Report executable cache match
         shell: pwsh

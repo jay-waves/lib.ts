@@ -1,11 +1,11 @@
-import { gallerySortOptions } from './gallery-images.ts';
-import { gallerySize } from './gallery-zoom.mjs';
+import { gallerySortOptions } from './gallery/gallery-images.ts';
+import { gallerySize } from './gallery/gallery-zoom.mjs';
 
 const storageKey = repository => `library-gallery:${repository}`;
 const normalizePath = path => (path || '').split('/').filter(Boolean).join('/');
 
 /** @typedef {{ gallery?: boolean, rows?: boolean, recursive?: boolean, autoplayVideos?: boolean, showHidden?: boolean }} RepositoryDisplayState */
-/** @typedef {{ sort?: import('./gallery-images.ts').DirectorySort, width?: number, scrollTop?: number }} DirectoryState */
+/** @typedef {{ sort?: import('./gallery/gallery-images.ts').DirectorySort, width?: number, scrollTop?: number }} DirectoryState */
 
 /** @returns {RepositoryDisplayState} */
 function displayState(value) {

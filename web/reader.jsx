@@ -1,10 +1,10 @@
 import React, { useCallback, useImperativeHandle, useRef } from 'react';
 import { Preview } from './preview.jsx';
-import { RawView } from './raw-view.jsx';
+import { RawView } from './raw/raw-view.jsx';
 import { useReaderSession } from './use-reader-session.jsx';
 import { pageReaderOnSpace } from './reader-keyboard.mjs';
 import { PreviewContext } from './preview-context.jsx';
-import { MediaReader } from './media-reader.jsx';
+import { MediaReader } from './media/media-reader.jsx';
 import { isMediaPreview } from './preview-kind.mjs';
 import { MarkdownPreview } from './markdown/preview.jsx';
 

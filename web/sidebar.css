@@ -5,12 +5,10 @@
 /* Shared sidebar hierarchy, including the narrow-screen drawer. */
 .sidebar, .sidebar-drawer-header, .sidebar-rail, .file-tree-view {
   @apply font-ui text-ui font-normal;
-  --sidebar-selection-color: var(--fgColor-accent);
-  --control-transparent-bgColor-hover: var(--bgColor-muted);
-  --control-transparent-bgColor-selected: var(--bgColor-accent-muted);
+  --sidebar-selection-color: var(--color-text-accent);
 }
 
-.sidebar :where(button, input, select, textarea) { font-family: var(--BaseStyles-fontFamily); }
+.sidebar :where(button, input, select, textarea) { font-family: var(--font-body); }
 .sidebar input { @apply text-meta leading-5; }
 .sidebar input::placeholder { font: inherit; }
 
@@ -35,11 +33,11 @@
   margin-block: 2px;
 }
 .sidebar .sidebar-list-item:not([data-is-disabled]):hover {
-  background: var(--control-transparent-bgColor-hover);
+  background: var(--color-control-hover);
 }
 .sidebar .sidebar-list-item:not([data-is-disabled]):is([data-active="true"], [aria-current="page"], [aria-current="location"]),
 .file-tree-view .file-tree-item[aria-current="true"] > .PRIVATE_TreeView-item-container {
-  background: var(--bgColor-accent-muted);
+  background: var(--color-bg-accent-muted);
 }
 /* Primer supplies its own markers too; suppress them while keeping focus rings. */
 .sidebar .sidebar-list-item::after,

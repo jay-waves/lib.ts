@@ -7,7 +7,7 @@
     @apply cursor-pointer border-0 bg-transparent font-ui text-ui;
     &:disabled { cursor: default; opacity: .55; }
     &:focus-visible {
-      outline: 2px solid var(--fgColor-accent);
+      outline: 2px solid var(--color-text-accent);
       outline-offset: var(--ui-focus-offset, -2px);
     }
   }
@@ -21,15 +21,15 @@
   .ui-icon-button {
     @apply grid size-8 flex-none place-items-center p-0;
     border-radius: var(--ui-control-radius, var(--radius-ui));
-    color: var(--ui-control-color, var(--fgColor-muted));
+    color: var(--ui-control-color, var(--color-text-muted));
   }
   .ui-icon-button:hover, .ui-icon-button[aria-expanded="true"] {
-    background: var(--ui-control-hover-bg, var(--control-transparent-bgColor-hover));
-    color: var(--ui-control-hover-color, var(--fgColor-default));
+    background: var(--ui-control-hover-bg, var(--color-control-hover));
+    color: var(--ui-control-hover-color, var(--color-text));
   }
   .ui-row-button, .ui-disclosure { @apply flex min-h-row w-full box-border items-center gap-2 text-muted; }
   .ui-row-button { @apply flex-none rounded-ui px-2 py-1.5 text-start hover:bg-subtle hover:text-fg; }
-  .ui-row-button > svg { flex-shrink: 0; color: var(--fgColor-muted); }
+  .ui-row-button > svg { flex-shrink: 0; color: var(--color-text-muted); }
   .ui-disclosure { @apply py-0 text-start wrap-anywhere hover:text-accent focus-visible:text-accent; }
   .ui-text-button { @apply p-0 text-muted hover:underline; }
   .ui-text-button:disabled { cursor: wait; }
@@ -41,4 +41,4 @@
 
 /* Primer's typography needs one explicit adapter, rather than per-tag utilities. */
 .path-bar :where(a, button, span) { font-size: var(--text-ui) !important; }
-.path-bar [aria-current="page"] { color: var(--fgColor-default); font-weight: 600; }
+.path-bar [aria-current="page"] { color: var(--color-text); font-weight: 600; }

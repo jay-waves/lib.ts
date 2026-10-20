@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { DocumentInfo } from './document-info';
 import { isMediaPreview } from './preview-kind.mjs';
-import { thumbnailUrl } from './media-urls.mjs';
+import { thumbnailUrl } from './media/media-urls.mjs';
 import { apiBase } from './urls.mjs';
 
 // The page surface needs identity only; it never starts a reader session.

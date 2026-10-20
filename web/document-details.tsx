@@ -1,6 +1,6 @@
-import './media-details.css';
+import './media/media-details.css';
 import { isMediaPreview } from './preview-kind.mjs';
-import { formatRelativeModified } from './time-labels.mjs';
+import { formatRelativeModified } from './history/time-labels.mjs';
 import type { DocumentInfo } from './document-info';
 
 function sizeLabel(bytes: number) {

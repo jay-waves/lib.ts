@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindZoomInput } from '../web/zoom-input.mjs';
-import { bindGalleryZoom, resizeGallery } from '../web/gallery-zoom.mjs';
-import { galleryLayout, galleryRows } from '../web/gallery-layout.mjs';
+import { bindGalleryZoom, resizeGallery } from '../web/gallery/gallery-zoom.mjs';
+import { galleryLayout, galleryRows } from '../web/gallery/gallery-layout.mjs';
 
 function fixture() {
   const document = new EventTarget();

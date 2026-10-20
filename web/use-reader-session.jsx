@@ -7,7 +7,7 @@ import { pageBase } from './urls.mjs';
 import { readingKey, readPosition, savePosition } from './reading-state.mjs';
 import { readerPosition, restoreReaderPosition, navigateReaderSymbol } from './reader-position.mjs';
 import { readerView, createReaderNavigation } from './reader-session.mjs';
-import { symbolSelectionAt } from './active-symbol.mjs';
+import { symbolSelectionAt } from './symbols/active-symbol.mjs';
 import { useReaderTracking } from './use-reader-tracking.jsx';
 import { updateHeadingAvailability } from './markdown/preview.jsx';
 

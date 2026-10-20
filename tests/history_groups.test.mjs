@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { historyFileGroups } from '../web/history-groups.mjs';
-import { historyTimeGroup, formatModified, formatRelativeModified } from '../web/time-labels.mjs';
+import { historyFileGroups } from '../web/history/history-groups.mjs';
+import { historyTimeGroup, formatModified, formatRelativeModified } from '../web/history/time-labels.mjs';
 
 const now = Date.parse('2026-10-02T12:00:00Z'), day = 86400000;
 const date = days => new Date(now - days * day).toISOString();

@@ -6,6 +6,7 @@ import { readingKey, readPosition, savePosition } from '../reading-state.mjs';
 import { observeMarkdownPosition } from './markdown-position.mjs';
 import { updateAssetVersions } from './markdown.mjs';
 import { enhanceMarkdown } from './enhance.mjs';
+import { mountMarkdownDiagrams } from './diagrams.mjs';
 import { navigateMarkdownFragment } from './fragment-navigation.mjs';
 import { toggleFootnote } from './footnotes.mjs';
 import './preview.css';
@@ -43,7 +44,9 @@ export function MarkdownPreview({ prepared, navigate, assetVersions, path }) {
         return true;
       } });
     updateHeadingAvailability(root);
+    const stopDiagrams = mountMarkdownDiagrams(root);
     void enhanceMarkdown(root);
+    return stopDiagrams;
   }, [prepared.body, path]);
   useLayoutEffect(() => {
     const root = contentRef.current;

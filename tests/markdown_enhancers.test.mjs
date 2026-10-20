@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadRawHighlighter } from '../web/raw-highlight-loader.mjs';
-import { loadKatex, renderMath } from '../web/katex-loader.mjs';
+import { loadRawHighlighter } from '../web/raw/raw-highlight-loader.mjs';
+import { loadKatex, renderMath } from '../web/markdown/katex-loader.mjs';
 
 test('raw views, search and Markdown share one lazily loaded highlighter module', async () => {
   const first = loadRawHighlighter();

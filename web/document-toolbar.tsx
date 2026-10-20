@@ -1,12 +1,12 @@
 import { ActionList, ActionMenu, IconButton } from '@primer/react';
 import type { ReactNode, Ref } from 'react';
 import { FocusCenterIcon, KebabHorizontalIcon } from '@primer/octicons-react';
-import { BookmarkMenu } from './bookmarks';
+import { BookmarkMenu } from './bookmarks/bookmarks';
 import { apiBase, fileUrl } from './urls.mjs';
 import { hasDocumentViewport } from './preview-kind.mjs';
 import { DocumentDetails } from './document-details';
 import type { DocumentInfo } from './document-info';
-import type { BookmarkState } from './bookmarks';
+import type { BookmarkState } from './bookmarks/bookmarks';
 import { useClipboard } from './use-clipboard';
 import { FileToolbar, MoveToTopButton } from './file-toolbar';
 import { readerViews } from './reader-session.mjs';

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { directorySortOptions, galleryImages, isGalleryVideo, isVideoMedia, isBrowserVideo, mediaKey, sortDirectoryNodes } from '../web/gallery-images.ts';
+import { directorySortOptions, galleryImages, isGalleryVideo, isVideoMedia, isBrowserVideo, mediaKey, sortDirectoryNodes } from '../web/gallery/gallery-images.ts';
 
 const file = (name, path = name) => ({ name, path, type: 'file', modified: '' });
 

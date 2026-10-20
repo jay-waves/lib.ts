@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { galleryLayout, galleryRows, galleryRowLayout } from '../web/gallery-layout.mjs';
+import { galleryLayout, galleryRows, galleryRowLayout } from '../web/gallery/gallery-layout.mjs';
 
 test('column cards preserve aspect ratios and stay in their column when dimensions arrive', () => {
   const before = galleryLayout([1, 1, 1, 1], 452, 220);

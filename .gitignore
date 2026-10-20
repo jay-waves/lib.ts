@@ -5,6 +5,7 @@
 /.vite/
 /coverage/
 /reports/benchmark-memory/
+/reports/benchmark-backend/
 /release/
 
 # Retired local work and tool state

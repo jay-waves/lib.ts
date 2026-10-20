@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activeSymbolId, symbolSelectionAt, revealSymbolVertically } from '../web/active-symbol.mjs';
+import { activeSymbolId, symbolSelectionAt, revealSymbolVertically } from '../web/symbols/active-symbol.mjs';
 
 const symbols = [
   { id: 'intro', line: 3 },

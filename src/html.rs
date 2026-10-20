@@ -98,7 +98,7 @@ fn html_preview(source: &str, base: &str, document_url: &str) -> String {
         base.replace('&', "&amp;").replace('"', "&quot;")
     );
     let no_scroll = "<style>html,body{scrollbar-width:none!important}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none!important}</style>";
-    let image_style = include_str!("../web/image-theme.css");
+    let image_style = include_str!("../web/media/image-theme.css");
     let injection = format!("{base_tag}{no_scroll}<style>{image_style}</style>");
     let output = if let Some(found) = HEAD_OPEN_RE.find(&source) {
         let mut value = source.to_string();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSearchQuery, updateQueryQualifier, cardMatchLines } from '../web/search-query.ts';
+import { parseSearchQuery, updateQueryQualifier, cardMatchLines } from '../web/search/search-query.ts';
 
 test('regex flags and repeated qualifiers preserve search semantics', () => {
   const parsed = parseSearchQuery('/TODO|FIXME/i lang:js language:ts path:src/ path:"literal*" case:yes gitignore:no');

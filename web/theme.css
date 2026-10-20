@@ -1,31 +1,7 @@
-/* Primer tokens live on <html>, including portals. Only customize our light palette. */
-@media (prefers-color-scheme: light) {
-  :root[data-color-mode="auto"] {
-    --bgColor-default: #fdfdfc;
-    --bgColor-muted: #f4f5f4;
-    --bgColor-accent-muted: #e9ecea;
-    --bgColor-accent-emphasis: #777c78;
-    --fgColor-default: #363733;
-    --fgColor-muted: #73746e;
-    --fgColor-accent: #5d625f;
-    --borderColor-default: #dfe1df;
-    --borderColor-accent-emphasis: var(--fgColor-accent);
-    --focus-outline-color: var(--fgColor-accent);
-    --focus-outlineColor: var(--focus-outline-color);
-    --control-transparent-bgColor-hover: #eef0ee;
-    --control-transparent-bgColor-selected: #e9ecea;
-    --treeViewItem-leadingVisual-iconColor-rest: #777c78;
-  }
-}
-:root[data-color-mode="auto"] { --borderColor-muted: light-dark(#e9ebe9, #30363d); }
-
-/* Git colors: soft mint and rose on neutral dark row backgrounds. */
+/* Application tokens; Primer names are isolated in primer.css. */
 :root {
+  --font-body: "Mona Sans VF", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --surface-shadow: 0 1px 2px light-dark(#18221b08, #00000029),
     0 4px 14px light-dark(#18221b08, #00000024);
-  --surface-shadow-soft: 0 0 8px 2px color-mix(in srgb, var(--fgColor-muted) 12%, transparent);
-  --git-added-fg: light-dark(var(--fgColor-success), #8bd5b0);
-  --git-deleted-fg: light-dark(var(--fgColor-danger), #f0a0a8);
-  --git-added-bg: light-dark(#dafbe1, #192b27);
-  --git-deleted-bg: light-dark(#ffebe9, #302329);
+  --surface-shadow-soft: 0 0 8px 2px color-mix(in srgb, var(--color-text-muted) 12%, transparent);
 }

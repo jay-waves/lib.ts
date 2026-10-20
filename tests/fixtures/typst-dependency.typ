@@ -1,1 +1,0 @@
-#let greeting = [Dependency loaded]

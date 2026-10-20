@@ -23,7 +23,7 @@ export function useReaderTracking({ root, active, document, view, capture, retry
     };
     const observer = new ResizeObserver(changed);
     observer.observe(panel);
-    for (const content of root.current.querySelectorAll('.rendered-markdown, .raw-view, .document-page')) observer.observe(content);
+    for (const content of root.current.querySelectorAll('.rendered-markdown, .raw-view, .document-page, .diagram-document')) observer.observe(content);
     panel.addEventListener('scroll', changed, true);
     panel.addEventListener('load', changed, true);
     panel.addEventListener('error', changed, true);

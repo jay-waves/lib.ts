@@ -1,0 +1,7 @@
+/* Git colors use soft mint and rose on dark row backgrounds. */
+:root {
+  --git-added-fg: light-dark(var(--color-text-success), #8bd5b0);
+  --git-deleted-fg: light-dark(var(--color-text-danger), #f0a0a8);
+  --git-added-bg: light-dark(#dafbe1, #192b27);
+  --git-deleted-bg: light-dark(#ffebe9, #302329);
+}

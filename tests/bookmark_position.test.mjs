@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bookmarkPositionKey, bookmarkMatchesRequest } from '../web/bookmark-position.mjs';
+import { bookmarkPositionKey, bookmarkMatchesRequest } from '../web/bookmarks/bookmark-position.mjs';
 
 test('legacy file bookmarks share the first-line identity', () => {
   assert.equal(bookmarkPositionKey({}), bookmarkPositionKey({ line: 1 }));

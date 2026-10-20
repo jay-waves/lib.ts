@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { highlightRaw, rawLanguage } from '../web/raw-highlight.mjs';
+import { highlightRaw, rawLanguage } from '../web/raw/raw-highlight.mjs';
 
 test('library Raw selects a grammar for source file extensions', () => {
   const names = {

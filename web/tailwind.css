@@ -7,22 +7,22 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 @source "./";
 
-/* UI tokens reuse Primer's live light/dark palette. */
+/* Utility names reuse the application aliases defined in primer.css. */
 @theme inline {
-  --color-fg: var(--fgColor-default);
-  --color-muted: var(--fgColor-muted);
-  --color-accent: var(--fgColor-accent);
-  --color-danger: var(--fgColor-danger);
-  --color-success: var(--fgColor-success);
-  --color-attention: var(--fgColor-attention);
-  --color-surface: var(--bgColor-default);
-  --color-subtle: var(--bgColor-muted);
-  --color-selected: var(--bgColor-accent-muted);
-  --color-hover: var(--control-transparent-bgColor-hover);
-  --color-border: var(--borderColor-default);
-  --color-divider: var(--borderColor-muted);
-  --color-accent-border: var(--borderColor-accent-emphasis);
-  --font-ui: var(--BaseStyles-fontFamily);
+  --color-fg: var(--color-text);
+  --color-muted: var(--color-text-muted);
+  --color-accent: var(--color-text-accent);
+  --color-danger: var(--color-text-danger);
+  --color-success: var(--color-text-success);
+  --color-attention: var(--color-text-attention);
+  --color-surface: var(--color-bg);
+  --color-subtle: var(--color-bg-muted);
+  --color-selected: var(--color-bg-accent-muted);
+  --color-hover: var(--color-control-hover);
+  --color-border: var(--color-border-default);
+  --color-divider: var(--color-border-muted);
+  --color-accent-border: var(--color-border-accent-emphasis);
+  --font-ui: var(--font-body);
   --font-code: var(--md-font-mono, ui-monospace, monospace);
 }
 
@@ -42,7 +42,7 @@
 }
 
 @utility ui-focus {
-  &:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: var(--ui-focus-offset, -2px); }
+  &:focus-visible { outline: 2px solid var(--color-text-accent); outline-offset: var(--ui-focus-offset, -2px); }
 }
 
 /* Logical path order stays inside bdi; clip the start of long paths. */
@@ -101,7 +101,7 @@
 }
 
 @utility ui-tab {
-  @apply ui-focus flex cursor-pointer items-center border-0 border-b-2 border-solid border-transparent bg-transparent px-2 font-ui text-ui text-muted hover:text-fg aria-selected:border-b-[var(--bgColor-accent-emphasis)] aria-selected:font-semibold aria-selected:text-fg;
+  @apply ui-focus flex cursor-pointer items-center border-0 border-b-2 border-solid border-transparent bg-transparent px-2 font-ui text-ui text-muted hover:text-fg aria-selected:border-b-[var(--color-bg-accent-emphasis)] aria-selected:font-semibold aria-selected:text-fg;
 }
 
 @utility sidebar-toggle {

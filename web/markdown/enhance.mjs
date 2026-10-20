@@ -1,5 +1,5 @@
-import { loadRawHighlighter } from '../raw-highlight-loader.mjs';
-import { renderMath } from '../katex-loader.mjs';
+import { loadRawHighlighter } from '../raw/raw-highlight-loader.mjs';
+import { renderMath } from './katex-loader.mjs';
 
 const mathSelector = '[data-math-style="inline"], [data-math-style="display"]';
 const codeSelector = '.code-wrap pre > code[class*="language-"]';

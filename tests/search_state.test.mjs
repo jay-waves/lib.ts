@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialSearchState, searchReducer } from '../web/search-state.ts';
+import { initialSearchState, searchReducer } from '../web/search/search-state.ts';
 
 const page = (searchId, paths, nextOffset = 1) => ({
   searchId, files: paths.map(path => ({ path })), nextOffset,

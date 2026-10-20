@@ -1,4 +1,4 @@
-.rendered-markdown { --markdown-padding: 29px 36px; --md-bg: var(--bgColor-default); inline-size: 100%; max-inline-size: 980px; }
+.rendered-markdown { --markdown-padding: 29px 36px; --md-bg: var(--color-bg); inline-size: 100%; max-inline-size: 980px; }
 @media (max-width: 960px) {
   .rendered-markdown { --markdown-padding: 20px; }
 }

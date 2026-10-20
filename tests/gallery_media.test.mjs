@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGalleryLoader, galleryMetadataConcurrency, galleryMetadataRequestSize } from '../web/gallery-media.ts';
-import { thumbnailUrl } from '../web/media-urls.mjs';
-import { sortDirectoryNodes } from '../web/gallery-images.ts';
+import { createGalleryLoader, galleryMetadataConcurrency, galleryMetadataRequestSize } from '../web/gallery/gallery-media.ts';
+import { thumbnailUrl } from '../web/media/media-urls.mjs';
+import { sortDirectoryNodes } from '../web/gallery/gallery-images.ts';
 
 const files = count => Array.from({ length: count }, (_, index) => ({
   type: 'file', name: `photo${index}.jpg`, path: `photo${index}.jpg`, modified: '2026-10-18T00:00:00Z',

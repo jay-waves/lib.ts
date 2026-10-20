@@ -5,17 +5,17 @@ import { CheckIcon, KebabHorizontalIcon, SortDescIcon, FileDirectoryIcon, FileIc
 import { fileUrl, pageBase } from './urls.mjs';
 import { readDirectoryState, readRepositoryDisplayState, saveDirectoryState } from './directory-state.mjs';
 import { useDirectoryScroll } from './use-directory-scroll';
-import { formatRelativeModified } from './time-labels.mjs';
+import { formatRelativeModified } from './history/time-labels.mjs';
 import type { TreeNode } from './api/contracts';
-import { useSystemOpen } from './use-system-open';
+import { useSystemOpen } from './media/use-system-open';
 import { useClipboard } from './use-clipboard';
-import { DirectoryGallery } from './directory-gallery';
-import { useGalleryMedia } from './use-gallery-media';
+import { DirectoryGallery } from './gallery/directory-gallery';
+import { useGalleryMedia } from './gallery/use-gallery-media';
 import { FileToolbar, MoveToTopButton, useToolbarStuck } from './file-toolbar';
-import { bindGalleryZoom, gallerySize, resizeGallery } from './gallery-zoom.mjs';
-import { directorySortOptions, gallerySortOptions, galleryImages, isBrowserVideo, sortDirectoryNodes } from './gallery-images';
-import type { DirectorySort } from './gallery-images';
-import { preloadVideoPlayer } from './video-player-loader';
+import { bindGalleryZoom, gallerySize, resizeGallery } from './gallery/gallery-zoom.mjs';
+import { directorySortOptions, gallerySortOptions, galleryImages, isBrowserVideo, sortDirectoryNodes } from './gallery/gallery-images';
+import type { DirectorySort } from './gallery/gallery-images';
+import { preloadVideoPlayer } from './video/video-player-loader';
 
 interface DirectoryViewProps {
   directory: { path?: string; absolutePath?: string; children?: TreeNode[] };

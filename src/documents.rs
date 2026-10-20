@@ -89,6 +89,10 @@ enum DocumentContent {
         #[serde(skip_serializing_if = "Option::is_none")]
         html: Option<String>,
     },
+    Mermaid {
+        line_count: usize,
+        source: String,
+    },
     Typst {
         line_count: usize,
         source: String,
@@ -198,6 +202,7 @@ pub(crate) fn inspect_document(
     } else {
         match detected.format.as_str() {
             "md" | "markdown" => "markdown",
+            "mmd" => "mermaid",
             "typ" => "typst",
             _ => "text",
         }
@@ -414,6 +419,7 @@ fn load_document(
                         html,
                     }
                 }
+                "mmd" => DocumentContent::Mermaid { line_count, source },
                 "typ" => DocumentContent::Typst {
                     line_count,
                     source,
@@ -516,6 +522,34 @@ async fn compile_document(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mermaid_files_return_source_for_both_views_without_markdown_rendering() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let source = "flowchart LR\n  A[开始] --> B[结束]\n";
+        let path = "diagram.MMD";
+        std::fs::write(root.path().join(path), source).unwrap();
+        let info = inspect_document(root.path(), path, private.path()).unwrap();
+        assert_eq!(info.kind, "mermaid");
+        for view in ["raw", "preview"] {
+            let document = load_document(
+                root.path(),
+                path,
+                Some(view),
+                private.path(),
+                "",
+                &pdf::NativePdfRenderer::default(),
+                &resources::Cancellation::default(),
+            )
+            .unwrap();
+            let value = serde_json::to_value(document).unwrap();
+            assert_eq!(value["type"], "mermaid");
+            assert_eq!(value["source"], source);
+            assert_eq!(value["lineCount"], 2);
+            assert!(value.get("html").is_none());
+        }
+    }
 
     #[test]
     fn image_documents_return_resource_policy_without_media_metadata() {

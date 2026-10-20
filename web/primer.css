@@ -1,0 +1,65 @@
+@import '@primer/primitives/dist/css/functional/themes/light.css';
+@import '@primer/primitives/dist/css/functional/themes/dark.css';
+@import '@primer/primitives/dist/css/base/motion/motion.css';
+
+/* Primer compatibility boundary. Application styles use the aliases below.
+   Keep aliases on the theme owner so system theme changes also reach portals. */
+/* Primer tokens live on <html>, including portals. Only customize our light palette. */
+@media (prefers-color-scheme: light) {
+  :root[data-color-mode="auto"] {
+    --bgColor-default: #fdfdfc;
+    --bgColor-muted: #f4f5f4;
+    --bgColor-accent-muted: #e9ecea;
+    --bgColor-accent-emphasis: #777c78;
+    --fgColor-default: #363733;
+    --fgColor-muted: #73746e;
+    --fgColor-accent: #5d625f;
+    --borderColor-default: #dfe1df;
+    --borderColor-accent-emphasis: var(--fgColor-accent);
+    --focus-outline-color: var(--fgColor-accent);
+    --focus-outlineColor: var(--focus-outline-color);
+    --control-transparent-bgColor-hover: #eef0ee;
+    --control-transparent-bgColor-selected: #e9ecea;
+    --treeViewItem-leadingVisual-iconColor-rest: #777c78;
+  }
+}
+:root[data-color-mode="auto"] { --borderColor-muted: light-dark(#e9ebe9, #30363d); }
+
+:root {
+  --BaseStyles-fontFamily: var(--font-body);
+  --text-body-size-medium: var(--text-ui);
+  --text-body-size-small: var(--text-meta);
+  --color-text: var(--fgColor-default);
+  --color-text-muted: var(--fgColor-muted);
+  --color-text-accent: var(--fgColor-accent);
+  --color-text-danger: var(--fgColor-danger);
+  --color-text-success: var(--fgColor-success);
+  --color-text-attention: var(--fgColor-attention);
+  --color-bg: var(--bgColor-default);
+  --color-bg-muted: var(--bgColor-muted);
+  --color-bg-accent-muted: var(--bgColor-accent-muted);
+  --color-bg-accent-emphasis: var(--bgColor-accent-emphasis);
+  --color-bg-attention-muted: var(--bgColor-attention-muted);
+  --color-bg-danger-muted: var(--bgColor-danger-muted);
+  --color-border-default: var(--borderColor-default);
+  --color-border-muted: var(--borderColor-muted);
+  --color-border-accent-emphasis: var(--borderColor-accent-emphasis);
+  --color-border-attention-muted: var(--borderColor-attention-muted);
+  --color-border-danger-muted: var(--borderColor-danger-muted);
+  --color-control-hover: var(--control-transparent-bgColor-hover);
+  --color-control-selected: var(--control-transparent-bgColor-selected);
+  --z-index-dropdown: var(--zIndex-dropdown, 200);
+}
+
+/* Primer controls inside the sidebar keep the existing muted hover palette.
+   Resolve the app aliases here too: inherited custom properties would otherwise
+   retain the values computed at :root instead of these local overrides. */
+.sidebar, .sidebar-drawer-header, .sidebar-rail, .file-tree-view {
+  --control-transparent-bgColor-hover: var(--color-bg-muted);
+  --control-transparent-bgColor-selected: var(--color-bg-accent-muted);
+  --color-control-hover: var(--control-transparent-bgColor-hover);
+  --color-control-selected: var(--control-transparent-bgColor-selected);
+}
+.code-search-results .search-result-item {
+  --control-medium-paddingInline-condensed: 12px;
+}

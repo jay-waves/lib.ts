@@ -51,3 +51,24 @@ TODO gitignore:no
 HTML 支持脚本和仓库内相对资源，但隔离预览会限制外部网络、弹窗等能力；依赖这些能力的页面可能无法正常运行。
 
 文件保存后自动更新预览。Typst 的 import/include 依赖文件单独变化时，自动更新仍有局限。HTML 预览内部的滚动位置暂不保存。
+
+Mermaid 图表使用 Pele 按图表类型懒加载渲染。Markdown 的 `mermaid` 代码块与独立 `.mmd` 文件共用 `diagrams/` 渲染模块；Markdown 适配器位于 `markdown/diagrams.mjs`，主题配置集中在 `diagrams/diagram.css`。`.mmd` 支持 Preview / Raw 切换；图表支持缩放和平移，颜色跟随应用主题。保持源码指定的布局方向，不自动改为纵向。Pele 使用自己的布局，不支持任意 HTML 标签及 JavaScript 回调。
+
+## 前端目录约定
+
+核心组件和公共样式放在 `web/` 根目录：入口、文件树、目录页、文档加载、阅读器、工具栏、路由、会话和通用工具。相对独立的功能才归入子目录，专属样式与功能代码放在一起。
+
+| 目录 | 职责 |
+| --- | --- |
+| `api/` | HTTP/SSE 接口及运行时数据契约 |
+| `gallery/` | 画廊布局、图片配对、批量元信息与缩放 |
+| `markdown/`、`raw/` | Markdown 渲染增强；源码阅读和语法高亮 |
+| `pdf/`、`typst/`、`diagrams/` | 各格式的渲染和专属样式 |
+| `media/`、`video/` | 图片与媒体资源、元信息；视频播放器 |
+| `search/`、`symbols/` | 搜索；大纲和符号导航 |
+| `bookmarks/`、`history/`、`git/` | 书签、历史和 Git 功能 |
+| `fonts/` | 字体资源 |
+
+主题变量统一使用 kebab-case。根目录的 `primer.css` 集中导入 Primer 调色板、覆盖其默认值，并处理组件适配；只有此文件使用 Primer 的 camelCase 变量。业务 CSS 和 JSX 使用 `--color-text`、`--color-bg`、`--color-border-default`、`--font-body` 等应用变量。`theme.css` 定义应用自己的字体和阴影，`tailwind.css` 将应用变量映射到工具类，`style.css` 和 `ui.css` 提供公共布局与 UI 规则。各功能的专属样式放在功能目录，例如 `diagrams/diagram.css` 和 `git/theme.css`。
+
+移动文件时同步更新单元测试导入，以及 Rust 的 `include_str!`、构建缓存等引用。`media/image-theme.css` 同时供应用和隔离 HTML 预览使用，不依赖应用主题变量。

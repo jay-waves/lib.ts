@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGitResource } from '../web/git-resource.ts';
+import { createGitResource } from '../web/git/git-resource.ts';
 
 test('polling is shared, pauses while hidden and preserves the last result on failure', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filterSearchPaths } from '../web/path-search.ts';
+import { filterSearchPaths } from '../web/search/path-search.ts';
 
 test('list search matches paths, deduplicates current tabs and includes binary files', () => {
   const paths = ['docs/Guide.md', 'docs/Guide.md', 'images/cover.png', 'notes/other.md'];

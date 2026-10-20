@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initialImageScale } from '../web/document-preview.mjs';
-import { thumbnailUrl, imagePreviewUrls } from '../web/media-urls.mjs';
+import { thumbnailUrl, imagePreviewUrls } from '../web/media/media-urls.mjs';
 
 test('images start at native size with a maximum of 80% of viewport width', () => {
   assert.equal(initialImageScale(200, 1000), 1);
