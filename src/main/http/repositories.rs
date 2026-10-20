@@ -1,14 +1,87 @@
 use super::*;
 
+fn tree_directory(
+    root: &Path,
+    path: &str,
+    private: &Path,
+) -> Result<PathBuf, (StatusCode, String)> {
+    // Empty is the tree API's root directory, while file APIs require a path.
+    let path = checked_library_path(root, if path.is_empty() { "." } else { path }, private)?;
+    if !path.is_dir() {
+        return Err((StatusCode::NOT_FOUND, "Directory not found".into()));
+    }
+    Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tree_directory_accepts_empty_root_and_nested_directories() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().canonicalize().unwrap();
+        let private = root.join("private");
+        std::fs::create_dir_all(root.join("photos/nested")).unwrap();
+        for path in ["", "."] {
+            assert_eq!(tree_directory(&root, path, &private).unwrap(), root);
+        }
+        assert_eq!(
+            tree_directory(&root, "photos/nested", &private).unwrap(),
+            root.join("photos/nested")
+        );
+        // The root convention belongs to directory browsing, not file APIs.
+        assert_eq!(
+            checked_library_path(&root, "", &private).unwrap_err().0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[test]
+    fn tree_directory_still_rejects_invalid_private_and_non_directory_paths() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().canonicalize().unwrap();
+        let private = root.join("private");
+        std::fs::create_dir(&private).unwrap();
+        std::fs::write(root.join("note.txt"), "note").unwrap();
+        for path in ["..", "private", "\0"] {
+            assert_eq!(
+                tree_directory(&root, path, &private).unwrap_err().0,
+                StatusCode::BAD_REQUEST
+            );
+        }
+        for path in ["note.txt", "missing"] {
+            assert_eq!(
+                tree_directory(&root, path, &private).unwrap_err().0,
+                StatusCode::NOT_FOUND
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_directory_rejects_symlinks_outside_the_repository() {
+        let temporary = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let root = temporary.path().canonicalize().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.join("outside")).unwrap();
+        assert_eq!(
+            tree_directory(&root, "outside", &root.join("private"))
+                .unwrap_err()
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+}
+
 pub(super) async fn get_tree(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
     Query(query): Query<TreeQuery>,
 ) -> Response {
     let root = state.root_for_uri(uri.path());
-    let path = match checked_library_path(&root, &query.path, &state.data_directory) {
-        Ok(path) if path.is_dir() => path,
-        Ok(_) => return json_error(StatusCode::NOT_FOUND, "Directory not found").into_response(),
+    let path = match tree_directory(&root, &query.path, &state.data_directory) {
+        Ok(path) => path,
         Err((status, message)) => return json_error(status, message).into_response(),
     };
     let entry = match state.trees.entry(
