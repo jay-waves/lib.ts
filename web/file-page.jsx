@@ -33,7 +33,7 @@ export function LibraryError({ error, path, navigate }) {
 
 // App owns navigation; this keyed page owns the file's data and reader lifecycle.
 export function FilePage({ ref, path, request, externalRevision, visible, directory, treeError,
-  navigate, display, onDisplayChange, bookmarkState, sidebarToggle, onState }) {
+  navigate, display, onDisplayChange, bookmarkState, sidebarToggle, onState, loadDirectory }) {
   const active = useContext(SessionActivity);
   const { colorScheme: theme } = useTheme();
   const reader = useRef(null);
@@ -70,7 +70,7 @@ export function FilePage({ ref, path, request, externalRevision, visible, direct
     ? { ...mediaInfo, type: content.document?.type, lineCount: content.document?.lineCount } : mediaInfo;
   if (info?.type === 'directory') return <>
     {error && <LibraryError error={error} path={path} navigate={navigate} />}
-    {directory ? <DirectoryView directory={directory} navigate={navigate} display={display} onDisplayChange={onDisplayChange} />
+    {directory?.children ? <DirectoryView treeError={treeError} loadDirectory={loadDirectory} directory={directory} navigate={navigate} display={display} onDisplayChange={onDisplayChange} />
       : treeError ? <LibraryError error={treeError} path={path} navigate={navigate} /> : <div className="status">Loading directory…</div>}
   </>;
   return <>

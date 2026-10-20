@@ -1,4 +1,4 @@
-import { requestJson, requestJsonWithResponse } from './client';
+import { requestJson, requestJsonWithResponse } from './client.ts';
 import {
   bookmarksResponseSchema,
   type Bookmark,
@@ -6,11 +6,11 @@ import {
   treeEvents,
   treeSchema,
   openDirectoryResponseSchema,
-} from './contracts';
-import { subscribeEvents } from './events';
+} from './contracts.ts';
+import { subscribeEvents } from './events.ts';
 
-export async function getFileTree(apiBase: string, signal?: AbortSignal, showHidden = false) {
-  const { data, response } = await requestJsonWithResponse(`${apiBase}/tree?showHidden=${showHidden}`, treeSchema, { signal });
+export async function getFileTree(apiBase: string, signal?: AbortSignal, showHidden = false, path = '') {
+  const { data, response } = await requestJsonWithResponse(`${apiBase}/tree?${new URLSearchParams({ showHidden: String(showHidden), path })}`, treeSchema, { signal });
   return { ...data, revision: response.headers.get('x-tree-revision') };
 }
 

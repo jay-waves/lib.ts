@@ -15,32 +15,83 @@ export function galleryPlaybackWeight(dimensions) {
   return 16;
 }
 
-export function createGalleryPlaybackQueue(limit = galleryPlaybackBudget) {
-  const pending = [];
-  let running = 0;
+// Automatic previews share a budget and rotate only when someone is waiting.
+// One hovered/focused preview may borrow an extra slot without pausing others.
+export const galleryPlaybackTurn = 20000;
+export function createGalleryPlaybackQueue(limit = galleryPlaybackBudget, timers = globalThis) {
+  const pending = [], running = new Set();
+  let used = 0, rotation, extra;
+  const release = job => {
+    if (!running.delete(job)) return false;
+    if (extra === job) extra = undefined;
+    else used -= job.weight;
+    return true;
+  };
+  const defer = job => {
+    release(job);
+    job.suspend?.();
+    pending.push(job);
+  };
+  const grant = (job, borrowed = false) => {
+    pending.splice(pending.indexOf(job), 1);
+    running.add(job);
+    if (borrowed) extra = job;
+    else used += job.weight;
+    job.ready = false;
+    job.start();
+  };
+  const yieldFor = job => {
+    const victims = [...running].filter(other => other !== extra && !other.priority && other.suspend && other.ready);
+    if (limit - used + victims.reduce((sum, other) => sum + other.weight, 0) < job.weight) return;
+    for (const other of victims) {
+      if (used + job.weight <= limit) break;
+      defer(other);
+    }
+    grant(job);
+  };
   const pump = () => {
+    const urgent = pending.find(job => job.priority);
+    if (urgent && (used + urgent.weight <= limit || !extra)) {
+      grant(urgent, used + urgent.weight > limit);
+    }
     while (pending.length) {
-      const index = pending.findIndex(job => running + job.weight <= limit);
+      const index = pending.findIndex(job => used + job.weight <= limit);
       if (index < 0) break;
-      const [job] = pending.splice(index, 1);
-      job.running = true;
-      running += job.weight;
-      job.start();
+      grant(pending[index]);
+    }
+    if (!pending.some(job => !job.priority)) { timers.clearTimeout(rotation); rotation = undefined; }
+    else if (rotation === undefined && [...running].some(job => job.suspend)) {
+      rotation = timers.setTimeout(() => {
+        rotation = undefined;
+        const next = pending.find(job => !job.priority);
+        if (next) yieldFor(next);
+        pump();
+      }, galleryPlaybackTurn);
     }
   };
   return {
-    request(start, weight = 1) {
+    request(start, weight = 1, { suspend, priority = false } = {}) {
       const cost = Number.isFinite(weight) && weight > 0 ? Math.min(limit, Math.ceil(weight)) : limit;
-      const job = { start, weight: cost, running: false, cancelled: false };
+      const job = { start, suspend, priority, weight: cost, ready: false, cancelled: false };
       pending.push(job);
       pump();
-      return () => {
+      const cancel = () => {
         if (job.cancelled) return;
         job.cancelled = true;
-        if (job.running) running -= job.weight;
-        else pending.splice(pending.indexOf(job), 1);
+        if (!release(job)) pending.splice(pending.indexOf(job), 1);
         pump();
       };
+      cancel.setPriority = value => {
+        if (job.cancelled || job.priority === value) return;
+        job.priority = value;
+        if (!value && extra === job) {
+          if (used + job.weight <= limit) { extra = undefined; used += job.weight; }
+          else defer(job);
+        }
+        pump();
+      };
+      cancel.markPlaying = () => { job.ready = true; };
+      return cancel;
     },
   };
 }
@@ -62,7 +113,7 @@ export function createGalleryPreviewCache(limit = 8) {
   };
 }
 
-export function startGalleryPlayback(video, src, { onReady, onError, queue = createGalleryPlaybackQueue(), page = globalThis.document, enabled = true, dimensions }, timers = globalThis) {
+export function startGalleryPlayback(video, src, { onReady, onError, onQueued = (_queued) => {}, queue = createGalleryPlaybackQueue(), page = globalThis.document, enabled = true, priority = false, dimensions }, timers = globalThis) {
   let disposed = false;
   let active = false;
   let failures = 0;
@@ -71,18 +122,26 @@ export function startGalleryPlayback(video, src, { onReady, onError, queue = cre
   let cancelSlot;
   let playRequest = 0;
   let weight = galleryPlaybackWeight(dimensions);
+  let bufferedUntil = 0;
   const clear = () => { timers.clearTimeout(timeout); timeout = undefined; };
-  const release = () => {
-    video.pause();
-    video.removeAttribute('src');
-    video.load();
+  const unload = () => {
+    if (video.getAttribute('src')) {
+      video.removeAttribute('src');
+      video.load();
+    }
+    bufferedUntil = 0;
+    onReady(false);
   };
-  const pause = () => {
+  const suspend = () => {
     active = false;
     ++playRequest;
     clear();
     timers.clearTimeout(retry);
     video.pause();
+  };
+  const pause = () => {
+    suspend();
+    onQueued(false);
     const cancel = cancelSlot;
     cancelSlot = undefined;
     cancel?.();
@@ -90,9 +149,7 @@ export function startGalleryPlayback(video, src, { onReady, onError, queue = cre
   const fail = () => {
     if (disposed || !active || page?.hidden) return;
     pause();
-    video.removeAttribute('src');
-    video.load();
-    onReady(false);
+    unload();
     if (++failures === 1) retry = timers.setTimeout(schedule, 500);
     else onError();
   };
@@ -101,7 +158,15 @@ export function startGalleryPlayback(video, src, { onReady, onError, queue = cre
     timeout = timers.setTimeout(fail, 60000);
   };
   const ready = () => {
-    if (!disposed && active && !page?.hidden) { clear(); onReady(true); }
+    if (!disposed && active && !page?.hidden) { clear(); cancelSlot?.markPlaying(); onReady(true); }
+  };
+  const progress = () => {
+    if (!active || page?.hidden || !video.buffered?.length) return;
+    const end = video.buffered.end(video.buffered.length - 1);
+    if (end > bufferedUntil) {
+      bufferedUntil = end;
+      if (timeout !== undefined) watch();
+    }
   };
   const waiting = () => {
     if (!disposed && active && !page?.hidden && timeout === undefined) watch();
@@ -109,6 +174,7 @@ export function startGalleryPlayback(video, src, { onReady, onError, queue = cre
   function start() {
     if (disposed || !enabled || page?.hidden) return;
     active = true;
+    onQueued(false);
     video.muted = true;
     // Reuse the same element, position and browser buffer on a short return.
     if (!video.getAttribute('src')) video.src = src;
@@ -119,7 +185,13 @@ export function startGalleryPlayback(video, src, { onReady, onError, queue = cre
     });
   }
   function schedule() {
-    if (!disposed && enabled && !page?.hidden && !cancelSlot) cancelSlot = queue.request(start, weight);
+    if (!disposed && failures < 2 && enabled && !page?.hidden && !cancelSlot) {
+      onQueued(true);
+      cancelSlot = queue.request(start, weight, {
+        priority,
+        suspend: () => { suspend(); onQueued(true); },
+      });
+    }
   }
   const metadata = () => {
     if (disposed || !video.videoWidth || !video.videoHeight) return;
@@ -133,10 +205,8 @@ export function startGalleryPlayback(video, src, { onReady, onError, queue = cre
     if (page.hidden) pause();
     else schedule();
   };
-  video.addEventListener('playing', ready);
-  video.addEventListener('waiting', waiting);
-  video.addEventListener('error', fail);
-  video.addEventListener('loadedmetadata', metadata);
+  const listeners = { playing: ready, waiting, error: fail, loadedmetadata: metadata, progress };
+  for (const [event, listener] of Object.entries(listeners)) video.addEventListener(event, listener);
   page?.addEventListener('visibilitychange', visibility);
   schedule();
   const dispose = () => {
@@ -144,17 +214,26 @@ export function startGalleryPlayback(video, src, { onReady, onError, queue = cre
     disposed = true;
     pause();
     page?.removeEventListener('visibilitychange', visibility);
-    video.removeEventListener('playing', ready);
-    video.removeEventListener('waiting', waiting);
-    video.removeEventListener('error', fail);
-    video.removeEventListener('loadedmetadata', metadata);
-    release();
+    for (const [event, listener] of Object.entries(listeners)) video.removeEventListener(event, listener);
+    unload();
   };
   dispose.setEnabled = value => {
     if (disposed || enabled === value) return;
     enabled = value;
-    if (enabled) schedule();
+    if (enabled) { failures = 0; schedule(); }
     else pause();
+  };
+  dispose.setPriority = value => {
+    if (disposed || priority === value) return;
+    priority = value;
+    cancelSlot?.setPriority(value);
+    if (value && failures >= 2) { failures = 0; schedule(); }
+  };
+  dispose.unload = () => {
+    if (disposed) return;
+    enabled = false;
+    pause();
+    unload();
   };
   return dispose;
 }

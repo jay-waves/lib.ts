@@ -1,9 +1,11 @@
 import type { Dispatch, SetStateAction, MouseEvent, KeyboardEvent, ReactNode } from 'react';
+import { useEffect } from 'react';
 import { TreeView } from '@primer/react';
 import { FileTypeIcon } from './file-type-icon';
 import { fileUrl } from './urls.mjs';
 import { isPlainTreeActivation } from './file-tree.mjs';
 import type { TreeNode } from './api/contracts';
+import { useIncrementalList } from './use-incremental-list';
 
 export interface FileTreeNode extends Pick<TreeNode, 'name' | 'path' | 'type'> {
   virtual?: boolean;
@@ -20,23 +22,44 @@ interface FileTreeProps {
   navigateDirectories?: boolean;
   expandedPaths: Record<string, boolean>;
   setExpandedPaths: Dispatch<SetStateAction<Record<string, boolean>>>;
+  loadDirectory?(path: string): void;
 }
 
 // SubTree mounts its children only when expanded. Defer recursion until then,
 // rather than allocating React elements for every descendant of a closed folder.
-function TreeChildren({ nodes, renderNode }: { nodes: FileTreeNode[]; renderNode(node: FileTreeNode): ReactNode }) {
-  return nodes.map(renderNode);
+function TreeChildren({ nodes, renderNode, selected }: { nodes: FileTreeNode[]; renderNode(node: FileTreeNode): ReactNode; selected: string }) {
+  const current = nodes.findIndex(node => selected === node.path || selected.startsWith(`${node.path}/`));
+  const list = useIncrementalList(nodes.length, current + 1);
+  return <>{nodes.slice(0, list.shown).map(renderNode)}
+    {list.hasMore && <TreeView.Item id={`${nodes[0].path}:more`} onSelect={list.more}>
+      <span ref={list.marker}>Show more…</span>
+    </TreeView.Item>}</>;
 }
 
-export function FileTree({ nodes, label, selected, navigate, searching = false, variant = 'sidebar', navigateDirectories = true, expandedPaths, setExpandedPaths }: FileTreeProps) {
+export function FileTree({ nodes, label, selected, navigate, searching = false, variant = 'sidebar', navigateDirectories = true, expandedPaths, setExpandedPaths, loadDirectory }: FileTreeProps) {
+  useEffect(() => {
+    if (!loadDirectory) return;
+    const visit = (entries: FileTreeNode[]) => {
+      for (const node of entries) {
+        if (node.type !== 'directory' || !expandedPaths[node.path]) continue;
+        if (node.children === undefined) loadDirectory(node.path);
+        else visit(node.children);
+      }
+    };
+    visit(nodes);
+  }, [nodes, expandedPaths, loadDirectory]);
   function renderNode(node: FileTreeNode) {
     const directory = node.type === 'directory';
     const expanded = expandedPaths[node.path] ?? (node.virtual || searching);
+    const expand = (value: boolean) => {
+      setExpandedPaths(paths => ({ ...paths, [node.path]: value }));
+      if (value) loadDirectory?.(node.path);
+    };
     function activate(event: MouseEvent | KeyboardEvent) {
       if (!isPlainTreeActivation(event)) return;
       event.preventDefault();
       if (node.virtual || (directory && (!navigateDirectories || !expanded))) {
-        setExpandedPaths(paths => ({ ...paths, [node.path]: !expanded }));
+        expand(!expanded);
         return;
       }
       navigate(node.path, directory);
@@ -46,13 +69,14 @@ export function FileTree({ nodes, label, selected, navigate, searching = false, 
     return (
       <TreeView.Item key={node.path} className="file-tree-item" id={node.path} current={node.path === selected}
         expanded={directory ? expanded : undefined}
-        onExpandedChange={directory ? expanded => setExpandedPaths(paths => ({ ...paths, [node.path]: expanded })) : undefined}
+        onExpandedChange={directory ? expand : undefined}
         onSelect={activate}>
         <TreeView.LeadingVisual><span className="inline-flex [&_svg]:size-3.5!">{directory ? <TreeView.DirectoryIcon /> : <FileTypeIcon name={node.name} />}</span></TreeView.LeadingVisual>
         {node.virtual || (directory && !navigateDirectories) ? <span className="file-tree-link">{node.name}</span> : link}
-        {directory && <TreeView.SubTree>{node.children?.length ? <TreeChildren nodes={node.children} renderNode={renderNode} /> : null}</TreeView.SubTree>}
+        {directory && <TreeView.SubTree>{node.children?.length ? <TreeChildren nodes={node.children} renderNode={renderNode} selected={selected} />
+          : loadDirectory && node.children === undefined ? <TreeView.Item id={`${node.path}:loading`}>Loading directory…</TreeView.Item> : null}</TreeView.SubTree>}
       </TreeView.Item>
     );
   }
-  return <div className={`file-tree-view${variant === 'results' ? ' search-file-tree' : ''}`}><TreeView aria-label={label}>{nodes.map(renderNode)}</TreeView></div>;
+  return <div className={`file-tree-view${variant === 'results' ? ' search-file-tree' : ''}`}><TreeView aria-label={label}><TreeChildren nodes={nodes} renderNode={renderNode} selected={selected} /></TreeView></div>;
 }

@@ -3,7 +3,7 @@ import { BrowserSession, SessionActivity } from './session-activity';
 import { HISTORY_GROUPS } from './history/time-labels.mjs';
 import { visibleEvents } from './visible-events.mjs';
 import { parseDocumentOpenEvent } from './session-events.mjs';
-import { sortFileTree, fileTreeForView } from './file-tree.mjs';
+import { sortFileTree, fileTreeForView, fileListFromPaths } from './file-tree.mjs';
 import { useFileTree } from './use-file-tree';
 import { apiBase, pageBase, repoId, routeKind, fileUrl } from './urls.mjs';
 import { searchUrl, gitUrl, parseRepositoryLocation } from './paths.ts';
@@ -99,7 +99,7 @@ function App() {
       if (hidden >= 0) navigate(parts.slice(0, hidden).join('/'), true);
     }
   };
-  const { tree, index: treeIndex, loading: treeLoading, error: treeError } = useFileTree(apiBase, selected, active, display.showHidden === true);
+  const { tree, index: treeIndex, loading: treeLoading, error: treeError, loadDirectory } = useFileTree(apiBase, selected, active, display.showHidden === true);
   const bookmarkState = useBookmarks(active && Boolean(apiBase));
   const [recentOnly, setRecentOnly] = useState(() => Boolean(initialSidebar.recentOnly));
   const [documentRevision, setDocumentRevision] = useState(0);
@@ -221,6 +221,7 @@ function App() {
   }
   const parts = (gitPath ?? selected).split('/').filter(Boolean);
   const filteredTree = useMemo(() => {
+    if (bookmarksOnly) return fileListFromPaths(bookmarkState.bookmarks.map(item => item.path));
     const nodes = sortMode === 'name' ? tree?.children : sortFileTree(tree?.children);
     return fileTreeForView(nodes, { bookmarksOnly, bookmarks: bookmarkState.bookmarks });
   }, [tree, sortMode, bookmarksOnly, bookmarkState.bookmarks]);
@@ -309,7 +310,7 @@ function App() {
               selected={selected} navigate={navigate} expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />} /> : bookmarksOnly && bookmarkState.loading ? <div className="sidebar-loading" role="status"><Spinner size="small" /><span className="visually-hidden">Loading bookmarks</span></div> : tree ? filteredTree.length ? bookmarksOnly
             ? <BookmarkList files={filteredTree} bookmarks={bookmarkState.bookmarks} selected={selected} request={readerRequest} navigate={navigate} />
             : <FileTree nodes={filteredTree} label="Notes tree" selected={selected} navigate={navigate}
-              expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} />
+              expandedPaths={expandedPaths} setExpandedPaths={setExpandedPaths} loadDirectory={loadDirectory} />
             : <div className="sidebar-empty">{bookmarksOnly ? bookmarkState.bookmarks.length ? 'No bookmarked files available' : 'Open a file to add a bookmark.' : 'No matching files'}</div> : treeLoading ? <div className="sidebar-loading"><Spinner size="small" /></div> : null}</div>
           </> : null}
     <SymbolsPanel symbols={symbols} status={progress} onSelect={jumpToSymbol}
@@ -376,7 +377,7 @@ function App() {
           {searchMode && codeSearch.results}
           {!searchMode && gitPath !== null && <Suspense fallback={<div className="status"><Spinner /> Loading diff…</div>}>
             <GitDiffView key={`${gitScope}:${gitPath}`} path={gitPath} scope={gitScope} active={active} revision={gitState.updatedAt}
-              onOpen={treeIndex.has(gitPath) ? () => navigate(gitPath) : undefined}
+              onOpen={() => navigate(gitPath)}
               onClose={() => { history.pushState(null, '', fileUrl(selected)); setGitPath(null); }} />
           </Suspense>}
           <div className="content-panel ui-panel" hidden={searchMode || gitPath !== null}>
@@ -388,12 +389,12 @@ function App() {
             {bookmarkState.error && !bookmarksOnly && <div className="action-error" role="alert">{bookmarkState.error}</div>}
             {selected ? <FilePage key={`${apiBase}:${selected}`} ref={readerRef} path={selected} request={readerRequest}
               externalRevision={documentRevision} visible={!searchMode && gitPath === null}
-              directory={selectedNode?.type === 'directory' ? selectedNode : null} treeError={treeError}
+              loadDirectory={loadDirectory} directory={selectedNode?.type === 'directory' ? selectedNode : null} treeError={treeError}
               navigate={navigate} display={display} onDisplayChange={changeDisplay} bookmarkState={bookmarkState} onState={setPageState}
               sidebarToggle={narrow && <IconButton unsafeDisableTooltip ref={sidebarToggleRef} hidden={filesVisible} size="small" variant="invisible"
                 className="sidebar-toggle" icon={SidebarExpandIcon} aria-label="Show sidebar"
                 aria-expanded={filesVisible} aria-controls="sidebar-content" onClick={() => setFilesVisible(true)} />} />
-              : tree && <DirectoryView key="root" directory={tree} navigate={navigate} display={display} onDisplayChange={changeDisplay} />}
+              : tree && <DirectoryView key="root" treeError={treeError} loadDirectory={loadDirectory} directory={tree} navigate={navigate} display={display} onDisplayChange={changeDisplay} />}
             </>}
           </div>
         </main>

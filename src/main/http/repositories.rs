@@ -6,6 +6,11 @@ pub(super) async fn get_tree(
     Query(query): Query<TreeQuery>,
 ) -> Response {
     let root = state.root_for_uri(uri.path());
+    let path = match checked_library_path(&root, &query.path, &state.data_directory) {
+        Ok(path) if path.is_dir() => path,
+        Ok(_) => return json_error(StatusCode::NOT_FOUND, "Directory not found").into_response(),
+        Err((status, message)) => return json_error(status, message).into_response(),
+    };
     let entry = match state.trees.entry(
         (*root).clone(),
         (*state.data_directory).clone(),
@@ -14,7 +19,7 @@ pub(super) async fn get_tree(
         Ok(entry) => entry,
         Err(error) => return json_error(StatusCode::SERVICE_UNAVAILABLE, error).into_response(),
     };
-    match entry.snapshot().await {
+    match entry.directory(&root, &path).await {
         Ok(snapshot) => {
             let mut response = (
                 [

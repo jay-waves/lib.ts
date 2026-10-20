@@ -42,3 +42,51 @@ test('disposing aborts stale requests and a new request can succeed', async () =
   await next;
   assert.equal(resource.has('new.md'), true);
 });
+
+test('unopened and empty directories are distinct; only expansions trigger loading', async () => {
+  const calls = [];
+  const resource = createTreeResource(async (_, path) => {
+    calls.push(path);
+    return { children: [{ path: 'docs', type: 'directory', ...(path === 'docs' ? { children: [] } : {}) }] };
+  });
+  await resource.ensure('');
+  assert.deepEqual(calls, ['']);
+  assert.equal(resource.index.get('docs').children, undefined);
+  await resource.ensureDirectory('docs');
+  await resource.ensureDirectory('docs');
+  assert.deepEqual(calls, ['', 'docs']);
+  assert.deepEqual(resource.index.get('docs').children, []);
+});
+
+test('deep file navigation requests its parent, not a recursive repository scan', async () => {
+  const calls = [];
+  const resource = createTreeResource(async (_, path) => {
+    calls.push(path);
+    return { children: [{ path: 'docs', type: 'directory', children: [
+      { path: 'docs/deep', type: 'directory', children: [{ path: 'docs/deep/note.md', type: 'file' }] },
+    ] }] };
+  });
+  await resource.ensure('docs/deep/note.md');
+  assert.deepEqual(calls, ['docs/deep']);
+  assert.equal(resource.has('docs/deep/note.md'), true);
+});
+
+test('queued directories publish incrementally and scan one at a time', async () => {
+  const completions = [], calls = [], published = [];
+  const resource = createTreeResource((_, path) => {
+    calls.push(path);
+    return new Promise(resolve => completions.push(resolve));
+  });
+  const unsubscribe = resource.subscribe(value => published.push(value));
+  const first = resource.ensureDirectory('docs');
+  const second = resource.ensureDirectory('photos');
+  assert.deepEqual(calls, ['docs']);
+  completions[0](tree('one.md'));
+  await Promise.resolve();
+  assert.equal(published.length, 1);
+  assert.deepEqual(calls, ['docs', 'photos']);
+  completions[1](tree('two.md'));
+  await Promise.all([first, second]);
+  assert.equal(published.length, 2);
+  unsubscribe();
+});

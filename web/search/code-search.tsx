@@ -411,7 +411,7 @@ export function useCodeSearch({ config, onConfig, navigate, active, currentFile,
   </SearchResultsLayout>;
   const filteredResults = <SearchResultsLayout label="Filtered files" busy={searchingFiles && loading} summary={searchingFiles && loading ? <><Spinner size="small" /> Searching…</> : <strong>{searchingFiles ? result?.total ?? 0 : pathResults.length}{searchingFiles && result?.truncated ? '+' : ''} files</strong>}>
     {(searchingFiles ? error : syntax.error) && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui [&_h2]:text-danger!" role="alert">{searchingFiles ? error : syntax.error}</p>}
-    {!(searchingFiles ? error || loading : syntax.error) && !pathResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">No matching files.</p>}
+    {!(searchingFiles ? error || loading : syntax.error) && !pathResults.length && <p className="px-5 py-16 text-center text-muted [&_h2]:my-[18px] [&_h2]:text-xl [&_h2]:text-fg [&_p]:text-ui">{fileSearch && !searchingFiles ? 'Type to search repository files.' : 'No matching files.'}</p>}
     {scope === 'files' ? <FileTree nodes={resultTree} label="Matching files" selected={currentFile}
       navigate={navigate} searching={Boolean(query.trim())} variant="results" navigateDirectories={false}
       expandedPaths={expandedResultPaths} setExpandedPaths={setExpandedResultPaths} />

@@ -1,6 +1,6 @@
 //! Shared repository snapshots refreshed by native filesystem events.
 //! Repositories share a serialized snapshot and non-recursive visible-directory watches.
-//! Debounced events rebuild the full visible tree; unchanged snapshots do not emit updates.
+//! Only requested directories are scanned; filesystem events invalidate their listings.
 //! Idle subscriptions release watches. Ignore rules and private paths are applied when walking.
 use ignore::WalkBuilder;
 use notify::{EventKind, RecursiveMode, Watcher, event::ModifyKind};
@@ -21,7 +21,7 @@ const IDLE_TIME: Duration = Duration::from_secs(60);
 const DEBOUNCE: Duration = Duration::from_millis(250);
 static NEXT_REVISION: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Node {
     name: String,
     path: String,
@@ -32,8 +32,8 @@ struct Node {
     modified: String,
     #[serde(rename = "transportStream", skip_serializing_if = "std::ops::Not::not")]
     transport_stream: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    children: Vec<Node>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    children: Option<Vec<Node>>,
 }
 
 #[derive(Serialize)]
@@ -48,6 +48,7 @@ struct Root {
 pub struct Snapshot {
     pub body: bytes::Bytes,
     pub revision: u64,
+    requested: Arc<HashSet<PathBuf>>,
 }
 
 #[derive(Clone, Copy)]
@@ -60,11 +61,42 @@ pub struct Entry {
     snapshot: watch::Sender<Option<Result<Snapshot, String>>>,
     events: broadcast::Sender<Event>,
     last_used: Mutex<Instant>,
+    requested: Mutex<HashSet<PathBuf>>,
+    wake: mpsc::SyncSender<()>,
     #[cfg(test)]
     scans: AtomicU64,
+    #[cfg(test)]
+    listings: AtomicU64,
 }
 
 impl Entry {
+    pub async fn directory(&self, root: &Path, path: &Path) -> Result<Snapshot, String> {
+        {
+            let mut requested = self.requested.lock().unwrap_or_else(|e| e.into_inner());
+            let mut changed = false;
+            for ancestor in path
+                .ancestors()
+                .take_while(|parent| parent.starts_with(root))
+            {
+                changed |= requested.insert(ancestor.to_path_buf());
+            }
+            if changed {
+                let _ = self.wake.try_send(());
+            }
+        }
+        *self.last_used.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
+        let mut receiver = self.snapshot.subscribe();
+        loop {
+            if let Some(value) = receiver.borrow_and_update().clone() {
+                match value {
+                    Ok(snapshot) if snapshot.requested.contains(path) => return Ok(snapshot),
+                    Err(error) => return Err(error),
+                    _ => {}
+                }
+            }
+            receiver.changed().await.map_err(|_| "File tree stopped")?;
+        }
+    }
     pub async fn snapshot(&self) -> Result<Snapshot, String> {
         *self.last_used.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
         let mut receiver = self.snapshot.subscribe();
@@ -101,12 +133,17 @@ impl Service {
         }
         let (snapshot, _) = watch::channel(None);
         let (events, _) = broadcast::channel(16);
+        let (wake, signals) = mpsc::sync_channel(1);
         let entry = Arc::new(Entry {
             snapshot,
             events,
             last_used: Mutex::new(Instant::now()),
+            requested: Mutex::new(HashSet::from([root.clone()])),
+            wake,
             #[cfg(test)]
             scans: AtomicU64::new(0),
+            #[cfg(test)]
+            listings: AtomicU64::new(0),
         });
         entries.insert(key.clone(), entry.clone());
         let map = Arc::downgrade(&self.entries);
@@ -114,7 +151,7 @@ impl Service {
         let worker_root = root.clone();
         let worker_key = key.clone();
         if let Err(error) = std::thread::Builder::new().name("tree-watch".into()).spawn(move || {
-            let outcome = run(&worker_root, &private, show_hidden, &worker_entry, || {
+            let outcome = run(&worker_root, &private, show_hidden, &worker_entry, signals, || {
                 let Some(map) = map.upgrade() else { return false; };
                 let mut map = map.lock().unwrap_or_else(|e| e.into_inner());
                 let active = worker_entry.events.receiver_count() > 0
@@ -209,6 +246,10 @@ struct Scan<'a> {
     known: &'a RwLock<HashSet<PathBuf>>,
     paths: HashSet<PathBuf>,
     show_hidden: bool,
+    requested: &'a HashSet<PathBuf>,
+    cache: &'a mut HashMap<PathBuf, Vec<Node>>,
+    #[cfg(test)]
+    listings: &'a AtomicU64,
 }
 
 fn directory_entries(directory: &Path, private: &Path, show_hidden: bool) -> ignore::Walk {
@@ -240,71 +281,80 @@ impl Scan<'_> {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(directory.to_path_buf());
-        let mut nodes = Vec::new();
-        for item in directory_entries(directory, self.private, self.show_hidden) {
-            let item = match item {
-                Ok(item) if item.depth() > 0 => item,
-                Ok(_) => continue,
-                Err(error) => {
-                    tracing::debug!(%error, "Skipping unavailable tree entry");
+        let mut nodes = if let Some(nodes) = self.cache.get(directory) {
+            nodes.clone()
+        } else {
+            #[cfg(test)]
+            self.listings.fetch_add(1, Ordering::Relaxed);
+            let mut nodes = Vec::new();
+            for item in directory_entries(directory, self.private, self.show_hidden) {
+                let item = match item {
+                    Ok(item) if item.depth() > 0 => item,
+                    Ok(_) => continue,
+                    Err(error) => {
+                        tracing::debug!(%error, "Skipping unavailable tree entry");
+                        continue;
+                    }
+                };
+                let Some(ty) = item.file_type() else { continue };
+                if ty.is_symlink() || (!ty.is_dir() && !ty.is_file()) {
                     continue;
                 }
-            };
-            let Some(ty) = item.file_type() else { continue };
-            if ty.is_symlink() || (!ty.is_dir() && !ty.is_file()) {
-                continue;
+                let file = item.path();
+                let metadata = match item.metadata() {
+                    Ok(metadata) => metadata,
+                    Err(_) => continue,
+                };
+                let modified = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .and_then(|duration| {
+                        time::OffsetDateTime::from_unix_timestamp_nanos(duration.as_nanos() as i128)
+                            .ok()
+                    })
+                    .and_then(|date| {
+                        date.format(&time::format_description::well_known::Rfc3339)
+                            .ok()
+                    })
+                    .unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
+                nodes.push(Node {
+                    name: item.file_name().to_string_lossy().into_owned(),
+                    path: file
+                        .strip_prefix(self.root)
+                        .unwrap_or(file)
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                    absolute_path: ty.is_dir().then(|| crate::client_path(file)),
+                    kind: if ty.is_dir() { "directory" } else { "file" },
+                    transport_stream: ty.is_file()
+                        && file
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("ts"))
+                        && crate::media::is_video(file),
+                    modified,
+                    children: None,
+                });
             }
-            let file = item.path();
-            self.paths.insert(file.to_path_buf());
+            nodes.sort_by(|a, b| {
+                (a.kind != "directory")
+                    .cmp(&(b.kind != "directory"))
+                    .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
+            self.cache.insert(directory.to_path_buf(), nodes.clone());
+            nodes
+        };
+        for node in &mut nodes {
+            let path = self.root.join(&node.path);
+            self.paths.insert(path.clone());
             self.known
                 .write()
                 .unwrap_or_else(|e| e.into_inner())
-                .insert(file.to_path_buf());
-            let metadata = match item.metadata() {
-                Ok(metadata) => metadata,
-                Err(_) => continue,
-            };
-            let children = if ty.is_dir() {
-                self.directory(file)?
-            } else {
-                Vec::new()
-            };
-            let modified = metadata
-                .modified()
-                .ok()
-                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                .and_then(|duration| {
-                    time::OffsetDateTime::from_unix_timestamp_nanos(duration.as_nanos() as i128)
-                        .ok()
-                })
-                .and_then(|date| {
-                    date.format(&time::format_description::well_known::Rfc3339)
-                        .ok()
-                })
-                .unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
-            nodes.push(Node {
-                name: item.file_name().to_string_lossy().into_owned(),
-                path: file
-                    .strip_prefix(self.root)
-                    .unwrap_or(file)
-                    .to_string_lossy()
-                    .replace('\\', "/"),
-                absolute_path: ty.is_dir().then(|| crate::client_path(file)),
-                kind: if ty.is_dir() { "directory" } else { "file" },
-                transport_stream: ty.is_file()
-                    && file
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("ts"))
-                    && crate::media::is_video(file),
-                modified,
-                children,
-            });
+                .insert(path.clone());
+            if node.kind == "directory" && self.requested.contains(&path) {
+                node.children = Some(self.directory(&path)?);
+            }
         }
-        nodes.sort_by(|a, b| {
-            (a.kind != "directory")
-                .cmp(&(b.kind != "directory"))
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
         Ok(nodes)
     }
 }
@@ -314,9 +364,10 @@ fn run(
     private: &Path,
     show_hidden: bool,
     entry: &Entry,
+    signals: mpsc::Receiver<()>,
     alive: impl Fn() -> bool,
 ) -> Result<(), String> {
-    let (dirty, signals) = mpsc::sync_channel(1);
+    let dirty = entry.wake.clone();
     let known = Arc::new(RwLock::new(HashSet::from([root.to_path_buf()])));
     let controls = Arc::new(RwLock::new(control_files(root)));
     let event_known = known.clone();
@@ -385,11 +436,6 @@ fn run(
                         .contains(path)
             });
         if relevant {
-            if event.need_rescan()
-                || matches!(
-                    event.kind,
-                    EventKind::Remove(_) | EventKind::Modify(ModifyKind::Name(_))
-                )
             {
                 let mut invalid = event_invalidated.lock().unwrap_or_else(|e| e.into_inner());
                 if event.need_rescan() || invalid.len() > 4096 {
@@ -404,6 +450,7 @@ fn run(
     })
     .map_err(|error| error.to_string())?;
     let mut watched = HashSet::<PathBuf>::new();
+    let mut cache = HashMap::new();
     loop {
         if !root.is_dir() {
             return Err("Repository directory was removed".into());
@@ -413,6 +460,29 @@ fn run(
         // A removed/recreated directory can retain its pathname while losing
         // the OS watch. Reinstall affected watches before traversing it.
         let invalid = std::mem::take(&mut *invalidated.lock().unwrap_or_else(|e| e.into_inner()));
+        let control_paths = control_files(root);
+        // Ignore/config changes may affect every loaded directory. Ordinary
+        // changes invalidate only the containing listing and removed subtrees.
+        cache.retain(|directory: &PathBuf, _: &mut Vec<Node>| {
+            !invalid.iter().any(|path| {
+                path == root
+                    || !path.starts_with(root)
+                    || control_paths
+                        .iter()
+                        .any(|control| control == path || control.starts_with(path))
+                    || matches!(
+                        path.file_name().and_then(|name| name.to_str()),
+                        Some(".gitignore" | ".ignore")
+                    )
+                    || directory.starts_with(path)
+                    || path.parent() == Some(directory.as_path())
+            })
+        });
+        let requested = entry
+            .requested
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         for stale in watched
             .iter()
             .filter(|path| invalid.iter().any(|prefix| path.starts_with(prefix)))
@@ -422,7 +492,6 @@ fn run(
             let _ = watcher.unwatch(&stale);
             watched.remove(&stale);
         }
-        let control_paths = control_files(root);
         *controls.write().unwrap_or_else(|e| e.into_inner()) = control_paths.clone();
         let mut scan = Scan {
             root,
@@ -433,6 +502,10 @@ fn run(
             known: &known,
             paths: HashSet::new(),
             show_hidden,
+            requested: &requested,
+            cache: &mut cache,
+            #[cfg(test)]
+            listings: &entry.listings,
         };
         // Watch ignore/config parents too, including creation of missing files.
         for path in control_paths {
@@ -469,14 +542,16 @@ fn run(
             .borrow()
             .as_ref()
             .is_none_or(|previous| match previous {
-                Ok(previous) => previous.body != body,
+                Ok(previous) => previous.body != body || *previous.requested != requested,
                 Err(_) => true,
             });
         if changed {
             let revision = NEXT_REVISION.fetch_add(1, Ordering::Relaxed);
-            entry
-                .snapshot
-                .send_replace(Some(Ok(Snapshot { body, revision })));
+            entry.snapshot.send_replace(Some(Ok(Snapshot {
+                body,
+                revision,
+                requested: Arc::new(requested),
+            })));
             let _ = entry.events.send(Event::Changed(revision));
         }
         loop {
@@ -627,6 +702,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shallow_start_and_expansion_reuse_loaded_directory_listings() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().to_path_buf();
+        std::fs::create_dir_all(root.join("docs/deep")).unwrap();
+        std::fs::create_dir(root.join("unopened")).unwrap();
+        std::fs::write(root.join("docs/deep/note.md"), "note").unwrap();
+        std::fs::write(root.join("unopened/hidden.md"), "not browsed").unwrap();
+        let service = Service::default();
+        let entry = service
+            .entry(root.clone(), root.join("private"), false)
+            .unwrap();
+        let initial = entry.snapshot().await.unwrap();
+        assert_eq!(paths(&initial), ["docs", "unopened"]);
+        assert_eq!(entry.listings.load(Ordering::Relaxed), 1);
+        let loaded = entry
+            .directory(&root, &root.join("docs/deep"))
+            .await
+            .unwrap();
+        assert_eq!(
+            paths(&loaded),
+            ["docs", "docs/deep", "docs/deep/note.md", "unopened"]
+        );
+        assert_eq!(entry.listings.load(Ordering::Relaxed), 3);
+        let again = entry.directory(&root, &root.join("docs")).await.unwrap();
+        assert_eq!(again.body.as_ptr(), loaded.body.as_ptr());
+        assert_eq!(entry.listings.load(Ordering::Relaxed), 3);
+    }
+
+    #[tokio::test]
     async fn native_events_track_new_directories_nested_ignores_and_git_excludes() {
         let temporary = tempfile::tempdir().unwrap();
         let root = temporary.path().to_path_buf();
@@ -644,6 +748,11 @@ mod tests {
         assert_eq!(paths(&entry.snapshot().await.unwrap()), ["docs"]);
         std::fs::create_dir_all(root.join("docs/new/sub")).unwrap();
         std::fs::write(root.join("docs/new/sub/note.md"), "new").unwrap();
+        // Unopened directories are intentionally absent until requested.
+        entry
+            .directory(&root, &root.join("docs/new/sub"))
+            .await
+            .unwrap();
         wait_for(&entry, &mut events, |paths| {
             paths.iter().any(|path| path == "docs/new/sub/note.md")
         })

@@ -25,6 +25,16 @@ export function indexFileTree(nodes = [], index = new Map()) {
   return index;
 }
 
+// Recursive views opt in to walking unopened branches, one directory at a time.
+export function unloadedDirectory(nodes = []) {
+  for (const node of nodes) {
+    if (node.type !== 'directory') continue;
+    if (node.children === undefined) return node.path;
+    const path = unloadedDirectory(node.children);
+    if (path !== undefined) return path;
+  }
+}
+
 // Preserve only bookmarked leaves and their ancestor folders, in tree order.
 export function filterBookmarkedTree(nodes = [], bookmarks = []) {
   const paths = new Set(bookmarks.map(bookmark => bookmark.path));

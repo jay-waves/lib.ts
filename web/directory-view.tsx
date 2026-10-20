@@ -16,17 +16,21 @@ import { bindGalleryZoom, gallerySize, resizeGallery } from './gallery/gallery-z
 import { directorySortOptions, gallerySortOptions, galleryImages, isBrowserVideo, sortDirectoryNodes } from './gallery/gallery-images';
 import type { DirectorySort } from './gallery/gallery-images';
 import { preloadVideoPlayer } from './video/video-player-loader';
+import { unloadedDirectory } from './file-tree.mjs';
+import { useIncrementalList } from './use-incremental-list';
 
 interface DirectoryViewProps {
   directory: { path?: string; absolutePath?: string; children?: TreeNode[] };
   navigate(path: string, directory: boolean): void;
   display: ReturnType<typeof readRepositoryDisplayState>;
   onDisplayChange(patch: ReturnType<typeof readRepositoryDisplayState>): void;
+  loadDirectory(path: string): Promise<unknown>;
+  treeError?: string;
 }
 
 const emptyChildren: TreeNode[] = [];
 
-export function DirectoryView({ directory, navigate, display, onDisplayChange }: DirectoryViewProps) {
+export function DirectoryView({ directory, navigate, display, onDisplayChange, loadDirectory, treeError }: DirectoryViewProps) {
   const directoryRef = useRef<HTMLDivElement>(null);
   const { stuck, sentinelRef } = useToolbarStuck();
   const [savedState] = useState(() => readDirectoryState(pageBase, directory.path));
@@ -40,15 +44,21 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
   }, [directory.path, width, sort]);
   const activeSort = !gallery && sort.startsWith('taken-') ? sort === 'taken-asc' ? 'time-asc' : 'time-desc' : sort;
   const entries = useMemo(() => gallery ? [] : sortDirectoryNodes(children, activeSort), [children, activeSort, gallery]);
-  const candidates = useMemo(() => gallery ? galleryImages(children, recursive) : [],
-    [children, recursive, gallery]);
+  const list = useIncrementalList(entries.length);
+  const unopened = useMemo(() => gallery && recursive ? unloadedDirectory(children) : undefined, [children, gallery, recursive]);
+  useEffect(() => {
+    if (unopened !== undefined) void loadDirectory(unopened);
+  }, [unopened, loadDirectory]);
+  const candidates = useMemo(() => gallery && unopened === undefined ? galleryImages(children, recursive) : [],
+    [children, recursive, gallery, unopened]);
   const hasPlayableVideo = candidates.some(isBrowserVideo);
   useEffect(() => {
     if (hasPlayableVideo) preloadVideoPlayer();
   }, [hasPlayableVideo]);
   const { images, ratios, loading: dimensionsLoading, hasMore, loadMore, error: metadataError } = useGalleryMedia(candidates, sort);
   useDirectoryScroll(directoryRef, pageBase, directory.path ?? '',
-    !gallery || availableWidth > 0 && !dimensionsLoading, !gallery || !hasMore, loadMore);
+    !gallery || availableWidth > 0 && !dimensionsLoading,
+    gallery ? !hasMore : !list.hasMore, gallery ? loadMore : list.more);
   const zoomSteps = useMemo(() => dimensionsLoading || !ratios.length || !availableWidth
     ? { smaller: width, larger: width }
     : {
@@ -138,7 +148,10 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
       </div>
     </FileToolbar>
     {(openError || copyError) && <div className="action-error" role="alert">{openError || copyError}</div>}
-    {gallery ? <DirectoryGallery rows={rows} images={images} total={candidates.length} hasMore={hasMore} loadMore={loadMore} width={width} availableWidth={availableWidth} onWidthChange={setAvailableWidth} recursive={recursive} autoplayVideos={autoplayVideos} navigate={navigate} ratios={ratios} dimensionsLoading={dimensionsLoading} /> : entries.map(node => <a className="ui-focus flex min-h-toolbar box-border items-center gap-2 border-0 border-b border-solid border-divider px-3.5 py-2 text-ui text-fg no-underline last:border-b-0 hover:bg-subtle [&>svg]:shrink-0 [&>svg]:text-muted @max-reader-md/reader:px-3 @max-reader-sm/reader:flex-wrap" key={node.path} href={fileUrl(node.path, node.type === 'directory')}
+    {unopened !== undefined && treeError && <div className="action-error" role="alert">{treeError}
+      <button type="button" className="ui-text-button" onClick={() => void loadDirectory(unopened)}>Retry</button>
+    </div>}
+    {gallery ? <DirectoryGallery rows={rows} images={images} total={candidates.length} hasMore={hasMore} loadMore={loadMore} width={width} availableWidth={availableWidth} onWidthChange={setAvailableWidth} recursive={recursive} autoplayVideos={autoplayVideos} navigate={navigate} ratios={ratios} dimensionsLoading={dimensionsLoading || unopened !== undefined} /> : entries.slice(0, list.shown).map(node => <a className="ui-focus flex min-h-toolbar box-border items-center gap-2 border-0 border-b border-solid border-divider px-3.5 py-2 text-ui text-fg no-underline last:border-b-0 hover:bg-subtle [&>svg]:shrink-0 [&>svg]:text-muted @max-reader-md/reader:px-3 @max-reader-sm/reader:flex-wrap" key={node.path} href={fileUrl(node.path, node.type === 'directory')}
       onClick={event => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault(); navigate(node.path, node.type === 'directory');
@@ -148,6 +161,7 @@ export function DirectoryView({ directory, navigate, display, onDisplayChange }:
       {node.type === 'directory' && node.modified && <time className="ms-auto flex-none whitespace-nowrap text-meta text-muted @max-reader-sm/reader:ms-6 @max-reader-sm/reader:w-[calc(100%-24px)]" dateTime={node.modified}
         >{formatRelativeModified(node.modified)}</time>}
     </a>)}
+    {!gallery && list.hasMore && <button type="button" className="ui-text-button m-3.5" onClick={list.more}><span ref={list.marker}>Show more…</span></button>}
     {gallery && metadataError && <div className="px-3.5 py-2 text-meta text-muted" role="status">{metadataError}</div>}
   </div>;
 }

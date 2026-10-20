@@ -1,14 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGalleryPlaybackQueue, createGalleryPreviewCache, startGalleryPlayback, galleryPlaybackWeight } from './gallery-playback.mjs';
+import { createGalleryPlaybackQueue, createGalleryPreviewCache, startGalleryPlayback, galleryPlaybackWeight, galleryPlaybackTurn } from './gallery-playback.mjs';
 
-function fixture(play = () => new Promise(() => {}), queue, page, dimensions = { width: 1280, height: 720 }) {
+function schedulerClock() {
   const tasks = new Map();
   let sequence = 0;
-  const timers = {
+  return {
+    tasks,
     setTimeout(fn, delay) { tasks.set(++sequence, { fn, delay }); return sequence; },
     clearTimeout(id) { tasks.delete(id); },
+    tick(delay = galleryPlaybackTurn) {
+      const task = [...tasks].find(([, value]) => value.delay === delay);
+      assert.ok(task, `expected ${delay}ms timer`);
+      tasks.delete(task[0]);
+      task[1].fn();
+    },
   };
+}
+
+function fixture(play = () => new Promise(() => {}), queue, page, dimensions = { width: 1280, height: 720 }) {
+  const timers = schedulerClock();
   const video = Object.assign(new EventTarget(), {
     src: '', pauses: 0, loads: 0, plays: 0,
     play() { this.plays++; return play(); },
@@ -22,13 +33,7 @@ function fixture(play = () => new Promise(() => {}), queue, page, dimensions = {
   const stop = startGalleryPlayback(video, '/clip', {
     onReady: value => ready.push(value), onError: () => errors++, queue, page, dimensions,
   }, timers);
-  const tick = delay => {
-    const task = [...tasks].find(([, value]) => value.delay === delay);
-    assert.ok(task, `expected ${delay}ms timer`);
-    tasks.delete(task[0]);
-    task[1].fn();
-  };
-  return { video, ready, tasks, stop, tick, errors: () => errors };
+  return { video, ready, tasks: timers.tasks, stop, tick: timers.tick, errors: () => errors };
 }
 
 test('pending play times out, releases the source and retries only once', () => {
@@ -269,4 +274,145 @@ test('higher resolution discovered during playback must wait for enough budget',
   next.stop();
   assert.equal(first.video.plays, 2);
   first.stop();
+});
+
+test('large queued videos get a turn even when smaller videos keep looping', () => {
+  const clock = schedulerClock(), queue = createGalleryPlaybackQueue(8, clock);
+  const small = Array.from({ length: 4 }, () => fixture(undefined, queue, undefined, { width: 1920, height: 1080 }));
+  for (const f of small) f.video.dispatchEvent(new Event('playing'));
+  const large = fixture(undefined, queue, undefined, { width: 3840, height: 2160 });
+  assert.equal(large.video.plays, 0);
+  clock.tick();
+  assert.equal(large.video.plays, 1);
+  for (const f of small) {
+    assert.equal(f.video.pauses, 1);
+    assert.equal(f.video.loads, 0);
+    assert.deepEqual(f.ready, [true]);
+  }
+  large.video.dispatchEvent(new Event('playing'));
+  clock.tick();
+  assert.ok(small.some(f => f.video.plays === 2));
+  for (const f of [...small, large]) f.stop();
+  assert.equal(clock.tasks.size, 0);
+});
+
+test('ordinary rotation gives a slow starting video time to load', () => {
+  const clock = schedulerClock(), queue = createGalleryPlaybackQueue(1, clock);
+  const slow = fixture(undefined, queue), next = fixture(undefined, queue);
+  clock.tick();
+  assert.equal(slow.video.pauses, 0);
+  assert.equal(next.video.plays, 0);
+  slow.video.dispatchEvent(new Event('playing'));
+  clock.tick();
+  assert.equal(next.video.plays, 1);
+  slow.stop(); next.stop();
+  assert.equal(clock.tasks.size, 0);
+});
+
+test('hover borrows one slot without pausing automatic previews', () => {
+  const clock = schedulerClock(), queue = createGalleryPlaybackQueue(8, clock);
+  const small = Array.from({ length: 4 }, () => fixture(undefined, queue, undefined, { width: 1920, height: 1080 }));
+  const large = fixture(undefined, queue, undefined, { width: 3840, height: 2160 });
+  large.stop.setPriority(true);
+  assert.equal(large.video.plays, 1);
+  for (const f of small) {
+    assert.equal(f.video.pauses, 0);
+    assert.equal(f.video.loads, 0);
+  }
+  assert.equal(clock.tasks.size, 0, 'no rotation is needed when everyone can play');
+  large.stop.setPriority(false);
+  assert.equal(large.video.pauses, 1, 'hover exit returns to the automatic budget');
+  assert.equal(large.video.loads, 0);
+  for (const f of [...small, large]) f.stop();
+});
+
+test('the extra slot is bounded and released on cancellation', () => {
+  const clock = schedulerClock(), queue = createGalleryPlaybackQueue(1, clock);
+  const automatic = fixture(undefined, queue);
+  const first = fixture(undefined, queue), second = fixture(undefined, queue);
+  first.stop.setPriority(true);
+  second.stop.setPriority(true);
+  assert.equal(first.video.plays, 1);
+  assert.equal(second.video.plays, 0);
+  assert.equal(automatic.video.pauses, 0);
+  first.stop();
+  assert.equal(second.video.plays, 1);
+  assert.equal(automatic.video.pauses, 0);
+  automatic.stop(); second.stop();
+  assert.equal(clock.tasks.size, 0);
+});
+
+test('a borrowed preview returns to available budget without pausing or reloading', () => {
+  const clock = schedulerClock(), queue = createGalleryPlaybackQueue(1, clock);
+  const automatic = fixture(undefined, queue), hovered = fixture(undefined, queue);
+  hovered.stop.setPriority(true);
+  automatic.stop();
+  hovered.stop.setPriority(false);
+  assert.equal(hovered.video.plays, 1);
+  assert.equal(hovered.video.pauses, 0);
+  assert.equal(hovered.video.loads, 0);
+  const next = fixture(undefined, queue);
+  assert.equal(next.video.plays, 0, 'the former extra slot now counts against the normal budget');
+  hovered.stop();
+  assert.equal(next.video.plays, 1);
+  next.stop();
+});
+
+test('cancelled waiters never rotate back into playback', () => {
+  const clock = schedulerClock(), queue = createGalleryPlaybackQueue(1, clock);
+  const first = fixture(undefined, queue), next = fixture(undefined, queue);
+  first.video.dispatchEvent(new Event('playing'));
+  next.stop();
+  assert.equal(clock.tasks.size, 0);
+  assert.equal(first.video.pauses, 0);
+  assert.equal(next.video.plays, 0);
+  first.stop();
+});
+
+test('growing buffer extends the timeout, repeated progress without new data does not', () => {
+  const f = fixture();
+  let end = 1;
+  f.video.buffered = { length: 1, end: () => end };
+  const initial = [...f.tasks.keys()][0];
+  f.video.dispatchEvent(new Event('progress'));
+  const progressed = [...f.tasks.keys()][0];
+  assert.notEqual(progressed, initial);
+  f.video.dispatchEvent(new Event('progress'));
+  assert.equal([...f.tasks.keys()][0], progressed);
+  end = 3;
+  f.video.dispatchEvent(new Event('progress'));
+  assert.notEqual([...f.tasks.keys()][0], progressed);
+  assert.equal(f.video.loads, 0);
+  f.stop();
+});
+
+test('cache eviction unloads once and reuses the same controller on reentry', () => {
+  const f = fixture();
+  f.video.dispatchEvent(new Event('playing'));
+  f.stop.unload();
+  f.stop.unload();
+  assert.equal(f.video.src, '');
+  assert.equal(f.video.loads, 1);
+  assert.equal(f.tasks.size, 0);
+  f.stop.setEnabled(true);
+  assert.equal(f.video.src, '/clip');
+  assert.equal(f.video.plays, 2);
+  f.stop();
+  f.stop();
+  assert.equal(f.video.loads, 2);
+});
+
+test('hover explicitly retries a failed preview without remounting it', () => {
+  const page = Object.assign(new EventTarget(), { hidden: false });
+  const f = fixture(undefined, undefined, page);
+  f.tick(60000); f.tick(500); f.tick(60000);
+  assert.equal(f.errors(), 1);
+  assert.equal(f.video.plays, 2);
+  page.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(f.video.plays, 2, 'foreground updates do not restart failed requests indefinitely');
+  f.stop.setPriority(true);
+  assert.equal(f.video.plays, 3);
+  f.video.dispatchEvent(new Event('playing'));
+  assert.equal(f.ready.at(-1), true);
+  f.stop();
 });

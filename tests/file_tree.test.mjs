@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sortFileTree, filterBookmarkedTree, isPlainTreeActivation, fileTreeForView, fileListFromPaths, fileTreeFromPaths } from '../web/file-tree.mjs';
+import { sortFileTree, filterBookmarkedTree, isPlainTreeActivation, fileTreeForView, fileListFromPaths, fileTreeFromPaths, unloadedDirectory } from '../web/file-tree.mjs';
 
 test('modified sorting is recursive, directories first, newest first and leaves the source intact', () => {
   const older = { name: 'a.md', type: 'file', modified: '2026-01-01T00:00:00Z' };
@@ -100,4 +100,18 @@ test('search file tree groups ancestors, preserves full paths and sorts director
   assert.equal(tree[0].children[0].path, 'docs/main.rs');
   assert.deepEqual(paths, original);
   assert.deepEqual(fileTreeFromPaths([]), []);
+});
+
+
+test('recursive browsing distinguishes empty directories from unopened ones', () => {
+  const nodes = [
+    { type: 'directory', path: 'empty', children: [] },
+    { type: 'directory', path: 'docs', children: [{ type: 'directory', path: 'docs/deep' }] },
+    { type: 'directory', path: 'photos' },
+  ];
+  assert.equal(unloadedDirectory(nodes), 'docs/deep');
+  nodes[1].children[0].children = [];
+  assert.equal(unloadedDirectory(nodes), 'photos');
+  nodes[2].children = [];
+  assert.equal(unloadedDirectory(nodes), undefined);
 });

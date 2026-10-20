@@ -17,6 +17,7 @@ mod repositories;
 #[serde(default, rename_all = "camelCase")]
 struct TreeQuery {
     show_hidden: bool,
+    path: String,
 }
 
 pub(super) fn build_router(state: AppState) -> Router {

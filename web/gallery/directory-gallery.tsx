@@ -7,7 +7,8 @@ import './directory-gallery.css';
 import { isVideoMedia, isBrowserVideo, mediaKey } from './gallery-images';
 import { galleryLayout, galleryRowLayout } from './gallery-layout.mjs';
 import { thumbnailUrl, mediaFileUrl } from '../media/media-urls.mjs';
-import { createGalleryPlaybackQueue, createGalleryPreviewCache, startGalleryPlayback } from './gallery-playback.mjs';
+import { createGalleryPlaybackQueue, createGalleryPreviewCache } from './gallery-playback.mjs';
+import { useGalleryPlayback } from './use-gallery-playback';
 
 function ImageCard({ node, autoplayVideos, navigate, style, playbackQueue, previewCache }: {
   node: GalleryImage; autoplayVideos: boolean; navigate(path: string, directory: boolean): void;
@@ -16,94 +17,19 @@ function ImageCard({ node, autoplayVideos, navigate, style, playbackQueue, previ
   previewCache: ReturnType<typeof createGalleryPreviewCache>;
 }) {
   const [imageError, setImageError] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [videoReady, setVideoReady] = useState(false);
-  const [playError, setPlayError] = useState(false);
   const videoNode = node.liveVideo ?? (isVideoMedia(node) ? node : undefined);
   const video = !!videoNode;
   const playable = !!videoNode && isBrowserVideo(videoNode);
-  const videoSrc = videoNode ? mediaFileUrl(apiBase, videoNode) : '';
-  const player = useRef<HTMLVideoElement>(null);
-  const videoLabel = playError ? 'Preview unavailable; open to play' : node.liveVideo ? 'Live photo' : 'Video';
-  const card = useRef<HTMLAnchorElement>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const visible = useRef(false);
-  const hovering = useRef(false);
-  const playback = useRef<ReturnType<typeof startGalleryPlayback> | null>(null);
-  const unloadTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const wanted = useRef(false);
-  const stop = () => {
-    clearTimeout(timer.current);
-    clearTimeout(unloadTimer.current);
-    previewCache.forget(videoSrc);
-    playback.current?.();
-    playback.current = null;
-    setPlaying(false);
-    setVideoReady(false);
-  };
-  const update = () => {
-    const next = visible.current && (autoplayVideos || hovering.current);
-    wanted.current = next;
-    clearTimeout(timer.current);
-    if (next) {
-      previewCache.forget(videoSrc);
-      clearTimeout(unloadTimer.current);
-      setPlayError(false);
-      setPlaying(true);
-      playback.current?.setEnabled(true);
-    } else {
-      playback.current?.setEnabled(false);
-      if (playback.current) previewCache.retain(videoSrc, stop);
-    }
-  };
-  useEffect(() => {
-    if (!playable || !card.current) return;
-    const root = card.current.closest('.main-panel');
-    const observer = new IntersectionObserver(([entry]) => {
-      // Occlusion/background transitions must not be treated as scrolling.
-      if (document.hidden) return;
-      visible.current = entry.isIntersecting && entry.intersectionRatio > 0;
-      update();
-    }, { root, rootMargin: '120px 0px', threshold: [0, 0.01] });
-    const retention = new IntersectionObserver(([entry]) => {
-      if (document.hidden) return;
-      clearTimeout(unloadTimer.current);
-      if (!entry.isIntersecting) unloadTimer.current = setTimeout(() => {
-        if (!document.hidden && !wanted.current) stop();
-      }, 5000);
-    }, { root, rootMargin: '800px 0px' });
-    observer.observe(card.current);
-    retention.observe(card.current);
-    return () => {
-      observer.disconnect(); retention.disconnect();
-      clearTimeout(timer.current); clearTimeout(unloadTimer.current);
-    };
-  }, [playable, autoplayVideos, videoSrc, previewCache]);
-  useEffect(() => { update(); }, [autoplayVideos]);
-  useEffect(() => {
-    if (!playing) return;
-    const element = player.current;
-    if (!element || !videoSrc) return;
-    const control = startGalleryPlayback(element, videoSrc, {
-      queue: playbackQueue, enabled: wanted.current,
-      dimensions: node.liveVideo ? undefined : node.dimensions,
-      onReady: setVideoReady,
-      onError: () => { stop(); setPlayError(true); },
-    });
-    playback.current = control;
-    return () => {
-      control(); playback.current = null;
-      previewCache.forget(videoSrc);
-    };
-  }, [playing, videoSrc, playbackQueue, previewCache]);
+  const playback = useGalleryPlayback({
+    src: videoNode ? mediaFileUrl(apiBase, videoNode) : '', playable, autoplay: autoplayVideos,
+    dimensions: node.liveVideo ? undefined : node.dimensions, queue: playbackQueue, cache: previewCache,
+  });
+  const videoLabel = playback.error ? 'Preview unavailable; hover to retry or open to play'
+    : playback.queued ? 'Waiting to play; hover to play' : node.liveVideo ? 'Live photo' : 'Video';
   return <a className="gallery-card absolute box-border overflow-hidden rounded-lg border border-solid border-divider bg-subtle text-fg no-underline transition-[border-color,box-shadow] duration-160 ease-[ease] hover:z-2 focus-visible:z-2 motion-reduce:transition-none" href={fileUrl(node.path)}
     style={style}
-    ref={card} onMouseEnter={() => {
-      hovering.current = true;
-      if (playable) timer.current = setTimeout(update, 150);
-    }}
-    onMouseLeave={() => { hovering.current = false; update(); }}
-    onBlur={() => { hovering.current = false; update(); }}
+    ref={playback.card} onMouseEnter={playback.onMouseEnter} onMouseLeave={playback.onMouseLeave}
+    onFocus={playback.onFocus} onBlur={playback.onBlur}
     aria-label={`Open ${node.name}${node.liveVideo ? ' (Live photo)' : ''}`} onClick={event => {
       if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); navigate(node.path, false);
@@ -117,7 +43,7 @@ function ImageCard({ node, autoplayVideos, navigate, style, playbackQueue, previ
       {video && <span className="absolute right-2 bottom-2 z-1 flex rounded bg-[#0004] p-[3px] text-white opacity-65" role="img" aria-label={videoLabel} title={videoLabel}>
         {node.liveVideo ? <BroadcastIcon size={14} /> : <TriangleIcon size={16} />}
       </span>}
-      {playable && playing && <video ref={player} className={`pointer-events-none absolute inset-0 size-full bg-subtle object-contain ${videoReady ? 'visible' : 'invisible'}`}
+      {playable && <video ref={playback.player} className={`pointer-events-none absolute inset-0 size-full bg-subtle object-contain ${playback.ready ? 'visible' : 'invisible'}`}
         muted loop playsInline preload="none" />}
     </div>
   </a>;
@@ -171,7 +97,8 @@ export function DirectoryGallery({ images, total, hasMore, loadMore, width, avai
           navigate={navigate} style={layout.items[index]} playbackQueue={playbackQueue} previewCache={previewCache} />)}
       </div>
       {hasMore && !showLoading && <div ref={end} className="h-px" aria-hidden="true" />}
-    </> : <div className="ui-empty px-6 py-16 text-ui" role="status"><ImageIcon size={40} />
+    </> : dimensionsLoading ? <div className="status" role="status">Loading media directories…</div>
+      : <div className="ui-empty px-6 py-16 text-ui" role="status"><ImageIcon size={40} />
       <strong className="text-base leading-5 text-fg">No images or videos in this folder</strong>
       <span>{recursive ? 'Try another folder or return to the file list.' : 'Enable Include subdirectories in the menu to look for more media.'}</span>
     </div>}

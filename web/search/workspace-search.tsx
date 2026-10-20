@@ -37,7 +37,7 @@ export function useWorkspaceSearch({ config, onConfig, navigate, active, current
       </section>
     </>;
   const paths = useMemo(() => scope === 'bookmarks' ? bookmarks.map(item => item.path)
-    : scope === 'files' ? [...treeIndex.values()].filter(node => node.type === 'file').map(node => node.path) : [], [scope, bookmarks, treeIndex]);
+    : [], [scope, bookmarks]);
   const pathSuggestions = useMemo(() => [...treeIndex.values()].filter(node => node.type === 'directory')
     .map(node => ({ value: `${node.path.replace(/\/+$/, '')}/` }))
     .sort((a, b) => a.value.localeCompare(b.value)), [treeIndex]);

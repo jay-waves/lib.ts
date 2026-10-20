@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createTreeResource } from './tree-resource';
 import { getFileTree, watchFileTree } from './api/library';
 import type { FileTree } from './api/contracts';
@@ -11,21 +11,28 @@ interface FileTreeState {
 
 export function useFileTree(apiBase: string, selected: string, active = true, showHidden = false) {
   const resource = useMemo(
-    () => createTreeResource(signal => getFileTree(apiBase, signal, showHidden)),
+    () => createTreeResource((signal, path) => getFileTree(apiBase, signal, showHidden, path)),
     [apiBase, showHidden],
   );
   const [state, setState] = useState<FileTreeState>({ tree: null, loading: true, error: '' });
-  const update = useCallback((path: string, force = false) => {
+  const current = useRef({ resource, selected });
+  current.current = { resource, selected };
+  useEffect(() => {
+    setState({ tree: null, loading: Boolean(apiBase), error: '' });
+    return resource.subscribe(tree => setState({ tree, loading: false, error: '' }));
+  }, [resource, apiBase]);
+  const update = useCallback((path: string, force = false, directory = false) => {
     if (force || !resource.has(path)) setState(previous => ({ ...previous, loading: true, error: '' }));
-    return (force ? resource.invalidate() : resource.ensure(path)).then(tree => {
-      setState(previous => previous.tree === tree && !previous.loading && !previous.error
-        ? previous : { tree, loading: false, error: '' });
-    }).catch((error: unknown) => {
+    return (force ? resource.invalidate() : directory ? resource.ensureDirectory(path) : resource.ensure(path)).catch((error: unknown) => {
       if (!(error instanceof DOMException && error.name === 'AbortError'))
         setState(previous => ({ ...previous, loading: false, error: String(error) }));
     });
   }, [resource]);
-  const refresh = useCallback(() => update('', true), [update]);
+  const loadDirectory = useCallback((path: string) => update(path, false, true), [update]);
+  const refresh = useCallback(async () => {
+    await update('', true);
+    if (current.current.resource === resource) await update(current.current.selected);
+  }, [update, resource]);
   useEffect(() => {
     if (!apiBase) {
       setState({ tree: null, loading: false, error: '' });
@@ -49,5 +56,5 @@ export function useFileTree(apiBase: string, selected: string, active = true, sh
     return () => { disposed = true; stream.close(); };
   }, [apiBase, resource, refresh, active, showHidden]);
   useEffect(() => () => resource.dispose(), [resource]);
-  return { ...state, index: resource.index, refresh };
+  return { ...state, index: resource.index, refresh, loadDirectory };
 }
