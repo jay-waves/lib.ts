@@ -28,6 +28,7 @@ import { BookmarkList } from './bookmarks/bookmark-list';
 import { SymbolsPanel } from './symbols/symbols-panel.tsx';
 import { DirectoryView } from './directory-view.tsx';
 import { FilePage } from './file-page.jsx';
+import { adjacentMediaPath, mediaNavigationDirection } from './media/media-navigation.mjs';
 import './markdown/theme.css';
 import './markdown/heading-sections.css';
 import './markdown/highlight.css';
@@ -341,6 +342,17 @@ function App() {
             setSidebarWidth(width);
           }} />
         <main className={`main-panel col-start-4 row-start-1 h-dvh max-h-dvh min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-none bg-surface${gitPath === null && !searchMode && currentPage?.viewport ? ' document-viewport' : ''}`} ref={mainPanelRef} tabIndex={0}
+          onKeyDownCapture={event => {
+            if (searchMode || gitPath !== null || !currentPage?.media) return;
+            const direction = mediaNavigationDirection(event);
+            if (!direction) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const parent = selected.split('/').slice(0, -1).join('/');
+            const siblings = parent ? treeIndex.get(parent)?.children : tree?.children;
+            const path = adjacentMediaPath(sortMode === 'name' ? siblings : sortFileTree(siblings), selected, direction);
+            if (path) navigate(path);
+          }}
           onKeyDown={event => {
             if (!searchMode && gitPath === null) readerRef.current?.handleKeyDown?.(event);
           }}>

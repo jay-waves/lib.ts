@@ -56,7 +56,7 @@ export function createGalleryLoader(candidates: GalleryImage[], sort: DirectoryS
     if (signal.aborted) return;
     items = [...items, ...batch.map(node => {
       const info = files[node.path], size = info?.dimensions;
-      return { node: info ? { ...node, modified: info.modified, mime: info.mime, media: info.media, playable: info.playable } : node,
+      return { node: info ? { ...node, modified: info.modified, mime: info.mime, media: info.media, playable: info.playable, dimensions: size ?? undefined } : node,
         ratio: size ? size.width / size.height : 4 / 3 };
     })];
     publish({ items, error, files: batch.flatMap(node => files[node.path] ? [files[node.path]] : []) });

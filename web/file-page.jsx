@@ -57,7 +57,7 @@ export function FilePage({ ref, path, request, externalRevision, visible, direct
   const symbols = useMemo(() => content.document ? documentSymbols(content.document) : [], [content.document]);
   const file = Boolean(info && info.type !== 'directory');
   useEffect(() => {
-    onState({ path, symbols, progress, view: content.view, loaded: Boolean(document), file,
+    onState({ path, symbols, progress, view: content.view, loaded: Boolean(document), file, media: Boolean(info?.media),
       viewport: content.view === 'preview' && hasDocumentViewport(info) });
   }, [path, symbols, progress, content.view, Boolean(document), file, info?.type, onState]);
   useImperativeHandle(ref, () => ({

@@ -7,7 +7,11 @@ import { createGalleryLoader, type GalleryItem } from './gallery-media';
 
 type GalleryState = { source: GalleryImage[]; sort: DirectorySort; items: GalleryItem[]; error: string };
 
-export function useGalleryMedia(candidates: GalleryImage[], sort: DirectorySort) {
+export function useGalleryMedia(input: GalleryImage[], sort: DirectorySort) {
+  // A tree refresh may replace every object without changing any media. Keep
+  // the loaded batches and mounted cards in that case, including on foreground.
+  const sourceKey = JSON.stringify(input);
+  const candidates = useMemo(() => input, [sourceKey]);
   const [state, setState] = useState<GalleryState | null>(null);
   const next = useRef(() => {});
   const loadMore = useCallback(() => next.current(), []);

@@ -19,8 +19,6 @@ export function VideoInteractions() {
     <Hotkey keys="f" action="toggleFullscreen" />
     <Hotkey keys="ArrowLeft" action="seekStep" value={-5} />
     <Hotkey keys="ArrowRight" action="seekStep" value={5} />
-    <Hotkey keys="ArrowDown" action="seekStep" value={-60} />
-    <Hotkey keys="ArrowUp" action="seekStep" value={60} />
     <Hotkey keys="Shift+ArrowLeft" action="seekStep" value={-1} />
     <Hotkey keys="Shift+ArrowRight" action="seekStep" value={1} />
     <Hotkey keys="Shift+ArrowDown" action="seekStep" value={-5} />

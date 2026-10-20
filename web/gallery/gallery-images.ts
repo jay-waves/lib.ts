@@ -22,7 +22,7 @@ export const gallerySortOptions = {
   'taken-asc': 'Captured: Oldest',
 } as const;
 export type DirectorySort = keyof typeof gallerySortOptions;
-export type GalleryImage = TreeNode & { liveVideo?: TreeNode; mime?: string; media?: 'image' | 'video' | null; playable?: boolean };
+export type GalleryImage = TreeNode & { liveVideo?: TreeNode; mime?: string; media?: 'image' | 'video' | null; playable?: boolean; dimensions?: { width: number; height: number } };
 export const mediaKey = (node: GalleryImage) => `${node.path}:${node.modified}${node.liveVideo ? `:${node.liveVideo.path}:${node.liveVideo.modified}` : ''}`;
 
 const names = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
