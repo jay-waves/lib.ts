@@ -3,7 +3,10 @@
 @import '@primer/primitives/dist/css/base/motion/motion.css';
 
 /* Primer compatibility boundary. Application styles use the aliases below.
-   Keep aliases on the theme owner so system theme changes also reach portals. */
+   Keep aliases on the theme owner so system theme changes also reach portals.
+   Keep Primer camelCase tokens here; application theme variables use kebab-case.
+   theme.css owns fonts/shadows, tailwind.css maps tokens to utilities, and
+   style.css/ui.css own shared layout and controls. Feature styles stay local. */
 /* Primer tokens live on <html>, including portals. Only customize our light palette. */
 @media (prefers-color-scheme: light) {
   :root[data-color-mode="auto"] {

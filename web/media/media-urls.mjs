@@ -1,5 +1,8 @@
 function mediaUrl(apiBase, media, variant = '') {
   const params = new URLSearchParams({ path: media.path, v: media.modified });
+  if (variant === 'thumbnail' && /\.avif$/i.test(media.path)) {
+    params.set('conversion', 'avif-v1');
+  }
   // Keep this revision aligned with the HEIF disk cache in thumbnail.rs.
   // Old immutable browser entries may contain only the first image tile.
   if (variant && (media.preview === 'converted' || /\.(heic|heif)$/i.test(media.path))) {

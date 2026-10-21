@@ -88,6 +88,11 @@ pub fn is_external_media(path: &Path) -> bool {
     })
 }
 
+pub fn is_avif(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("avif"))
+}
+
 pub fn is_heif(path: &Path) -> bool {
     path.extension()
         .and_then(|s| s.to_str())

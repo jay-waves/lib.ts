@@ -1,7 +1,9 @@
 import DOMPurify from 'dompurify';
 import './diagram.css';
 
-// No Markdown or reader dependencies: both callers own the returned cleanup.
+// Shared by Markdown code blocks and standalone .mmd previews; load only the
+// detected Pele diagram type. Theme rules live in diagram.css. No Markdown or
+// reader dependencies: both callers own the returned cleanup.
 export function mountDiagram(container, source) {
   let disposed = false, diagram;
   container.removeAttribute('role');

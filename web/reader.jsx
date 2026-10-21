@@ -9,6 +9,8 @@ import { isMediaPreview } from './preview-kind.mjs';
 import { MarkdownPreview } from './markdown/preview.jsx';
 
 export function Reader(props) {
+  // DocumentReader owns navigation and persisted reading state. MediaReader owns
+  // transient zoom/playback only and must not report document reading progress.
   if (isMediaPreview(props.document)) return <MediaReader {...props} />;
   return <DocumentReader {...props} />;
 }

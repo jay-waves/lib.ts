@@ -10,6 +10,10 @@ export type DocumentInfo = FileDescriptor & {
 };
 
 // A bounded, versioned cache of server descriptions, never inferred file types.
+// Gallery batches populate the same repository/path cache as standalone readers.
+// Revalidate on access; preserve a complete same-version descriptor rather than
+// mixing fields across revisions. Shared version URLs reuse gallery thumbnails
+// while the full image or video loads independently of the file tree.
 const cacheKey = 'lib-ts:file-descriptors:v1';
 const limit = 100;
 type Entry = { repository: string; info: FileDescriptor };

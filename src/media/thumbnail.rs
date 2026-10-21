@@ -1,4 +1,10 @@
-use super::{is_heif, is_video};
+//! Cache keys bind conversions to the source path, size, mtime and conversion
+//! revision. Independent temporary names plus atomic publication prevent partial
+//! cache reads; HTTP dispatch coalesces requests for the same source version.
+//! Browser-native small images redirect to their original resource; large raster
+//! thumbnails may be static even when the original animates. FFmpeg codec and
+//! filter threads stay at one because concurrency is managed by the worker pool.
+use super::{is_avif, is_heif, is_video};
 use image::{ImageEncoder, ImageReader};
 use serde::Serialize;
 use std::{
@@ -92,6 +98,8 @@ fn generate(
         // Invalidate old single-tile HEIF conversions, including full previews.
         if is_heif(path) {
             "heif-grid-v1"
+        } else if is_avif(path) {
+            "avif-v1"
         } else {
             "gallery-v2"
         },
@@ -122,7 +130,8 @@ fn generate(
         }
     }
     let video = is_video(path);
-    let reader = if video || is_heif(path) {
+    let avif = is_avif(path);
+    let reader = if video || is_heif(path) || avif {
         None
     } else {
         let reader = ImageReader::open(path)?.with_guessed_format()?;
@@ -170,7 +179,8 @@ fn generate(
                     .encode_image(&preview)?;
             }
         } else {
-            cached.set_extension("jpg");
+            // PNG preserves transparent AVIF pixels instead of flattening them to JPEG.
+            cached.set_extension(if avif { "png" } else { "jpg" });
             let mut command = Command::new("ffmpeg");
             command
                 .args([
@@ -189,6 +199,11 @@ fn generate(
                     "-vf",
                     "scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
                 ]);
+            } else if avif {
+                command.args([
+                    "-vf",
+                    "scale=w='min(800,iw)':h='min(800,ih)':force_original_aspect_ratio=decrease",
+                ]);
             }
             command
                 .args([
@@ -200,7 +215,7 @@ fn generate(
                     "-f",
                     "image2",
                     "-c:v",
-                    "mjpeg",
+                    if avif { "png" } else { "mjpeg" },
                     "-q:v",
                     "3",
                     "-y",
@@ -219,6 +234,8 @@ fn generate(
                 );
                 return Err(if video {
                     "Could not extract video cover"
+                } else if avif {
+                    "Could not decode AVIF. Check FFmpeg AV1 decoding support."
                 } else {
                     "Could not decode HEIC/HEIF. Use FFmpeg 8.1 or newer with HEVC support."
                 }

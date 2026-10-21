@@ -1,4 +1,10 @@
 //! Media HTTP transport: validation, worker dispatch and range-capable file responses.
+//! Mounted under each repository's /api/media: the base GET serves originals,
+//! /thumbnail and /preview serve cached derivatives, /metadata reads details,
+//! POST /dimensions batches versioned descriptors, and POST /open uses the host
+//! desktop application. Metadata and conversion use separate bounded pools so
+//! slow probes cannot occupy conversion workers. Batch results preserve input
+//! order, while each file is scheduled independently.
 use crate::{AppState, checked_library_path, json_error, modified_rfc3339, worker_error};
 use axum::{
     Json,

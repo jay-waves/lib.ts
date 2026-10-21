@@ -2,6 +2,10 @@
 //! Repositories share a serialized snapshot and non-recursive visible-directory watches.
 //! Only requested directories are scanned; filesystem events invalidate their listings.
 //! Idle subscriptions release watches. Ignore rules and private paths are applied when walking.
+//! Responses contain one directory level; clients merge by path and retain
+//! unchanged branches. Foreground requests precede bounded direct-child prefetch,
+//! which scans one directory per turn. No recursive or persisted tree snapshot
+//! is maintained; content/path search walks its own scope independently.
 use ignore::WalkBuilder;
 use notify::{EventKind, RecursiveMode, Watcher, event::ModifyKind};
 use serde::Serialize;

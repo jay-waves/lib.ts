@@ -14,6 +14,15 @@ test('images start at native size with a maximum of 80% of viewport width', () =
 const image = { path: '照片/a & b.jpg', name: 'a & b.jpg', modified: '2026-10-18T00:00:00Z',
   size: 1024, preview: 'original', url: '/repo/api/asset?path=photo', imageMetadata: { dimensions: { width: 800, height: 600 } } };
 
+test('AVIF thumbnails invalidate old originals while full previews retain the native file', () => {
+  const avif = { ...image, path: 'photo.AVIF' };
+  const { thumbnail, source } = imagePreviewUrls('/repo/api', avif);
+  assert.equal(new URL(thumbnail, 'http://localhost').searchParams.get('conversion'), 'avif-v1');
+  const original = new URL(source, 'http://localhost');
+  assert.equal(original.pathname, '/repo/api/media');
+  assert.equal(original.searchParams.has('conversion'), false);
+});
+
 test('ordinary previews use a stable original URL independently of metadata and image size', () => {
   const { thumbnail, source } = imagePreviewUrls('/repo/api', image);
   assert.equal(thumbnail, thumbnailUrl('/repo/api', image));

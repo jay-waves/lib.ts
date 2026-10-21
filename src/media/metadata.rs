@@ -1,4 +1,6 @@
-use super::{Dimensions, ImageMetadata, VideoMetadata, dimensions, is_heif, is_video, probe};
+use super::{
+    Dimensions, ImageMetadata, VideoMetadata, dimensions, is_avif, is_heif, is_video, probe,
+};
 use image::{ImageDecoder, ImageReader};
 use std::{
     fs,
@@ -172,7 +174,7 @@ impl MetadataService {
     }
 
     pub fn dimensions(&self, path: &Path) -> Option<Dimensions> {
-        if is_video(path) || is_heif(path) {
+        if is_video(path) || is_heif(path) || is_avif(path) {
             return self.video_metadata(path).dimensions;
         }
         cached(&self.cache, path, read_raster_dimensions)
@@ -204,6 +206,32 @@ fn read_raster_dimensions(path: &Path) -> Option<Dimensions> {
 mod tests {
     use super::*;
     use image::ImageEncoder;
+
+    #[test]
+    fn avif_dimensions_and_photo_details_use_the_probe_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.AVIF");
+        fs::write(&path, b"avif").unwrap();
+        let service = MetadataService::default();
+        cached(&service.videos, &path, |_| VideoMetadata {
+            dimensions: dimensions(400, 900),
+            ..VideoMetadata::default()
+        });
+        assert_eq!(service.dimensions(&path), dimensions(400, 900));
+        assert_eq!(
+            service.image_metadata(&path).dimensions,
+            dimensions(400, 900)
+        );
+        fs::write(&path, b"changed avif").unwrap();
+        cached(&service.videos, &path, |_| VideoMetadata {
+            dimensions: dimensions(600, 200),
+            ..VideoMetadata::default()
+        });
+        assert_eq!(
+            service.image_metadata(&path).dimensions,
+            dimensions(600, 200)
+        );
+    }
 
     #[test]
     fn video_dimensions_and_details_share_a_versioned_cache() {

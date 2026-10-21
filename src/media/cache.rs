@@ -1,4 +1,9 @@
 //! Calendar-week buckets avoid per-file timestamps, size totals, and LRU bookkeeping.
+//! Only the current and previous UTC ISO weeks are readable; older buckets are
+//! removed on startup and by the hourly week-change check. Legacy flat entries
+//! are deliberately neither migrated nor deleted. Thumbnail generation renews
+//! previous-week hits by moving them, without copying or changing their mtime;
+//! browser-only cache hits cannot renew server retention.
 use std::{
     fs, io,
     path::{Path, PathBuf},
