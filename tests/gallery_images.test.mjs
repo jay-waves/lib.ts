@@ -81,8 +81,10 @@ test('MOV finds a same-name JPEG and merges into a Live card without mutating fi
   assert.equal(sortDirectoryNodes(galleryImages([video, photo], false), 'name-asc')[0].liveVideo, video);
 });
 
-test('HEIC and HEIF pair with same-stem MOV regardless of case or file order', () => {
+test('JPG, HEIC and HEIF pair with same-stem MOV regardless of case or file order', () => {
   for (const [photoName, videoName] of [
+    ['IMG_0061.JPG', 'IMG_0061.MOV'],
+    ['img_0061.jpg', 'IMG_0061.mov'],
     ['IMG_0061.HEIC', 'IMG_0061.MOV'],
     ['img_0061.heic', 'IMG_0061.mov'],
     ['IMG_0061.HEIF', 'IMG_0061.MOV'],
@@ -110,7 +112,7 @@ test('HEIC Live pairs remain scoped to their directory and unmatched MOV stays v
 test('unmatched files stay separate and MOV only pairs with supported photos in its own directory', () => {
   const jpeg = file('still.jpeg');
   const mov = file('motion.mov');
-  const jpg = file('motion.jpg');
+  const jpg = file('other.jpg');
   assert.deepEqual(galleryImages([jpeg, mov, jpg], false), [jpeg, mov, jpg]);
 
   const photo = file('same.jpeg', 'photos/same.jpeg');
@@ -162,4 +164,14 @@ test('server gallery descriptions override filename hints', () => {
   assert.equal(isVideoMedia({ name: 'renamed.bin', media: 'video' }), true);
   assert.equal(isBrowserVideo({ name: 'misnamed.mp4', playable: false }), false);
   assert.equal(isBrowserVideo({ name: 'renamed.bin', playable: true }), true);
+});
+
+test('JPG Live pairs stay scoped to their directory and unpaired JPG remains visible', () => {
+  const photo = file('same.JPG', 'photos/same.JPG');
+  const other = file('other.jpg', 'photos/other.jpg');
+  const video = file('same.MOV', 'videos/same.MOV');
+  const directory = (name, children) => ({ name, path: name, type: 'directory', modified: '', children });
+  assert.deepEqual(galleryImages([directory('photos', [photo, other]), directory('videos', [video])], true), [photo, other, video]);
+  const sibling = file('same.mov', 'photos/same.mov');
+  assert.deepEqual(galleryImages([photo, sibling, other], false), [{ ...photo, liveVideo: sibling }, other]);
 });

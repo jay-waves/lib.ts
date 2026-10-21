@@ -48,7 +48,7 @@ export function sortDirectoryNodes<T extends TreeNode>(nodes: readonly T[], sort
 
 export function galleryImages(nodes: readonly TreeNode[], recursive: boolean): GalleryImage[] {
   const images: GalleryImage[] = [];
-  const photoExtension = /\.(?:jpeg|heic|heif)$/i;
+  const photoExtension = /\.(?:jpe?g|heic|heif)$/i;
   const photos = new Map(nodes.filter(node => node.type === 'file' && photoExtension.test(node.name))
     .map(node => [node.name.replace(photoExtension, '').toLowerCase(), node]));
   const livePhotos = new Map<TreeNode, TreeNode>();

@@ -1,6 +1,6 @@
 // Each preview owns its requests and timeout; a stuck decoder cannot retain
 // its source indefinitely or interfere with another card's lifecycle.
-export const galleryPlaybackBudget = 16;
+export const galleryPlaybackBudget = 32;
 
 // Pixel count treats portrait and landscape equally. These are scheduling
 // estimates, not guarantees about codec, frame rate or hardware acceleration.
@@ -97,7 +97,7 @@ export function createGalleryPlaybackQueue(limit = galleryPlaybackBudget, timers
 }
 
 // Retain a bounded number of paused previews, evicting the least recently used.
-export function createGalleryPreviewCache(limit = 8) {
+export function createGalleryPreviewCache(limit = 24) {
   const paused = new Map();
   return {
     retain(key, unload) {

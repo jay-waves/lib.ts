@@ -5,7 +5,7 @@ import type { GalleryImage } from './gallery-images';
 import { apiBase, fileUrl } from '../urls.mjs';
 import './directory-gallery.css';
 import { isVideoMedia, isBrowserVideo, mediaKey } from './gallery-images';
-import { galleryLayout, galleryRowLayout } from './gallery-layout.mjs';
+import { galleryLayout, galleryRowLayout, galleryLoadMoreTop, galleryColumns, galleryNeedsMore } from './gallery-layout.mjs';
 import { thumbnailUrl, mediaFileUrl } from '../media/media-urls.mjs';
 import { createGalleryPlaybackQueue, createGalleryPreviewCache } from './gallery-playback.mjs';
 import { useGalleryPlayback } from './use-gallery-playback';
@@ -60,7 +60,6 @@ export function DirectoryGallery({ images, total, hasMore, loadMore, width, avai
   const container = useRef<HTMLElement>(null);
   const [playbackQueue] = useState(() => createGalleryPlaybackQueue());
   const [previewCache] = useState(() => createGalleryPreviewCache());
-  const end = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const element = container.current;
     const viewport = element?.closest<HTMLElement>('.main-panel');
@@ -80,17 +79,35 @@ export function DirectoryGallery({ images, total, hasMore, loadMore, width, avai
   }, [onWidthChange]);
   const layout = useMemo(() => (rows ? galleryRowLayout : galleryLayout)(ratios, availableWidth, width),
     [rows, ratios, availableWidth, width]);
+  const loadMoreTop = rows ? layout.height : galleryLoadMoreTop(layout, galleryColumns(Math.max(1, availableWidth), width));
   const showLoading = dimensionsLoading || availableWidth <= 0;
   useEffect(() => {
-    const target = end.current;
-    const viewport = container.current?.closest<HTMLElement>('.main-panel');
-    if (showLoading || !hasMore || !target || !viewport) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) loadMore();
-    }, { root: viewport, rootMargin: `${viewport.clientHeight}px 0px` });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [showLoading, hasMore, images.length, availableWidth, loadMore]);
+    const element = container.current;
+    const viewport = element?.closest<HTMLElement>('.main-panel');
+    if (showLoading || !hasMore || !element || !viewport) return;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const viewportRect = viewport.getBoundingClientRect();
+      const viewportBottom = viewportRect.top + viewport.clientTop + viewport.clientHeight
+        - element.getBoundingClientRect().top;
+      if (galleryNeedsMore(loadMoreTop, viewportBottom, viewport.clientHeight)) loadMore();
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(check);
+    };
+    // Recheck after every published batch, even if the user has stopped scrolling.
+    schedule();
+    viewport.addEventListener('scroll', schedule, { passive: true });
+    const observer = new ResizeObserver(schedule);
+    observer.observe(viewport);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener('scroll', schedule);
+      observer.disconnect();
+    };
+  }, [showLoading, hasMore, images.length, loadMoreTop, loadMore]);
+
   return <section ref={container} className="directory-gallery relative m-3.5 min-h-[var(--gallery-min-height,120px)]" aria-label="Media gallery" data-loading={showLoading && total ? '' : undefined}>
     {total ? <>
       <div className="gallery-loading absolute inset-x-0 top-0 hidden h-[var(--gallery-min-height,120px)] place-items-center" role="status"><span className="rendering-label">Rendering</span></div>
@@ -98,7 +115,6 @@ export function DirectoryGallery({ images, total, hasMore, loadMore, width, avai
         {images.map((node, index) => <ImageCard key={mediaKey(node)} node={node} autoplayVideos={autoplayVideos}
           navigate={navigate} style={layout.items[index]} playbackQueue={playbackQueue} previewCache={previewCache} />)}
       </div>
-      {hasMore && !showLoading && <div ref={end} className="h-px" aria-hidden="true" />}
     </> : dimensionsLoading ? <div className="status" role="status">Loading media directories…</div>
       : <div className="ui-empty px-6 py-16 text-ui" role="status"><ImageIcon size={40} />
       <strong className="text-base leading-5 text-fg">No images or videos in this folder</strong>

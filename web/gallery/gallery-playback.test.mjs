@@ -209,8 +209,8 @@ test('resolution budget accounts for portrait, intermediate, unknown and oversiz
   assert.equal(galleryPlaybackWeight(undefined), 4);
 });
 
-test('default budget admits eight full HD streams or two 4K streams', () => {
-  for (const [weight, count] of [[2, 8], [8, 2]]) {
+test('default budget admits sixteen full HD streams or four 4K streams', () => {
+  for (const [weight, count] of [[2, 16], [8, 4]]) {
     const queue = createGalleryPlaybackQueue();
     let started = 0;
     const jobs = Array.from({ length: count + 1 }, () => queue.request(() => started++, weight));

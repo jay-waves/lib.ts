@@ -41,9 +41,10 @@ export function galleryLayout(ratios, availableWidth, size) {
   const count = galleryColumns(width, size);
   const cardWidth = (width - (count - 1) * gap) / count;
   const heights = Array(count).fill(0);
-  const items = ratios.map((ratio, index) => {
-    // Loading a dimension only moves later cards in the same column.
-    const column = index % count;
+  const items = ratios.map(ratio => {
+    // Dimensions are prepared before publication. Appending cards therefore
+    // keeps all existing placements while balancing the remaining columns.
+    const column = heights.indexOf(Math.min(...heights));
     const naturalHeight = Math.max(0, cardWidth - 2) / ratio;
     // With one column the viewport fixes the card width, so scale its media box
     // to keep the size control meaningful instead of producing inert stops.
@@ -53,4 +54,18 @@ export function galleryLayout(ratios, availableWidth, size) {
     return item;
   });
   return { items, height: Math.max(0, ...heights) - (items.length ? gap : 0) };
+}
+
+// The shortest column determines whether the viewport needs more cards.
+export function galleryLoadMoreTop({ items, height }, columns = 0) {
+  const bottoms = new Map();
+  for (const item of items) {
+    bottoms.set(item.left, Math.max(bottoms.get(item.left) ?? 0, item.top + item.height));
+  }
+  return bottoms.size && bottoms.size >= columns ? Math.min(height, ...bottoms.values()) : 0;
+}
+
+// Coordinates are relative to the gallery. Keep one viewport prepared ahead.
+export function galleryNeedsMore(preparedBottom, viewportBottom, viewportHeight) {
+  return preparedBottom <= viewportBottom + viewportHeight;
 }

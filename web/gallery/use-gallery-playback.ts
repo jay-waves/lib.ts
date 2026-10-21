@@ -63,10 +63,9 @@ export function useGalleryPlayback({ src, playable, autoplay, dimensions, queue,
     };
     const root = target.closest('.main-panel');
     const viewport = new IntersectionObserver(([entry]) => {
-      if (document.hidden) return;
       visible = entry.isIntersecting && entry.intersectionRatio > 0;
       update();
-    }, { root, rootMargin: '120px 0px', threshold: [0, 0.01] });
+    }, { root, rootMargin: '0px', threshold: [0, 0.01] });
     const retention = new IntersectionObserver(([entry]) => {
       if (document.hidden) return;
       clearTimeout(unloadTimer);
