@@ -82,6 +82,7 @@ export function FilePage({ ref, path, request, externalRevision, visible, direct
     {!document && !error && (info ? <DocumentLoading info={info} /> : <div className="status" role="status">Loading file information…</div>)}
     {error && (document ? <div className="action-error" role="alert">{error}</div> : <LibraryError error={error} path={path} navigate={navigate} />)}
     {document && <Reader ref={reader} key={document.type} document={document} mediaDimensions={dimensions}
+      active={active && visible}
       request={request} bookmarkState={bookmarkState} view={content.view} onViewChange={content.changeView}
       navigate={navigate} onReload={reload} onProgress={reportProgress} prepared={prepared} assetVersions={assetVersions} />}
   </>;

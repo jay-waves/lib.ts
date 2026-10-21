@@ -745,7 +745,19 @@ fn run(
                 Err(_) => true,
             });
         if changed {
-            let revision = NEXT_REVISION.fetch_add(1, Ordering::Relaxed);
+            // Expanding/prefetching directories changes snapshot coverage, not
+            // filesystem freshness. Reconnecting clients retain those listings.
+            let revision = if invalid.is_empty() {
+                entry
+                    .snapshot
+                    .borrow()
+                    .as_ref()
+                    .and_then(|previous| previous.as_ref().ok())
+                    .map(|previous| previous.revision)
+                    .unwrap_or_else(|| NEXT_REVISION.fetch_add(1, Ordering::Relaxed))
+            } else {
+                NEXT_REVISION.fetch_add(1, Ordering::Relaxed)
+            };
             entry.snapshot.send_replace(Some(Ok(Snapshot {
                 #[cfg(test)]
                 body,
@@ -938,6 +950,7 @@ mod tests {
             .directory(&root, &root.join("docs/deep"))
             .await
             .unwrap();
+        assert_eq!(loaded.revision, initial.revision);
         assert_eq!(
             paths(&loaded),
             ["docs", "docs/deep", "docs/deep/note.md", "unopened"]

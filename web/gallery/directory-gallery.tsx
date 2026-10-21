@@ -11,7 +11,7 @@ import { createGalleryPlaybackQueue, createGalleryPreviewCache } from './gallery
 import { useGalleryPlayback } from './use-gallery-playback';
 
 function ImageCard({ node, autoplayVideos, navigate, style, playbackQueue, previewCache }: {
-  node: GalleryImage; autoplayVideos: boolean; navigate(path: string, directory: boolean): void;
+  node: GalleryImage; autoplayVideos: boolean; navigate(path: string, directory: boolean, options?: { playbackTime: number }): void;
   style: CSSProperties;
   playbackQueue: ReturnType<typeof createGalleryPlaybackQueue>;
   previewCache: ReturnType<typeof createGalleryPreviewCache>;
@@ -32,7 +32,9 @@ function ImageCard({ node, autoplayVideos, navigate, style, playbackQueue, previ
     onFocus={playback.onFocus} onBlur={playback.onBlur}
     aria-label={`Open ${node.name}${node.liveVideo ? ' (Live photo)' : ''}`} onClick={event => {
       if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault(); navigate(node.path, false);
+      const time = !node.liveVideo && playback.ready ? playback.player.current?.currentTime : undefined;
+      event.preventDefault(); navigate(node.path, false,
+        typeof time === 'number' && Number.isFinite(time) && time > 0 ? { playbackTime: time } : undefined);
     }}>
     <div className="relative h-full overflow-hidden">
       {!imageError && <img className="block size-full object-contain" src={thumbnailUrl(apiBase, node)}
@@ -51,7 +53,7 @@ function ImageCard({ node, autoplayVideos, navigate, style, playbackQueue, previ
 
 export function DirectoryGallery({ images, total, hasMore, loadMore, width, availableWidth, onWidthChange, recursive, autoplayVideos, rows, navigate, ratios, dimensionsLoading }: {
   images: GalleryImage[]; total: number; hasMore: boolean; loadMore(): void;
-  width: number; recursive: boolean; autoplayVideos: boolean; rows: boolean; navigate(path: string, directory: boolean): void;
+  width: number; recursive: boolean; autoplayVideos: boolean; rows: boolean; navigate(path: string, directory: boolean, options?: { playbackTime: number }): void;
   availableWidth: number; onWidthChange(width: number): void;
   ratios: number[]; dimensionsLoading: boolean;
 }) {

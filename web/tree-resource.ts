@@ -8,6 +8,8 @@ export function createTreeResource(load: (signal: AbortSignal, path: string) => 
   let tree: FileTree | undefined;
   let index = new Map<string, TreeNode>();
   let disposed = false;
+  let refreshing: Promise<FileTree> | null = null;
+  let refreshController: AbortController | null = null;
 
   function publish(path: string) {
     const listing = listings.get(path);
@@ -69,6 +71,7 @@ export function createTreeResource(load: (signal: AbortSignal, path: string) => 
   }
 
   async function ensureDirectory(path: string) {
+    if (refreshing) await refreshing;
     if (listings.has(path)) return tree!;
     return request(path);
   }
@@ -91,16 +94,37 @@ export function createTreeResource(load: (signal: AbortSignal, path: string) => 
       if (node?.type === 'directory') await ensureDirectory(path);
       return tree!;
     },
-    async invalidate() {
+    invalidate() {
+      if (refreshing) return refreshing;
       for (const { controller } of requests.values()) controller.abort();
       requests.clear();
-      listings.clear();
-      tree = undefined;
-      index = new Map();
-      return request('');
+      const controller = new AbortController();
+      refreshController = controller;
+      // Refresh only cached directories, parent first. Keep the published tree
+      // and index intact until all surviving branches are ready to replace it.
+      const paths = [...new Set(['', ...listings.keys()])].sort((a, b) =>
+        a.split('/').length - b.split('/').length || a.localeCompare(b));
+      refreshing = (async () => {
+        const next = new Map<string, TreeListing>();
+        for (const path of paths) {
+          if (path) {
+            const parent = path.split('/').slice(0, -1).join('/');
+            if (!next.get(parent)?.children.some(node => node.path === path && node.type === 'directory')) continue;
+          }
+          const listing = await load(controller.signal, path);
+          if (controller.signal.aborted || disposed) throw new DOMException('Aborted', 'AbortError');
+          next.set(path, listing);
+        }
+        listings.clear();
+        for (const [path, listing] of next) listings.set(path, listing);
+        publish('');
+        return tree!;
+      })().finally(() => { refreshing = null; refreshController = null; });
+      return refreshing;
     },
     dispose() {
       disposed = true;
+      refreshController?.abort();
       for (const { controller } of requests.values()) controller.abort();
       requests.clear(); listings.clear(); listeners.clear(); tree = undefined; index = new Map();
     },

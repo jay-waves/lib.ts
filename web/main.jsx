@@ -209,10 +209,12 @@ function App() {
     if (active) window.document.title = name;
   }, [selected, tree?.name, active]);
   function navigate(path, directory = false, line = null, page = null) {
+    const playbackTime = typeof line === 'object' && line !== null ? line.playbackTime : undefined;
+    if (typeof line === 'object') line = null;
     readerRef.current?.capture?.();
     setGitPath(null);
     setSidebarTab(tab => tab === 'search' ? 'files' : tab);
-    setReaderRequest({ path, line, page, view: line ? 'raw' : null });
+    setReaderRequest({ path, line, page, view: line ? 'raw' : null, playbackTime });
     history.pushState(null, '', fileUrl(path, directory) + (page ? `?page=${page.index + 1}&x=${page.x}&y=${page.y}` : line ? `?line=${line}#L${line}` : ''));
     setExpandedPaths(paths => ({ ...paths, ...expandedPathEntries(path) }));
     setSelected(path);

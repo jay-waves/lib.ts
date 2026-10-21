@@ -21,7 +21,7 @@ import { useIncrementalList } from './use-incremental-list';
 
 interface DirectoryViewProps {
   directory: { path?: string; absolutePath?: string; children?: TreeNode[] };
-  navigate(path: string, directory: boolean): void;
+  navigate(path: string, directory: boolean, options?: { playbackTime: number }): void;
   display: ReturnType<typeof readRepositoryDisplayState>;
   onDisplayChange(patch: ReturnType<typeof readRepositoryDisplayState>): void;
   loadDirectory(path: string): Promise<unknown>;

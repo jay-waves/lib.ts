@@ -8,6 +8,8 @@ import { playbackRates, formatPlaybackRate } from './video-playback';
 import './video-player.css';
 
 interface VideoPlayerProps {
+  active: boolean;
+  initialTime?: number;
   src: string;
   poster: string;
   name: string;
@@ -51,12 +53,13 @@ function SpeedControl() {
   </Menu.Root>;
 }
 
-export default function LibraryVideoPlayer({ src, poster, name, dimensions, onDimensions, onError }: VideoPlayerProps) {
+export default function LibraryVideoPlayer({ active, initialTime, src, poster, name, dimensions, onDimensions, onError }: VideoPlayerProps) {
   const [touchControls, setTouchControls] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<number>();
   const ratio = aspectRatio ?? (dimensions ? dimensions.width / dimensions.height : undefined);
   const [compact, setCompact] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
+  const positionApplied = useRef(false);
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
@@ -78,8 +81,13 @@ export default function LibraryVideoPlayer({ src, poster, name, dimensions, onDi
       }}>
       <div className="library-video-frame relative w-fit max-w-full" ref={frameRef}>
         <Video className="library-video-media block h-auto max-h-[80vh] min-h-0 w-auto max-w-full cursor-pointer object-contain"
-          src={src} poster={poster} playsInline loop preload="metadata"
+          src={src} poster={poster} autoPlay playsInline loop preload="metadata"
           onLoadedMetadata={event => {
+            if (!positionApplied.current) {
+              positionApplied.current = true;
+              if (typeof initialTime === 'number' && Number.isFinite(initialTime) && initialTime > 0
+                && initialTime < event.currentTarget.duration) event.currentTarget.currentTime = initialTime;
+            }
             const { videoWidth, videoHeight } = event.currentTarget;
             if (videoWidth && videoHeight) setAspectRatio(videoWidth / videoHeight);
             onDimensions(videoWidth, videoHeight);
@@ -107,7 +115,7 @@ export default function LibraryVideoPlayer({ src, poster, name, dimensions, onDi
           </button>} />}
         </div>
       </div>
-      <VideoInteractions />
+      <VideoInteractions active={active} />
     </Container>
   </VideoPlayer>;
 }

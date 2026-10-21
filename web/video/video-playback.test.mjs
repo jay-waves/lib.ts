@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatPlaybackRate, stepPlaybackRate } from './video-playback.ts';
+import { formatPlaybackRate, stepPlaybackRate, videoSeekStep } from './video-playback.ts';
+
+test('seek arrows use seconds consistently and respect modifiers and handled events', () => {
+  assert.equal(videoSeekStep({ key: 'ArrowLeft' }), -5);
+  assert.equal(videoSeekStep({ key: 'ArrowRight' }), 5);
+  assert.equal(videoSeekStep({ key: 'ArrowLeft', shiftKey: true }), -1);
+  assert.equal(videoSeekStep({ key: 'ArrowRight', shiftKey: true }), 1);
+  assert.equal(videoSeekStep({ key: 'ArrowUp' }), 0);
+  assert.equal(videoSeekStep({ key: 'ArrowDown' }), 0);
+  for (const flag of ['defaultPrevented', 'ctrlKey', 'metaKey', 'altKey']) {
+    assert.equal(videoSeekStep({ key: 'ArrowRight', [flag]: true }), 0);
+  }
+});
 
 test('mpv bracket speed changes are multiplicative and reversible', () => {
   assert.equal(stepPlaybackRate(1, 1), 1.1);

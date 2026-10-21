@@ -19,6 +19,15 @@ test('media navigation follows sibling order and skips other files and directori
   assert.equal(adjacentMediaPath(undefined, 'missing.jpg', 1), undefined);
 });
 
+test('video controls share file navigation while menus and editable fields keep their keys', () => {
+  const control = { closest: selector => selector === '.library-video' || selector.startsWith('button,') ? {} : null };
+  assert.equal(mediaNavigationDirection({ key: 'ArrowUp', target: control }), -1);
+  assert.equal(mediaNavigationDirection({ key: 'ArrowDown', target: control }), 1);
+  assert.equal(mediaNavigationDirection({ key: 'ArrowRight', target: control }), 0);
+  const menu = { closest: selector => selector.includes('[role="menu"]') ? {} : null };
+  assert.equal(mediaNavigationDirection({ key: 'ArrowDown', target: menu }), 0);
+});
+
 test('only plain, non-repeated arrows outside interactive controls navigate', () => {
   assert.equal(mediaNavigationDirection({ key: 'ArrowUp' }), -1);
   assert.equal(mediaNavigationDirection({ key: 'ArrowDown' }), 1);

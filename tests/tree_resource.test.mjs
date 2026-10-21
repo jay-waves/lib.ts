@@ -60,3 +60,49 @@ test('disposing aborts active directory requests', async () => {
   finish(listing('', []));
   await cancelled;
 });
+
+test('refresh publishes surviving cached branches together and drops removed directories', async () => {
+  let refreshing = false, finish;
+  const calls = [], frames = [];
+  const resource = createTreeResource(async (_, path) => {
+    calls.push(path);
+    if (!path) return listing('', refreshing ? [directory('docs')] : [directory('docs'), directory('removed')]);
+    if (refreshing) await new Promise(resolve => { finish = resolve; });
+    return listing(path, [file(`${path}/${refreshing ? 'new' : 'old'}.md`)]);
+  });
+  await resource.ensureDirectory('');
+  await resource.ensureDirectory('docs');
+  await resource.ensureDirectory('removed');
+  const previous = resource.index;
+  resource.subscribe(tree => frames.push(tree));
+  refreshing = true;
+  const pending = resource.invalidate();
+  assert.equal(resource.invalidate(), pending, 'overlapping refreshes share work');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(resource.index, previous);
+  assert.equal(resource.has('docs/old.md'), true);
+  assert.equal(frames.length, 0);
+  finish();
+  await pending;
+  assert.equal(frames.length, 1);
+  assert.deepEqual(frames[0].children[0].children.map(node => node.path), ['docs/new.md']);
+  assert.equal(resource.has('removed'), false);
+  assert.deepEqual(calls, ['', 'docs', 'removed', '', 'docs']);
+});
+
+test('failed refresh retains cached content and can be retried', async () => {
+  let fail = false;
+  const resource = createTreeResource(async (_, path) => {
+    if (fail && path) throw new Error('offline');
+    return listing(path, path ? [file('docs/note.md')] : [directory('docs')]);
+  });
+  await resource.ensure('docs/note.md');
+  const previous = resource.index;
+  fail = true;
+  await assert.rejects(resource.invalidate(), /offline/);
+  assert.equal(resource.index, previous);
+  assert.equal(resource.has('docs/note.md'), true);
+  fail = false;
+  await resource.invalidate();
+  assert.equal(resource.has('docs/note.md'), true);
+});

@@ -6,7 +6,7 @@ import { pageReaderOnSpace } from '../reader-keyboard.mjs';
 
 // Media has transient zoom/playback state, without reading-position restoration,
 // progress saves or the document reader's scroll/resize tracking.
-export function MediaReader({ ref, document, mediaDimensions }) {
+export function MediaReader({ ref, document, mediaDimensions, active, request }) {
   const root = useRef(null);
   const [scale, setScale] = useState(1);
   const [fitRequest, setFitRequest] = useState(0);
@@ -26,6 +26,7 @@ export function MediaReader({ ref, document, mediaDimensions }) {
   return <PreviewContext value={{ document, mediaDimensions, viewport: { scale, fitRequest, onScale: setScale } }}>
     <div ref={root} className="reader">{image
       ? <ImagePreview key={`${document.path}:${document.modified}`} />
-      : <VideoPreview key={`${document.path}:${document.modified}`} />}</div>
+      : <VideoPreview key={`${document.path}:${document.modified}`} active={active}
+          initialTime={request?.path === document.path ? request.playbackTime : undefined} />}</div>
   </PreviewContext>;
 }

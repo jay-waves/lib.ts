@@ -7,7 +7,7 @@ import { loadVideoPlayer } from '../video/video-player-loader';
 
 const LibraryVideoPlayer = lazy(loadVideoPlayer);
 
-export function VideoPreview() {
+export function VideoPreview({ active, initialTime }) {
   const { document, mediaDimensions } = usePreview();
   const [error, setError] = useState(false);
   const [coverError, setCoverError] = useState(false);
@@ -23,7 +23,7 @@ export function VideoPreview() {
     : <div className="mx-auto aspect-video w-full max-h-[80vh] bg-surface" style={coverStyle} />;
   return <div className="p-4">
     {native && !error ? <Suspense fallback={<div role="status" aria-label="Loading video player" aria-busy="true">{cover}</div>}>
-      <LibraryVideoPlayer src={mediaFileUrl(apiBase, document)} poster={poster} name={document.name} dimensions={dimensions}
+      <LibraryVideoPlayer active={active} initialTime={initialTime} src={mediaFileUrl(apiBase, document)} poster={poster} name={document.name} dimensions={dimensions}
         onDimensions={mediaDimensions.report} onError={() => setError(true)} />
     </Suspense> : cover}
     {(!native || error) && <OpenMedia path={document.path} />}
