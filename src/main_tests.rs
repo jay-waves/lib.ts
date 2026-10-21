@@ -370,6 +370,8 @@ async fn content_detection_preserves_renamed_previews_assets_and_text_semantics(
 async fn migrated_http_routes_match_frontend_repository_flows() {
     let temporary = tempfile::tempdir().unwrap();
     let (state, slug) = test_state(&temporary);
+    std::fs::create_dir(state.root.join("docs")).unwrap();
+    std::fs::write(state.root.join("docs/nested.md"), "nested").unwrap();
     let html_token = state.html.token();
     let app = build_router(state.clone());
 
@@ -397,7 +399,26 @@ async fn migrated_http_routes_match_frontend_repository_flows() {
 
     let tree = json(request(&app, "GET", &format!("/{slug}/api/tree"), None).await).await;
     assert_eq!(tree["name"], "notes");
-    assert_eq!(tree["children"][0]["path"], "note.md");
+    assert_eq!(tree["path"], "");
+    assert!(
+        tree["children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["path"] == "note.md")
+    );
+    assert!(
+        tree["children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|node| node.get("children").is_none())
+    );
+    let nested_response = request(&app, "GET", &format!("/{slug}/api/tree?path=docs"), None).await;
+    assert_eq!(nested_response.status(), StatusCode::OK);
+    let nested = json(nested_response).await;
+    assert_eq!(nested["path"], "docs");
+    assert_eq!(nested["children"][0]["path"], "docs/nested.md");
     let document = json(
         request(
             &app,

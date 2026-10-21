@@ -4,13 +4,13 @@ import {
   type Bookmark,
   setBookmarkSchema,
   treeEvents,
-  treeSchema,
+  treeListingSchema,
   openDirectoryResponseSchema,
 } from './contracts.ts';
 import { subscribeEvents } from './events.ts';
 
 export async function getFileTree(apiBase: string, signal?: AbortSignal, showHidden = false, path = '') {
-  const { data, response } = await requestJsonWithResponse(`${apiBase}/tree?${new URLSearchParams({ showHidden: String(showHidden), path })}`, treeSchema, { signal });
+  const { data, response } = await requestJsonWithResponse(`${apiBase}/tree?${new URLSearchParams({ showHidden: String(showHidden), path })}`, treeListingSchema, { signal });
   return { ...data, revision: response.headers.get('x-tree-revision') };
 }
 

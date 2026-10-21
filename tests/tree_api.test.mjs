@@ -7,9 +7,9 @@ test('directory expansion encodes its path and distinguishes unloaded from empty
   let url, signal;
   t.mock.method(globalThis, 'fetch', async (input, init) => {
     url = new URL(input, 'http://localhost'); signal = init.signal;
-    return new Response(JSON.stringify({ name: 'repo', absolutePath: '/repo', children: [
+    return new Response(JSON.stringify({ path: '照片/a & b', name: 'a & b', absolutePath: '/repo/照片/a & b', children: [
       { name: 'unopened', path: 'unopened', type: 'directory', modified: '' },
-      { name: 'empty', path: 'empty', type: 'directory', modified: '', children: [] },
+      { name: 'empty', path: 'empty', type: 'directory', modified: '' },
     ] }), { headers: { 'content-type': 'application/json', 'x-tree-revision': '12' } });
   });
   const tree = await getFileTree('/repo/api', controller.signal, true, '照片/a & b');
@@ -17,6 +17,7 @@ test('directory expansion encodes its path and distinguishes unloaded from empty
   assert.deepEqual(Object.fromEntries(url.searchParams), { showHidden: 'true', path: '照片/a & b' });
   assert.equal(signal, controller.signal);
   assert.equal(tree.revision, '12');
+  assert.equal(tree.path, '照片/a & b');
   assert.equal(tree.children[0].children, undefined);
-  assert.deepEqual(tree.children[1].children, []);
+  assert.deepEqual(tree.children[1].children, undefined);
 });

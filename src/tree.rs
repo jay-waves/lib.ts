@@ -6,7 +6,7 @@ use ignore::WalkBuilder;
 use notify::{EventKind, RecursiveMode, Watcher, event::ModifyKind};
 use serde::Serialize;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, RwLock,
@@ -19,6 +19,7 @@ use tokio::sync::{broadcast, watch};
 
 const IDLE_TIME: Duration = Duration::from_secs(60);
 const DEBOUNCE: Duration = Duration::from_millis(250);
+const PREFETCH_LIMIT: usize = 32;
 static NEXT_REVISION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Serialize)]
@@ -36,6 +37,7 @@ struct Node {
     children: Option<Vec<Node>>,
 }
 
+#[cfg(test)]
 #[derive(Serialize)]
 struct Root {
     name: String,
@@ -44,8 +46,18 @@ struct Root {
     children: Vec<Node>,
 }
 
+#[derive(Serialize)]
+struct DirectoryListing {
+    path: String,
+    name: String,
+    #[serde(rename = "absolutePath")]
+    absolute_path: String,
+    children: Vec<Node>,
+}
+
 #[derive(Clone)]
 pub struct Snapshot {
+    #[cfg(test)]
     pub body: bytes::Bytes,
     pub revision: u64,
     requested: Arc<HashSet<PathBuf>>,
@@ -62,15 +74,19 @@ pub struct Entry {
     events: broadcast::Sender<Event>,
     last_used: Mutex<Instant>,
     requested: Mutex<HashSet<PathBuf>>,
+    listings: RwLock<HashMap<PathBuf, bytes::Bytes>>,
+    prefetch: Mutex<VecDeque<PathBuf>>,
+    focus: Mutex<Option<PathBuf>>,
     wake: mpsc::SyncSender<()>,
     #[cfg(test)]
     scans: AtomicU64,
     #[cfg(test)]
-    listings: AtomicU64,
+    listing_scans: AtomicU64,
 }
 
 impl Entry {
     pub async fn directory(&self, root: &Path, path: &Path) -> Result<Snapshot, String> {
+        *self.focus.lock().unwrap_or_else(|e| e.into_inner()) = Some(path.to_path_buf());
         {
             let mut requested = self.requested.lock().unwrap_or_else(|e| e.into_inner());
             let mut changed = false;
@@ -83,13 +99,24 @@ impl Entry {
             if changed {
                 let _ = self.wake.try_send(());
             }
+            self.prefetch
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .retain(|queued| queued != path);
         }
+        // A foreground request can arrive while a background scan is running.
+        // Wake the worker so it is selected before the next prefetch task.
+        let _ = self.wake.try_send(());
         *self.last_used.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
         let mut receiver = self.snapshot.subscribe();
         loop {
             if let Some(value) = receiver.borrow_and_update().clone() {
                 match value {
-                    Ok(snapshot) if snapshot.requested.contains(path) => return Ok(snapshot),
+                    Ok(snapshot)
+                        if snapshot.requested.contains(path) && self.listing(path).is_some() =>
+                    {
+                        return Ok(snapshot);
+                    }
                     Err(error) => return Err(error),
                     _ => {}
                 }
@@ -105,6 +132,51 @@ impl Entry {
                 return snapshot;
             }
             receiver.changed().await.map_err(|_| "File tree stopped")?;
+        }
+    }
+
+    pub fn listing(&self, path: &Path) -> Option<bytes::Bytes> {
+        self.listings
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(path)
+            .cloned()
+    }
+
+    pub fn prefetch_children(&self, root: &Path, path: &Path) {
+        let Some(body) = self.listing(path) else {
+            return;
+        };
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+            return;
+        };
+        let children = value.get("children").and_then(serde_json::Value::as_array);
+        let Some(children) = children else { return };
+        let requested = self.requested.lock().unwrap_or_else(|e| e.into_inner());
+        let candidates = children
+            .iter()
+            .filter(|child| {
+                child.get("type").and_then(serde_json::Value::as_str) == Some("directory")
+            })
+            .filter_map(|child| child.get("path").and_then(serde_json::Value::as_str))
+            .map(|child| root.join(child))
+            .filter(|child| !requested.contains(child))
+            .collect::<Vec<_>>();
+        drop(requested);
+        let mut queue = self.prefetch.lock().unwrap_or_else(|e| e.into_inner());
+        let before = queue.len();
+        for child in candidates {
+            if queue.len() >= PREFETCH_LIMIT {
+                break;
+            }
+            if !queue.contains(&child) {
+                queue.push_back(child);
+            }
+        }
+        let changed = queue.len() != before;
+        drop(queue);
+        if changed {
+            let _ = self.wake.try_send(());
         }
     }
 
@@ -139,11 +211,14 @@ impl Service {
             events,
             last_used: Mutex::new(Instant::now()),
             requested: Mutex::new(HashSet::from([root.clone()])),
+            listings: RwLock::new(HashMap::new()),
+            prefetch: Mutex::new(VecDeque::new()),
+            focus: Mutex::new(Some(root.clone())),
             wake,
             #[cfg(test)]
             scans: AtomicU64::new(0),
             #[cfg(test)]
-            listings: AtomicU64::new(0),
+            listing_scans: AtomicU64::new(0),
         });
         entries.insert(key.clone(), entry.clone());
         let map = Arc::downgrade(&self.entries);
@@ -247,9 +322,12 @@ struct Scan<'a> {
     paths: HashSet<PathBuf>,
     show_hidden: bool,
     requested: &'a HashSet<PathBuf>,
+    focus: &'a Option<PathBuf>,
     cache: &'a mut HashMap<PathBuf, Vec<Node>>,
+    directory_listings: &'a RwLock<HashMap<PathBuf, bytes::Bytes>>,
+    listing_changed: &'a mut bool,
     #[cfg(test)]
-    listings: &'a AtomicU64,
+    listing_count: &'a AtomicU64,
 }
 
 fn directory_entries(directory: &Path, private: &Path, show_hidden: bool) -> ignore::Walk {
@@ -281,11 +359,11 @@ impl Scan<'_> {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(directory.to_path_buf());
-        let mut nodes = if let Some(nodes) = self.cache.get(directory) {
+        let nodes = if let Some(nodes) = self.cache.get(directory) {
             nodes.clone()
         } else {
             #[cfg(test)]
-            self.listings.fetch_add(1, Ordering::Relaxed);
+            self.listing_count.fetch_add(1, Ordering::Relaxed);
             let mut nodes = Vec::new();
             for item in directory_entries(directory, self.private, self.show_hidden) {
                 let item = match item {
@@ -344,15 +422,77 @@ impl Scan<'_> {
             self.cache.insert(directory.to_path_buf(), nodes.clone());
             nodes
         };
-        for node in &mut nodes {
+        #[cfg(test)]
+        let mut nodes = nodes;
+        let listing = DirectoryListing {
+            path: directory
+                .strip_prefix(self.root)
+                .unwrap_or(directory)
+                .to_string_lossy()
+                .replace('\\', "/"),
+            name: directory
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            absolute_path: crate::client_path(directory),
+            children: nodes.clone(),
+        };
+        let body =
+            bytes::Bytes::from(serde_json::to_vec(&listing).map_err(|error| error.to_string())?);
+        let mut listings = self
+            .directory_listings
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        if listings
+            .get(directory)
+            .is_some_and(|previous| previous != &body)
+        {
+            *self.listing_changed = true;
+        }
+        listings.insert(directory.to_path_buf(), body);
+        drop(listings);
+        for node in &nodes {
             let path = self.root.join(&node.path);
             self.paths.insert(path.clone());
             self.known
                 .write()
                 .unwrap_or_else(|e| e.into_inner())
+                .insert(path);
+        }
+        let mut directories = nodes
+            .iter()
+            .filter(|node| {
+                node.kind == "directory" && self.requested.contains(&self.root.join(&node.path))
+            })
+            .map(|node| node.path.clone())
+            .collect::<Vec<_>>();
+        directories.sort_by_key(|relative| {
+            let path = self.root.join(relative);
+            usize::from(
+                !self
+                    .focus
+                    .as_ref()
+                    .is_some_and(|focus| focus.starts_with(&path)),
+            )
+        });
+        for relative in directories {
+            let path = self.root.join(&relative);
+            self.paths.insert(path.clone());
+            self.known
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
                 .insert(path.clone());
-            if node.kind == "directory" && self.requested.contains(&path) {
-                node.children = Some(self.directory(&path)?);
+            if nodes.iter().any(|node| node.path == relative) {
+                let children = self.directory(&path)?;
+                #[cfg(test)]
+                if let Some(node) = nodes.iter_mut().find(|node| node.path == relative) {
+                    node.children = Some(children);
+                }
+                #[cfg(not(test))]
+                {
+                    let _ = children;
+                }
             }
         }
         Ok(nodes)
@@ -478,6 +618,48 @@ fn run(
                     || path.parent() == Some(directory.as_path())
             })
         });
+        entry
+            .listings
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|directory, _| {
+                !invalid.iter().any(|path| {
+                    path == root
+                        || !path.starts_with(root)
+                        || control_paths
+                            .iter()
+                            .any(|control| control == path || control.starts_with(path))
+                        || matches!(
+                            path.file_name().and_then(|name| name.to_str()),
+                            Some(".gitignore" | ".ignore")
+                        )
+                        || directory.starts_with(path)
+                        || path.parent() == Some(directory.as_path())
+                })
+            });
+        let focus = entry
+            .focus
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if focus.is_none() {
+            loop {
+                let path = entry
+                    .prefetch
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .pop_front();
+                let Some(path) = path else { break };
+                if entry
+                    .requested
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(path)
+                {
+                    break;
+                }
+            }
+        }
         let requested = entry
             .requested
             .lock()
@@ -493,6 +675,7 @@ fn run(
             watched.remove(&stale);
         }
         *controls.write().unwrap_or_else(|e| e.into_inner()) = control_paths.clone();
+        let mut listing_changed = false;
         let mut scan = Scan {
             root,
             private,
@@ -503,9 +686,12 @@ fn run(
             paths: HashSet::new(),
             show_hidden,
             requested: &requested,
+            focus: &focus,
             cache: &mut cache,
+            directory_listings: &entry.listings,
+            listing_changed: &mut listing_changed,
             #[cfg(test)]
-            listings: &entry.listings,
+            listing_count: &entry.listing_scans,
         };
         // Watch ignore/config parents too, including creation of missing files.
         for path in control_paths {
@@ -525,6 +711,7 @@ fn run(
             scan.watched.remove(&stale);
         }
         *known.write().unwrap_or_else(|e| e.into_inner()) = scan.paths;
+        #[cfg(test)]
         let body = bytes::Bytes::from(
             serde_json::to_vec(&Root {
                 name: root
@@ -537,22 +724,49 @@ fn run(
             })
             .map_err(|error| error.to_string())?,
         );
+        #[cfg(not(test))]
+        let _ = children;
         let changed = entry
             .snapshot
             .borrow()
             .as_ref()
             .is_none_or(|previous| match previous {
-                Ok(previous) => previous.body != body || *previous.requested != requested,
+                Ok(previous) => {
+                    let changed =
+                        *previous.requested != requested || !invalid.is_empty() || listing_changed;
+                    #[cfg(test)]
+                    let changed = changed || previous.body != body;
+                    changed
+                }
                 Err(_) => true,
             });
         if changed {
             let revision = NEXT_REVISION.fetch_add(1, Ordering::Relaxed);
             entry.snapshot.send_replace(Some(Ok(Snapshot {
+                #[cfg(test)]
                 body,
                 revision,
                 requested: Arc::new(requested),
             })));
-            let _ = entry.events.send(Event::Changed(revision));
+            // Loading a requested or prefetched directory changes the snapshot
+            // shape, but it is not a filesystem change for SSE subscribers.
+            if !invalid.is_empty() {
+                let _ = entry.events.send(Event::Changed(revision));
+            }
+        }
+        if focus.is_some() {
+            let mut current_focus = entry.focus.lock().unwrap_or_else(|e| e.into_inner());
+            if *current_focus == focus {
+                *current_focus = None;
+            }
+        }
+        if !entry
+            .prefetch
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty()
+        {
+            let _ = entry.wake.try_send(());
         }
         loop {
             if !alive() {
@@ -715,7 +929,7 @@ mod tests {
             .unwrap();
         let initial = entry.snapshot().await.unwrap();
         assert_eq!(paths(&initial), ["docs", "unopened"]);
-        assert_eq!(entry.listings.load(Ordering::Relaxed), 1);
+        assert_eq!(entry.listing_scans.load(Ordering::Relaxed), 1);
         let loaded = entry
             .directory(&root, &root.join("docs/deep"))
             .await
@@ -724,10 +938,10 @@ mod tests {
             paths(&loaded),
             ["docs", "docs/deep", "docs/deep/note.md", "unopened"]
         );
-        assert_eq!(entry.listings.load(Ordering::Relaxed), 3);
+        assert_eq!(entry.listing_scans.load(Ordering::Relaxed), 3);
         let again = entry.directory(&root, &root.join("docs")).await.unwrap();
         assert_eq!(again.body.as_ptr(), loaded.body.as_ptr());
-        assert_eq!(entry.listings.load(Ordering::Relaxed), 3);
+        assert_eq!(entry.listing_scans.load(Ordering::Relaxed), 3);
     }
 
     #[tokio::test]

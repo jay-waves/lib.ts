@@ -21,6 +21,10 @@ export const treeSchema = z.object({
   children: z.array(treeNodeSchema),
 });
 export type FileTree = z.infer<typeof treeSchema> & { revision: string | null };
+export const treeListingSchema = z.object({
+  path: z.string(), name: z.string(), absolutePath: z.string(), children: z.array(treeNodeSchema),
+});
+export type TreeListing = z.infer<typeof treeListingSchema> & { revision: string | null };
 
 const bookmarkLine = z.number().int().positive().max(4294967295).optional();
 const bookmarkPage = z.object({ index: z.number().int().nonnegative().max(4294967295), x: z.number().finite(), y: z.number().finite() }).optional();

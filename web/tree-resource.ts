@@ -1,66 +1,108 @@
 import { indexFileTree } from './file-tree.mjs';
-import type { TreeNode } from './api/contracts';
+import type { FileTree, TreeListing, TreeNode } from './api/contracts';
 
-// One request at a time bounds disk work. Each response publishes immediately,
-// so a deep navigation does not hold the root listing until every branch loads.
-export function createTreeResource<T extends { children: TreeNode[] }>(load: (signal: AbortSignal, path: string) => Promise<T>) {
-  let tree: T | undefined;
+export function createTreeResource(load: (signal: AbortSignal, path: string) => Promise<TreeListing>) {
+  const listings = new Map<string, TreeListing>();
+  const requests = new Map<string, { promise: Promise<FileTree>; controller: AbortController }>();
+  const listeners = new Set<(tree: FileTree) => void>();
+  let tree: FileTree | undefined;
   let index = new Map<string, TreeNode>();
-  let pending: Promise<T> | undefined;
-  let controller: AbortController | undefined;
-  let current: string | undefined;
-  const queued = new Set<string>();
-  const prefetchPaths = new Set<string>();
-  const listeners = new Set<(tree: T) => void>();
-  function request(path = '', again = false, prefetch = false): Promise<T> {
-    if (current !== path || again) queued.add(path);
-    if (prefetch) prefetchPaths.add(path);
-    if (pending) return pending;
-    controller = new AbortController();
-    const { signal } = controller;
-    const operation = (async () => {
-      while (queued.size) {
-        current = queued.values().next().value!;
-        queued.delete(current);
-        const value = await load(signal, current);
-        signal.throwIfAborted();
-        tree = value;
-        index = indexFileTree(value.children);
-        if (prefetchPaths.delete(current)) {
-          const directory = current
-            ? index.get(current)
-            : undefined;
-          const children = directory?.children ?? (!current ? value.children : undefined);
-          for (const child of children ?? []) {
-            if (child.type === 'directory' && child.children === undefined) queued.add(child.path);
-          }
-        }
-        for (const listener of listeners) listener(value);
-      }
-      return tree!;
-    })().finally(() => {
-      if (pending === operation) { pending = undefined; current = undefined; }
+  let disposed = false;
+
+  function publish(path: string) {
+    const listing = listings.get(path);
+    if (!listing) return;
+    const attachCachedChildren = (nodes: TreeNode[]): TreeNode[] => nodes.map(node => {
+      if (node.type !== 'directory') return node;
+      const loaded = listings.get(node.path);
+      return loaded ? { ...node, children: attachCachedChildren(loaded.children) } : node;
     });
-    pending = operation;
-    return operation;
+    const children = attachCachedChildren(listing.children);
+    if (!path) {
+      tree = { name: listing.name, absolutePath: listing.absolutePath, children, revision: listing.revision };
+      index = indexFileTree(tree.children);
+    } else if (tree) {
+      const previous = index.get(path);
+      let updated: TreeNode | undefined;
+      const replace = (nodes: TreeNode[]): TreeNode[] => nodes.map(node => {
+        if (node.path === path) {
+          updated = { ...node, children };
+          return updated;
+        }
+        if (node.type === 'directory' && path.startsWith(`${node.path}/`) && node.children) {
+          const nested = replace(node.children);
+          return nested.some((child, index) => child !== node.children![index]) ? { ...node, children: nested } : node;
+        }
+        return node;
+      });
+      tree = { ...tree, children: replace(tree.children) };
+      if (updated) {
+        const removeDescendants = (nodes: TreeNode[]) => nodes.forEach(node => {
+          index.delete(node.path);
+          if (node.children) removeDescendants(node.children);
+        });
+        if (previous?.children) removeDescendants(previous.children);
+        index.set(path, updated);
+        indexFileTree(children, index);
+      }
+    }
+    if (!tree) return;
+    for (const listener of listeners) listener(tree);
   }
-  const has = (path: string) => Boolean(tree) && (!path || index.has(path));
-  const directoryLoaded = (path: string) => path ? index.get(path)?.children !== undefined : Boolean(tree);
-  const ensureDirectory = (path: string) => directoryLoaded(path) ? Promise.resolve(tree!) : request(path, false, true);
+
+  function request(path: string): Promise<FileTree> {
+    if (disposed) return Promise.reject(new DOMException('Tree resource disposed', 'AbortError'));
+    if (listings.has(path)) return Promise.resolve(tree!);
+    const existing = requests.get(path);
+    if (existing) return existing.promise;
+    const controller = new AbortController();
+    const promise = load(controller.signal, path).then(listing => {
+      if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+      listings.set(path, listing);
+      publish(path);
+      return tree!;
+    }).finally(() => {
+      if (requests.get(path)?.promise === promise) requests.delete(path);
+    });
+    requests.set(path, { promise, controller });
+    return promise;
+  }
+
+  async function ensureDirectory(path: string) {
+    if (listings.has(path)) return tree!;
+    return request(path);
+  }
+
   return {
-    has,
+    has(path: string) { return Boolean(tree) && (!path || index.has(path)); },
     get index() { return index; },
-    subscribe(listener: (tree: T) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    subscribe(listener: (tree: FileTree) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     ensureDirectory,
     async ensure(path: string) {
-      if (!has(path)) await request(path.split('/').slice(0, -1).join('/'));
-      return index.get(path)?.type === 'directory' ? ensureDirectory(path) : tree!;
+      if (!path) return ensureDirectory('');
+      const parts = path.split('/');
+      let directory = '';
+      await ensureDirectory('');
+      for (const part of parts.slice(0, -1)) {
+        directory = directory ? `${directory}/${part}` : part;
+        await ensureDirectory(directory);
+      }
+      const node = index.get(path);
+      if (node?.type === 'directory') await ensureDirectory(path);
+      return tree!;
     },
-    refresh: () => request(''),
-    invalidate: () => request('', true),
-    dispose() {
-      controller?.abort(); queued.clear(); prefetchPaths.clear(); pending = tree = current = undefined;
+    async invalidate() {
+      for (const { controller } of requests.values()) controller.abort();
+      requests.clear();
+      listings.clear();
+      tree = undefined;
       index = new Map();
+      return request('');
+    },
+    dispose() {
+      disposed = true;
+      for (const { controller } of requests.values()) controller.abort();
+      requests.clear(); listings.clear(); listeners.clear(); tree = undefined; index = new Map();
     },
   };
 }

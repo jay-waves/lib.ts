@@ -94,12 +94,20 @@ pub(super) async fn get_tree(
     };
     match entry.directory(&root, &path).await {
         Ok(snapshot) => {
+            entry.prefetch_children(&root, &path);
+            let Some(body) = entry.listing(&path) else {
+                return json_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Directory listing unavailable",
+                )
+                .into_response();
+            };
             let mut response = (
                 [
                     (axum::http::header::CONTENT_TYPE, "application/json"),
                     (axum::http::header::CACHE_CONTROL, "no-store"),
                 ],
-                snapshot.body,
+                body,
             )
                 .into_response();
             response.headers_mut().insert(
