@@ -61,7 +61,7 @@ pub(super) fn parse_query(input: &str) -> Result<SearchSpec, String> {
             }
             let flags_end = chars.get(after).map(|item| item.0).unwrap_or(input.len());
             let flags = &input[flags_start..flags_end];
-            if flags != "" && flags != "i" {
+            if !flags.is_empty() && flags != "i" {
                 return Err("Only the i flag is supported: /pattern/ or /pattern/i.".into());
             }
             if pattern.is_empty() {

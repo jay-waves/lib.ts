@@ -16,10 +16,10 @@ pub(super) async fn library_events(
     };
     let mut assets = Vec::new();
     for value in query.asset.into_iter().take(128) {
-        if let Ok(path) = checked_library_path(&root, &value, &private) {
-            if !assets.iter().any(|(existing, _)| existing == &path) {
-                assets.push((path, value));
-            }
+        if let Ok(path) = checked_library_path(&root, &value, &private)
+            && !assets.iter().any(|(existing, _)| existing == &path)
+        {
+            assets.push((path, value));
         }
     }
     let receiver = state

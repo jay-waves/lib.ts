@@ -206,7 +206,7 @@ pub(super) async fn use_repository(
     headers: HeaderMap,
 ) -> Response {
     if let Err(response) = require_json_content_type(&headers) {
-        return response;
+        return response.into_response();
     }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
@@ -231,12 +231,8 @@ pub(super) async fn list_bookmarks(
 pub(super) async fn set_bookmark(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
-    headers: HeaderMap,
     Json(request): Json<SetBookmarkRequest>,
 ) -> Response {
-    if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
     };
@@ -278,12 +274,8 @@ pub(super) async fn get_recent_files(
 pub(super) async fn add_recent_file(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
-    headers: HeaderMap,
     Json(request): Json<RecentFileRequest>,
 ) -> Response {
-    if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
     };
@@ -307,7 +299,7 @@ pub(super) async fn clear_recent_files(
     headers: HeaderMap,
 ) -> Response {
     if let Err(response) = require_json_content_type(&headers) {
-        return response;
+        return response.into_response();
     }
     let Some(repo) = state.repository_for_uri(uri.path()) else {
         return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
@@ -320,12 +312,8 @@ pub(super) async fn clear_recent_files(
 
 pub(super) async fn add_repository(
     State(state): State<AppState>,
-    headers: HeaderMap,
     Json(request): Json<AddRepositoryRequest>,
 ) -> Response {
-    if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
     match state
         .repositories
         .add(&request.root, request.name.as_deref())

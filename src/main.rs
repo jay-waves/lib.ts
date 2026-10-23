@@ -58,9 +58,7 @@ fn stream_file(
 mod runtime;
 use runtime::{ClientStateError, LeaseUpdateError, LibraryEventHub, RuntimeState};
 mod platform;
-use platform::{
-    browse_directories, browse_machine_root, machine_root_path, server_hostname, system_open,
-};
+use platform::{browse_directories, browse_machine_root, server_hostname, system_open};
 
 mod access;
 mod documents;
@@ -395,7 +393,7 @@ fn json_error(status: StatusCode, message: impl Into<String>) -> impl IntoRespon
     )
 }
 
-fn require_json_content_type(headers: &HeaderMap) -> Result<(), Response> {
+fn require_json_content_type(headers: &HeaderMap) -> Result<(), (StatusCode, Json<ApiError>)> {
     let is_json = headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
@@ -403,11 +401,12 @@ fn require_json_content_type(headers: &HeaderMap) -> Result<(), Response> {
     if is_json {
         Ok(())
     } else {
-        Err(json_error(
+        Err((
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Expected application/json",
-        )
-        .into_response())
+            Json(ApiError {
+                error: "Expected application/json".into(),
+            }),
+        ))
     }
 }
 

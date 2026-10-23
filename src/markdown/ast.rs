@@ -7,6 +7,9 @@ use comrak::{
 };
 use std::collections::HashMap;
 
+type FootnotePanel = (String, String, String, u32);
+type FootnoteGroup<'a> = (&'a AstNode<'a>, Vec<FootnotePanel>);
+
 type Definitions<'a> = HashMap<String, &'a AstNode<'a>>;
 
 fn add_inline_footnotes<'a>(
@@ -56,7 +59,7 @@ fn expand_footnotes<'a>(
         .descendants()
         .filter(|node| matches!(node.data().value, NodeValue::FootnoteReference(_)))
         .collect::<Vec<_>>();
-    let mut groups: Vec<(&AstNode<'_>, Vec<(String, String, String, u32)>)> = Vec::new();
+    let mut groups: Vec<FootnoteGroup<'_>> = Vec::new();
     let mut occurrences = HashMap::<String, usize>::new();
     for reference in references {
         let NodeValue::FootnoteReference(note) = reference.data().value.clone() else {
@@ -223,14 +226,15 @@ fn add_heading_sections<'a>(arena: &'a Arena<'a>, root: &'a AstNode<'a>) {
                 .is_some_and(|(_, parent_level, _, _)| *parent_level >= level)
             {
                 let (_, _, open, has_content) = stack.pop().unwrap();
-                if let NodeValue::Raw(html) = &mut open.data.borrow_mut().value {
-                    if has_content && !html.contains("has-heading-content") {
-                        *html = html.replacen(
-                            "class=\"heading-section\"",
-                            "class=\"heading-section has-heading-content\"",
-                            1,
-                        );
-                    }
+                if let NodeValue::Raw(html) = &mut open.data.borrow_mut().value
+                    && has_content
+                    && !html.contains("has-heading-content")
+                {
+                    *html = html.replacen(
+                        "class=\"heading-section\"",
+                        "class=\"heading-section has-heading-content\"",
+                        1,
+                    );
                 }
                 current.insert_before(raw(arena, "</section>\n".into()));
             }
@@ -257,14 +261,15 @@ fn add_heading_sections<'a>(arena: &'a Arena<'a>, root: &'a AstNode<'a>) {
     }
 
     while let Some((_, _, open, has_content)) = stack.pop() {
-        if let NodeValue::Raw(html) = &mut open.data.borrow_mut().value {
-            if has_content && !html.contains("has-heading-content") {
-                *html = html.replacen(
-                    "class=\"heading-section\"",
-                    "class=\"heading-section has-heading-content\"",
-                    1,
-                );
-            }
+        if let NodeValue::Raw(html) = &mut open.data.borrow_mut().value
+            && has_content
+            && !html.contains("has-heading-content")
+        {
+            *html = html.replacen(
+                "class=\"heading-section\"",
+                "class=\"heading-section has-heading-content\"",
+                1,
+            );
         }
         root.append(raw(arena, "</div>\n</section>\n".into()));
     }

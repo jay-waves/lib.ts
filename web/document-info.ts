@@ -37,8 +37,10 @@ function writeEntries(entries: Entry[]) {
 export function storeDocumentInfos(repository: string, files: FileDescriptor[]) {
   const entries = readEntries();
   const paths = new Set(files.map(info => info.path));
+  const previousByPath = new Map(entries.filter(entry => entry.repository === repository)
+    .map(entry => [entry.info.path, entry.info]));
   const descriptions = files.map(info => {
-    const previous = entries.find(entry => entry.repository === repository && entry.info.path === info.path)?.info;
+    const previous = previousByPath.get(info.path);
     // A lightweight revalidation need not discard dimensions obtained by the gallery.
     return previous?.modified === info.modified && previous.size === info.size && previous.type === info.type && previous.mime === info.mime ? { ...previous, ...info } : info;
   });

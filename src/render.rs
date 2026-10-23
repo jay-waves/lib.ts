@@ -208,10 +208,10 @@ impl RenderService {
             .iter()
             .map(|(_, compiler)| compiler.clone())
             .collect::<Vec<_>>();
-        let all_idle = compilers
-            .iter()
-            .map(|compiler| compiler.evict_idle(Duration::from_secs(15 * 60)))
-            .fold(true, |all, idle| all && idle);
+        let mut all_idle = true;
+        for compiler in compilers {
+            all_idle &= compiler.evict_idle(Duration::from_secs(15 * 60));
+        }
         if all_idle {
             comemo::evict(0);
         }

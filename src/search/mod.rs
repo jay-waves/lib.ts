@@ -17,7 +17,7 @@ mod facets;
 mod query;
 mod scanner;
 use facets::{facet_paths, facets};
-use query::{CompiledPathFilter, PathFilter, SearchSpec, params_path_filter, parse_query};
+use query::{SearchSpec, params_path_filter, parse_query};
 #[cfg(test)]
 use scanner::find_matches;
 use scanner::scan;
@@ -250,14 +250,13 @@ impl SearchService {
                 .snapshots
                 .lock()
                 .map_err(|_| "Search cache lock poisoned")?;
-            if snapshots.len() >= 4 {
-                if let Some(oldest) = snapshots
+            if snapshots.len() >= 4
+                && let Some(oldest) = snapshots
                     .iter()
                     .min_by_key(|(_, item)| item.created)
                     .map(|(key, _)| key.clone())
-                {
-                    snapshots.remove(&oldest);
-                }
+            {
+                snapshots.remove(&oldest);
             }
             snapshots.insert(id.clone(), Arc::clone(&snapshot));
             (id, snapshot)

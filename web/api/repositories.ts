@@ -12,10 +12,7 @@ export function browseDirectories(path: string, signal?: AbortSignal): Promise<D
   return requestJson(`/api/directories?${query}`, directoryListingSchema, { signal });
 }
 
-export async function listRepositories(): Promise<{
-  repos: RepositoryMetadata[];
-  defaultRepoId?: string | null;
-}> {
+export function listRepositories() {
   return requestJson('/api/repos', repositoriesResponseSchema);
 }
 

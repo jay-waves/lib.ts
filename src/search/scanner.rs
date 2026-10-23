@@ -236,11 +236,13 @@ pub(super) fn find_matches(
                     let start = byte_to_utf16(&snippet.text, matched.start() - window.start);
                     let end =
                         byte_to_utf16(&snippet.text, matched.end().min(window.end) - window.start);
-                    if let Some(last) = snippet.ranges.last_mut() {
-                        if last.1 == start && last.0 != last.1 && end > start {
-                            last.1 = end;
-                            return true;
-                        }
+                    if let Some(last) = snippet.ranges.last_mut()
+                        && last.1 == start
+                        && last.0 != last.1
+                        && end > start
+                    {
+                        last.1 = end;
+                        return true;
                     }
                     snippet.ranges.push((start, end));
                     true
@@ -267,15 +269,14 @@ fn ignored_relative_path(path: &str) -> bool {
 pub(super) fn group_snippets(lines: Vec<SnippetLine>) -> Vec<Snippet> {
     let mut snippets = Vec::<Snippet>::new();
     for line in lines {
-        if let Some(last) = snippets.last_mut() {
-            if line
+        if let Some(last) = snippets.last_mut()
+            && line
                 .number
                 .saturating_sub(last.lines.last().map(|item| item.number).unwrap_or(0))
                 <= 5
-            {
-                last.lines.push(line);
-                continue;
-            }
+        {
+            last.lines.push(line);
+            continue;
         }
         snippets.push(Snippet { lines: vec![line] });
     }

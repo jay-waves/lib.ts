@@ -242,10 +242,10 @@ pub fn diff(root: &Path, requested: &str, scope: &str) -> Result<DiffResponse, S
         opts.pathspec(&repo_path_string)
             .include_untracked(false)
             .context_lines(3);
-        if change.status.starts_with('R') {
-            if let Some(original) = &change.original_path {
-                opts.pathspec(prefix.join(original).to_string_lossy().replace('\\', "/"));
-            }
+        if change.status.starts_with('R')
+            && let Some(original) = &change.original_path
+        {
+            opts.pathspec(prefix.join(original).to_string_lossy().replace('\\', "/"));
         }
         let index = repo.index().map_err(|error| error.to_string())?;
         let mut diff = repo
@@ -384,12 +384,10 @@ fn render_diff(diff: git2::Diff<'_>, id: &str, label: &str) -> Result<DiffSectio
         patch.extend_from_slice(line.content());
         true
     });
-    if result.is_err() && !too_large {
-        return Err(result.unwrap_err().to_string());
-    }
     if too_large {
         return Ok(DiffSection::empty(id, label).too_large());
     }
+    result.map_err(|error| error.to_string())?;
     if binary {
         return Ok(DiffSection::empty(id, label).binary());
     }

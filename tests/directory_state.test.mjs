@@ -75,10 +75,10 @@ test('unchanged preference patches do not rewrite browser storage', () => {
   assert.equal(writes, 0);
 });
 
-test('legacy repository settings and unavailable storage remain supported', () => {
+test('obsolete repository settings are ignored and unavailable storage remains supported', () => {
   const storage = memoryStorage();
   storage.setItem('library-gallery:repo', JSON.stringify([['', true], ['photos', { sort: 'taken-asc' }]]));
-  assert.deepEqual(readRepositoryDisplayState('repo', storage), { gallery: true });
+  assert.deepEqual(readRepositoryDisplayState('repo', storage), {});
   assert.deepEqual(readDirectoryState('repo', 'photos', storage), { sort: 'taken-asc' });
   const unavailable = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
   assert.deepEqual(readDirectoryState('repo', '', unavailable), {});

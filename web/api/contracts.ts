@@ -15,16 +15,11 @@ export const treeNodeSchema = z.object({
 });
 export type TreeNode = z.infer<typeof treeNodeSchema>;
 
-export const treeSchema = z.object({
-  name: z.string(),
-  absolutePath: z.string(),
-  children: z.array(treeNodeSchema),
-});
-export type FileTree = z.infer<typeof treeSchema> & { revision: string | null };
 export const treeListingSchema = z.object({
   path: z.string(), name: z.string(), absolutePath: z.string(), children: z.array(treeNodeSchema),
 });
 export type TreeListing = z.infer<typeof treeListingSchema> & { revision: string | null };
+export type FileTree = Omit<TreeListing, 'path'>;
 
 const bookmarkLine = z.number().int().positive().max(4294967295).optional();
 const bookmarkPage = z.object({ index: z.number().int().nonnegative().max(4294967295), x: z.number().finite(), y: z.number().finite() }).optional();
@@ -36,7 +31,7 @@ export const setBookmarkSchema = z.object({ path: z.string(), bookmarked: z.bool
 
 export const recentFilesResponseSchema = z.object({
   recent: z.array(z.string()),
-  visitedAt: z.record(z.string(), z.string()).default({}),
+  visitedAt: z.record(z.string(), z.string()),
 });
 export type RecentFilesResponse = z.infer<typeof recentFilesResponseSchema>;
 
@@ -67,7 +62,7 @@ export type RepositoryMetadata = z.infer<typeof repositoryMetadataSchema>;
 
 export const repositoriesResponseSchema = z.object({
   repos: z.array(repositoryMetadataSchema),
-  defaultRepoId: z.string().nullable().optional(),
+  defaultRepoId: z.string().nullable(),
 });
 
 export const searchFacetSchema = z.object({ value: z.string(), count: z.number().int().nonnegative() });

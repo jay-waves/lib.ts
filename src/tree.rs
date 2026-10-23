@@ -189,9 +189,11 @@ impl Entry {
     }
 }
 
+type Entries = HashMap<(PathBuf, bool), Arc<Entry>>;
+
 #[derive(Clone, Default)]
 pub struct Service {
-    entries: Arc<Mutex<HashMap<(PathBuf, bool), Arc<Entry>>>>,
+    entries: Arc<Mutex<Entries>>,
 }
 
 impl Service {

@@ -101,7 +101,7 @@ pub fn extract(extension: &str, source: &str) -> Vec<Symbol> {
     };
     let query_source = tree_sitter_language_pack::get_tags_query(language_name)
         .filter(|query| !query.trim().is_empty())
-        .or_else(|| match language_name {
+        .or(match language_name {
             "bash" => Some(include_str!("symbols/bash.scm")),
             "bibtex" => Some(BIBTEX_TAGS_QUERY),
             "json" => Some(JSON_TAGS_QUERY),

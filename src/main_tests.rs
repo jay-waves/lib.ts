@@ -894,7 +894,10 @@ fn directory_browser_includes_server_metadata_and_hides_private_data() {
     let listing = browse_directories(None, temporary.path(), &private).unwrap();
     assert!(!listing.hostname.is_empty());
     assert_eq!(listing.hostname, server_hostname());
-    assert_eq!(listing.root_path, machine_root_path());
+    assert_eq!(
+        listing.root_path,
+        platform::machine_browser::machine_root_path()
+    );
     assert_eq!(listing.directories.len(), 1);
     assert_eq!(listing.directories[0].name, "notes");
     assert!(!listing.path.is_empty());

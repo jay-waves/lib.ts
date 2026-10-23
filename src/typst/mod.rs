@@ -215,14 +215,13 @@ struct Entry {
 }
 
 fn remove_document(state: &mut Documents, pages: &PageCache, id: &str) {
-    if let Some(entry) = state.entries.pop(id) {
-        if state
+    if let Some(entry) = state.entries.pop(id)
+        && state
             .compiled
             .get(&entry.key)
             .is_some_and(|cached| cached == id)
-        {
-            state.compiled.remove(&entry.key);
-        }
+    {
+        state.compiled.remove(&entry.key);
     }
     if let Ok(mut pages) = pages.lock() {
         pages.retain(|(entry_id, _)| entry_id != id);
@@ -243,10 +242,10 @@ fn trim_documents(state: &mut Documents, pages: &PageCache, protected: &str) {
     let mut expired = Vec::new();
     for ((path, _), entries) in &mut versions {
         entries.sort_by_key(|(_, created)| *created);
-        if state.active_paths.contains(path) {
-            if let Some((id, _)) = entries.last() {
-                pinned.insert(id.clone());
-            }
+        if state.active_paths.contains(path)
+            && let Some((id, _)) = entries.last()
+        {
+            pinned.insert(id.clone());
         }
         expired.extend(
             entries
@@ -256,14 +255,13 @@ fn trim_documents(state: &mut Documents, pages: &PageCache, protected: &str) {
         );
     }
     for id in expired {
-        if id != protected {
-            if state
+        if id != protected
+            && state
                 .entries
                 .peek(&id)
                 .is_some_and(|entry| Arc::strong_count(&entry.document) == 1)
-            {
-                remove_document(state, pages, &id);
-            }
+        {
+            remove_document(state, pages, &id);
         }
     }
     while state.entries.len() > DOCUMENT_LIMIT {

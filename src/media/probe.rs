@@ -54,10 +54,10 @@ fn parse_metadata(bytes: &[u8]) -> VideoMetadata {
         .and_then(|list| list.as_array())
         .and_then(|list| list.iter().find_map(|item| item.get("rotation")?.as_i64()))
         .unwrap_or(0);
-    if rotation.rem_euclid(180) == 90 {
-        if let Some(size) = &mut dimensions {
-            std::mem::swap(&mut size.width, &mut size.height);
-        }
+    if rotation.rem_euclid(180) == 90
+        && let Some(size) = &mut dimensions
+    {
+        std::mem::swap(&mut size.width, &mut size.height);
     }
     let duration_seconds = json
         .get("format")

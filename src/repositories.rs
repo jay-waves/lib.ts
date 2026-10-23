@@ -3,7 +3,6 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -50,18 +49,9 @@ pub struct RepositoryStore {
 }
 
 fn now() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as i128;
-    time::OffsetDateTime::from_unix_timestamp_nanos(nanos)
-        .ok()
-        .and_then(|value| {
-            value
-                .format(&time::format_description::well_known::Rfc3339)
-                .ok()
-        })
-        .unwrap_or_else(|| "1970-01-01T00:00:00Z".into())
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .expect("current UTC timestamp is representable as RFC 3339")
 }
 
 fn slug(root: &Path) -> String {

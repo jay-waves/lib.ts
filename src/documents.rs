@@ -341,7 +341,7 @@ fn load_document(
             source,
             url: format!(
                 "{api_prefix}/api/html?path={}",
-                encode_query_component(&requested_path)
+                encode_query_component(requested_path)
             ),
         }
     } else if info.kind == "image" {
@@ -352,14 +352,14 @@ fn load_document(
             preview,
             url: format!(
                 "{api_prefix}/api/asset?path={}",
-                encode_query_component(&requested_path)
+                encode_query_component(requested_path)
             ),
         }
     } else if info.kind == "pdf" {
         let revision =
             pdf::revision(&path).map_err(|error| (pdf_error_status(&error), error.to_string()))?;
         let info = pdf_renderer
-            .document_cancellable(&path, &revision, &cancellation)
+            .document_cancellable(&path, &revision, cancellation)
             .map_err(|error| (pdf_error_status(&error), error.to_string()))?;
         let pages = info
             .pages
@@ -368,7 +368,7 @@ fn load_document(
             .map(|(index, page)| DocumentPage {
                 url: format!(
                     "{api_prefix}/api/pdf/page?path={}&page={}",
-                    encode_query_component(&requested_path),
+                    encode_query_component(requested_path),
                     index + 1
                 ),
                 width: page.width,
@@ -386,7 +386,7 @@ fn load_document(
             format: Some(info.format),
             url: format!(
                 "{api_prefix}/api/asset?path={}",
-                encode_query_component(&requested_path)
+                encode_query_component(requested_path)
             ),
         }
     } else {
@@ -397,7 +397,7 @@ fn load_document(
                 format: None,
                 url: format!(
                     "{api_prefix}/api/asset?path={}",
-                    encode_query_component(&requested_path)
+                    encode_query_component(requested_path)
                 ),
             }
         } else {

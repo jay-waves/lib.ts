@@ -9,7 +9,6 @@ const normalizePath = path => (path || '').split('/').filter(Boolean).join('/');
 
 /** @returns {RepositoryDisplayState} */
 function displayState(value) {
-  if (typeof value === 'boolean') return { gallery: value }; // Previous storage format.
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(['gallery', 'rows', 'recursive', 'autoplayVideos', 'showHidden']
     .filter(key => typeof value[key] === 'boolean').map(key => [key, value[key]]));

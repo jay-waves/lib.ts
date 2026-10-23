@@ -3,12 +3,8 @@ use super::*;
 pub(super) async fn session_leases(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
-    headers: HeaderMap,
     Json(request): Json<LeaseRequest>,
 ) -> Response {
-    if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
     if !LEASE_CLIENT_RE.is_match(&request.client) || request.paths.len() > 64 {
         return json_error(StatusCode::BAD_REQUEST, "Invalid session lease").into_response();
     }
@@ -107,12 +103,8 @@ pub(super) async fn library_session(
 
 pub(super) async fn library_activity(
     State(state): State<AppState>,
-    headers: HeaderMap,
     Json(request): Json<ClientRequest>,
 ) -> Response {
-    if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
     let active = state
         .runtime
         .library_events
@@ -123,12 +115,8 @@ pub(super) async fn library_activity(
 pub(super) async fn library_open(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
-    headers: HeaderMap,
     Json(request): Json<LibraryOpenRequest>,
 ) -> Response {
-    if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
     if request.line.is_some_and(|line| line < 1)
         || request
             .view
@@ -283,13 +271,9 @@ pub(super) async fn library_open(
 pub(super) async fn open_directory(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
-    headers: HeaderMap,
     Json(request): Json<OpenDirectoryRequest>,
 ) -> Response {
     let root = state.root_for_uri(uri.path());
-    if let Err(response) = require_json_content_type(&headers) {
-        return response;
-    }
     let requested = request.path.unwrap_or_default();
     if requested.contains('\0') {
         return json_error(StatusCode::BAD_REQUEST, "Invalid directory path").into_response();

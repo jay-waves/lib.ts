@@ -298,7 +298,7 @@ pub(super) async fn html_resource(
     }
     let root = state.root_for_uri(uri.path());
     let private = state.data_directory.clone();
-    let file_path = match checked_library_path(&root, &path, &private) {
+    let file_path = match checked_library_path(&root, path, &private) {
         Ok(path) => path,
         Err((status, message)) => return json_error(status, message).into_response(),
     };

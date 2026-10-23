@@ -54,9 +54,8 @@ impl FileWatchSnapshot {
             .assets
             .iter()
             .zip(&previous.assets)
-            .filter_map(|(current, previous)| {
-                (current.signature != previous.signature).then(|| current.requested.clone())
-            })
+            .filter(|&(current, previous)| current.signature != previous.signature)
+            .map(|(current, _)| current.requested.clone())
             .collect::<Vec<_>>();
         (document_changed || !changed_assets.is_empty()).then_some(FileWatchEvent {
             document_changed,

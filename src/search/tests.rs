@@ -1,3 +1,4 @@
+use super::query::{CompiledPathFilter, PathFilter};
 use super::*;
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::Searcher;

@@ -28,7 +28,7 @@ test('polling is shared, pauses while hidden and preserves the last result on fa
   await resource.refresh();
   assert.equal(calls, 3);
   fail = true;
-  await resource.refresh(true);
+  await resource.refresh();
   assert.deepEqual(resource.getSnapshot().status.changes, [{ path: '3.md', status: '.M' }]);
   assert.equal(resource.getSnapshot().error, 'offline');
 });

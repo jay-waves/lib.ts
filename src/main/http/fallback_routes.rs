@@ -92,25 +92,26 @@ pub(super) async fn validate_repository_route(
             let _ = state.repositories.prune_missing();
             return json_error(StatusCode::NOT_FOUND, "Repo not found").into_response();
         }
-        if page_route && !(parts[1] == "tree" && parts.len() == 2) {
-            if let Some(repo) = repo {
-                let canonical = encode_query_component(&repo.slug);
-                if parts[0] != canonical {
-                    let suffix = request
-                        .uri()
-                        .path()
-                        .strip_prefix(&format!("/{}", parts[0]))
-                        .unwrap_or("");
-                    let query = request
-                        .uri()
-                        .query()
-                        .map(|value| format!("?{value}"))
-                        .unwrap_or_default();
-                    return axum::response::Redirect::permanent(&format!(
-                        "/{canonical}{suffix}{query}"
-                    ))
-                    .into_response();
-                }
+        if page_route
+            && !(parts[1] == "tree" && parts.len() == 2)
+            && let Some(repo) = repo
+        {
+            let canonical = encode_query_component(&repo.slug);
+            if parts[0] != canonical {
+                let suffix = request
+                    .uri()
+                    .path()
+                    .strip_prefix(&format!("/{}", parts[0]))
+                    .unwrap_or("");
+                let query = request
+                    .uri()
+                    .query()
+                    .map(|value| format!("?{value}"))
+                    .unwrap_or_default();
+                return axum::response::Redirect::permanent(&format!(
+                    "/{canonical}{suffix}{query}"
+                ))
+                .into_response();
             }
         }
     }

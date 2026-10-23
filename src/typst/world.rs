@@ -36,7 +36,7 @@ impl FileLoader for ProjectFiles {
         let (root, path) = match id.root() {
             VirtualRoot::Project => (self.root.path().to_owned(), self.root.resolve(id.vpath())?),
             VirtualRoot::Package(spec) => {
-                let package = self.packages.obtain(&spec)?;
+                let package = self.packages.obtain(spec)?;
                 (package.path().to_owned(), package.resolve(id.vpath())?)
             }
         };
@@ -70,12 +70,14 @@ impl FileLoader for ProjectFiles {
     }
 }
 
+type DateDependency = (Option<Duration>, Option<Datetime>);
+
 pub(super) struct TypstWorld {
     library: LazyHash<Library>,
     fonts: Arc<FontStore>,
     files: FileStore<ProjectFiles>,
     now: Time,
-    dates: Mutex<Vec<(Option<Duration>, Option<Datetime>)>>,
+    dates: Mutex<Vec<DateDependency>>,
 }
 
 impl TypstWorld {
@@ -123,7 +125,7 @@ impl TypstWorld {
             .map_err(|_| "Typst dependency lock poisoned".into())
     }
 
-    pub(super) fn dates(&self) -> Result<Vec<(Option<Duration>, Option<Datetime>)>, String> {
+    pub(super) fn dates(&self) -> Result<Vec<DateDependency>, String> {
         self.dates
             .lock()
             .map(|dates| dates.clone())

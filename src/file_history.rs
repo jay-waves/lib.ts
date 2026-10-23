@@ -1,12 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::{
-    collections::HashMap,
-    fs,
-    path::PathBuf,
-    sync::Mutex,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Mutex};
 
 const LIMIT: usize = 100;
 
@@ -26,23 +19,22 @@ struct FileState {
     files: Vec<Record>,
 }
 
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentFiles {
+    recent: Vec<String>,
+    visited_at: HashMap<String, String>,
+}
+
 pub struct FileHistory {
     directory: PathBuf,
     entries: Mutex<HashMap<String, FileState>>,
 }
 
 fn timestamp() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as i128;
-    time::OffsetDateTime::from_unix_timestamp_nanos(nanos)
-        .ok()
-        .and_then(|date| {
-            date.format(&time::format_description::well_known::Rfc3339)
-                .ok()
-        })
-        .unwrap_or_default()
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .expect("current UTC timestamp is representable as RFC 3339")
 }
 
 impl FileHistory {
@@ -59,10 +51,10 @@ impl FileHistory {
         repo: &str,
     ) -> Result<&'a mut FileState, String> {
         if !entries.contains_key(repo) {
-            if entries.len() >= 4 {
-                if let Some(oldest) = entries.keys().next().cloned() {
-                    entries.remove(&oldest);
-                }
+            if entries.len() >= 4
+                && let Some(oldest) = entries.keys().next().cloned()
+            {
+                entries.remove(&oldest);
             }
             let path = self.directory.join(format!("{repo}.json"));
             let state = match fs::read(path) {
@@ -86,20 +78,24 @@ impl FileHistory {
         fs::rename(temporary, path).map_err(|error| error.to_string())
     }
 
-    pub fn recent(&self, repo: &str) -> Result<Value, String> {
+    pub fn recent(&self, repo: &str) -> Result<RecentFiles, String> {
         let mut entries = self
             .entries
             .lock()
             .map_err(|_| "File history lock poisoned")?;
         let state = self.ensure(&mut entries, repo)?;
-        let records = state
-            .files
-            .iter()
-            .map(|record| (record.path.clone(), record.last_visited_at.clone()))
-            .collect::<Vec<_>>();
-        Ok(
-            serde_json::json!({"recent":records.iter().map(|(path,_)|path).collect::<Vec<_>>(),"visitedAt":records.into_iter().collect::<HashMap<_,_>>()}),
-        )
+        Ok(RecentFiles {
+            recent: state
+                .files
+                .iter()
+                .map(|record| record.path.clone())
+                .collect(),
+            visited_at: state
+                .files
+                .iter()
+                .map(|record| (record.path.clone(), record.last_visited_at.clone()))
+                .collect(),
+        })
     }
 
     pub fn visit(&self, repo: &str, path: &str) -> Result<(), String> {
@@ -123,7 +119,7 @@ impl FileHistory {
         self.persist(repo, state)
     }
 
-    pub fn clear_recent(&self, repo: &str) -> Result<Value, String> {
+    pub fn clear_recent(&self, repo: &str) -> Result<RecentFiles, String> {
         let mut entries = self
             .entries
             .lock()
@@ -131,7 +127,7 @@ impl FileHistory {
         let state = self.ensure(&mut entries, repo)?;
         state.files.clear();
         self.persist(repo, state)?;
-        Ok(serde_json::json!({"recent":[],"visitedAt":{}}))
+        Ok(RecentFiles::default())
     }
 }
 
@@ -186,9 +182,15 @@ mod tests {
         history.visit("repo", "b.md").unwrap();
         history.visit("repo", "a.md").unwrap();
         history.visit("other", "c.md").unwrap();
-        assert_eq!(
-            history.recent("repo").unwrap()["recent"],
-            serde_json::json!(["a.md", "b.md"])
+        assert_eq!(history.recent("repo").unwrap().recent, ["a.md", "b.md"]);
+        let response = serde_json::to_value(history.recent("repo").unwrap()).unwrap();
+        assert_eq!(response["recent"], serde_json::json!(["a.md", "b.md"]));
+        let visited_at = response["visitedAt"].as_object().unwrap();
+        assert_eq!(visited_at.len(), 2);
+        assert!(
+            visited_at
+                .values()
+                .all(|value| valid_timestamp(value.as_str().unwrap()))
         );
         let saved = fs::read_to_string(directory.path().join("file-history/repo.json")).unwrap();
         assert!(!saved.contains("position"));
@@ -196,12 +198,9 @@ mod tests {
         history.clear_recent("repo").unwrap();
         let restored = FileHistory::new(directory.path().into());
         assert_eq!(
-            restored.recent("repo").unwrap()["recent"],
-            serde_json::json!([])
+            restored.recent("repo").unwrap().recent,
+            Vec::<String>::new()
         );
-        assert_eq!(
-            restored.recent("other").unwrap()["recent"],
-            serde_json::json!(["c.md"])
-        );
+        assert_eq!(restored.recent("other").unwrap().recent, ["c.md"]);
     }
 }

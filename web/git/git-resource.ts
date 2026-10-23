@@ -15,7 +15,7 @@ interface GitResourceOptions {
   interval?: number;
 }
 
-// One polling loop per repository in this page; the server deduplicates across pages.
+// One polling loop per repository in this page, shared by all subscribers.
 export function createGitResource(url: string, { fetch: request = globalThis.fetch,
   document = globalThis.document, window = globalThis.window, interval = 5000 }: GitResourceOptions = {}) {
   let state: GitState = { status: null, error: '', loading: false, updatedAt: 0 };
@@ -29,11 +29,11 @@ export function createGitResource(url: string, { fetch: request = globalThis.fet
     clearTimeout(timer);
     if (visible()) timer = setTimeout(() => refresh(), state.error ? interval * 6 : interval);
   }
-  function refresh(force = false) {
+  function refresh() {
     if (pending) return pending;
     clearTimeout(timer);
     publish({ loading: true });
-    pending = Promise.resolve().then(() => request(`${url}${force ? '?refresh=1' : ''}`, { cache: 'no-store' }))
+    pending = Promise.resolve().then(() => request(url, { cache: 'no-store' }))
       .then(async response => {
         if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Git API is unavailable. Restart the library service.');
         const status = await parseJsonResponse(response, gitStatusSchema, url);

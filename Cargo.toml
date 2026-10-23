@@ -9,7 +9,7 @@ strip = "symbols"
 panic = "abort"
 
 [dependencies]
-axum = { version = "0.8", features = ["http1", "json", "query", "tokio"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "original-uri", "query", "tokio", "tracing"] }
 dunce = "1"
 bytes = "1"
 comemo = "0.5.1"
@@ -30,14 +30,13 @@ lru = "0.18.4"
 comrak = { version = "0.56", default-features = false }
 regex = "1"
 typst = "0.15.1"
-typst-syntax = "0.15.1"
 typst-layout = "0.15.1"
 typst-svg = "0.15.1"
 typst-kit = { version = "0.15.1", default-features = false, features = ["scan-fonts", "system-packages", "system-downloader", "datetime"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
-tower-http = { version = "0.6", features = ["fs", "limit", "trace"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
 time = { version = "0.3", features = ["formatting", "parsing"] }
 thiserror = "2.0.21"
 tracing = "0.1"

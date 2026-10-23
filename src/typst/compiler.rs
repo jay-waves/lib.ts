@@ -89,10 +89,10 @@ impl NativeTypstCompiler {
         for id in inactive {
             remove_document(&mut state, &self.pages, &id);
         }
-        if state.entries.is_empty() {
-            if let Ok(mut fonts) = self.fonts.lock() {
-                fonts.take();
-            }
+        if state.entries.is_empty()
+            && let Ok(mut fonts) = self.fonts.lock()
+        {
+            fonts.take();
         }
         if let Ok(mut pages) = self.pages.lock() {
             pages.prune();

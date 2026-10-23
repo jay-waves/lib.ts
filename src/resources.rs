@@ -142,7 +142,8 @@ impl<K: Eq + Hash, V: Clone> ByteCache<K, V> {
         let removed = self
             .entries
             .iter()
-            .filter_map(|(key, _)| (!keep(key)).then(|| key.clone()))
+            .filter(|&(key, _)| !keep(key))
+            .map(|(key, _)| key.clone())
             .collect::<Vec<_>>();
         for key in removed {
             self.remove(&key);
