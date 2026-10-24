@@ -138,3 +138,7 @@ cargo build --release --locked
 node --test tests/*.test.mjs
 cargo test --release --locked
 ```
+
+## 独立 Markdown 编译器
+
+仓库另提供 [lib.comrak](crates/lib-comrak/README.md)：独立 exe 将 Markdown 编译为静态 HTML，在编译阶段完成 KaTeX、highlight.js 和 Pele 图表渲染。运行 `npm run package:comrak` 构建；使用 `lib.comrak compile input.md output.html --root .`，可用 `--standalone` 生成自包含文件。

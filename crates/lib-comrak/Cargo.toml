@@ -1,0 +1,20 @@
+[package]
+name = "lib-comrak"
+version = "0.4.0"
+edition = "2024"
+rust-version = "1.92"
+build = "build.rs"
+
+[dependencies]
+base64 = "0.22"
+comrak = { version = "0.56", default-features = false }
+dunce = "1"
+mime_guess = "2"
+rquickjs = { version = "0.14", default-features = false, features = ["std"] }
+url = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -7,6 +7,7 @@
 /reports/benchmark-memory/
 /reports/benchmark-backend/
 /release/
+/crates/lib-comrak/generated/
 
 # Retired local work and tool state
 /.archive/

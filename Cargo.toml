@@ -1,8 +1,13 @@
 [package]
 name = "lib-ts"
-version = "0.3.6"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.92"
+
+[workspace]
+members = ["crates/lib-comrak"]
+default-members = ["."]
+resolver = "3"
 
 [profile.release]
 strip = "symbols"
