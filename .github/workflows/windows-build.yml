@@ -146,6 +146,10 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-comrak:
+    if: github.ref_type != 'tag'
+    uses: ./.github/workflows/comrak-build.yml
+
   assemble-windows:
     if: github.ref_type != 'tag' && github.event_name != 'pull_request'
     needs: [build-frontend, build-windows]
@@ -224,6 +228,7 @@ jobs:
             core.setOutput('version', version);
             core.setOutput('sha', commit.sha);
             core.setOutput('asset', `lib.ts-${tag}-windows-x86_64.tar.xz`);
+            core.setOutput('comrak_asset', `lib.comrak-${tag}-windows-x86_64.tar.xz`);
 
       - name: Find successful main build for this commit
         id: main-build
@@ -273,14 +278,30 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
 
-      - name: Verify downloaded build
-        run: test -f "$RUNNER_TEMP/lib.ts/lib.ts.exe"
+      - name: Download lib.comrak build
+        uses: actions/download-artifact@v8
+        with:
+          name: lib.comrak-windows-x64
+          path: ${{ runner.temp }}/lib.comrak
+          run-id: ${{ steps.main-build.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+
+      - name: Verify downloaded builds
+        run: |
+          test -f "$RUNNER_TEMP/lib.ts/lib.ts.exe"
+          for file in lib.comrak.exe README.md LICENSE KaTeX-LICENSE highlight.js-LICENSE Pele-LICENSE; do
+            test -f "$RUNNER_TEMP/lib.comrak/$file"
+          done
 
       - name: Package Windows release
         env:
           RELEASE_ASSET: ${{ steps.series.outputs.asset }}
+          COMRAK_RELEASE_ASSET: ${{ steps.series.outputs.comrak_asset }}
           XZ_OPT: "-9 -T2"
-        run: tar -cJf "$RUNNER_TEMP/$RELEASE_ASSET" lib.ts
+        run: |
+          tar -cJf "$RUNNER_TEMP/$RELEASE_ASSET" lib.ts
+          tar -cJf "$RUNNER_TEMP/$COMRAK_RELEASE_ASSET" lib.comrak
         working-directory: ${{ runner.temp }}
 
       - name: Publish rolling release
@@ -295,7 +316,9 @@ jobs:
             Actual version: [${{ steps.series.outputs.version }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ steps.series.outputs.version }})
 
             ${{ steps.series.outputs.description }}
-          files: ${{ runner.temp }}/${{ steps.series.outputs.asset }}
+          files: |
+            ${{ runner.temp }}/${{ steps.series.outputs.asset }}
+            ${{ runner.temp }}/${{ steps.series.outputs.comrak_asset }}
           overwrite_files: true
           fail_on_unmatched_files: true
 

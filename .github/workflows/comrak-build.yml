@@ -1,6 +1,7 @@
 name: lib.comrak Windows build
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches: [main]
@@ -35,3 +36,5 @@ jobs:
         with:
           name: lib.comrak-windows-x64
           path: release/lib.comrak-win32-x64/
+          if-no-files-found: error
+          retention-days: 90
