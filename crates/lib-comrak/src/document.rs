@@ -75,7 +75,8 @@ impl Attachments {
             // Links do not read their target; allow documents to reference files
             // that will be supplied later. Images still require an existing file.
             Err(error) if !image && error.kind() == std::io::ErrorKind::NotFound => {
-                dunce::simplified(&path).to_owned()
+                resolve_missing_link(&path)
+                    .map_err(|e| format!("cannot resolve attachment {original:?}: {e}"))?
             }
             Err(error) => return Err(format!("cannot read attachment {original:?}: {error}")),
         };
@@ -105,6 +106,40 @@ impl Attachments {
         target.set_query(url.query());
         target.set_fragment(url.fragment());
         Ok(assets::reference_url(&self.output, &target))
+    }
+}
+
+// Resolve the nearest existing ancestor before restoring missing components.
+// A dangling symlink must fail rather than become an unchecked lexical path.
+fn resolve_missing_link(path: &Path) -> std::io::Result<PathBuf> {
+    let mut ancestor = path;
+    let mut missing = Vec::new();
+    loop {
+        match dunce::canonicalize(ancestor) {
+            Ok(mut resolved) => {
+                if !missing.is_empty() && !resolved.is_dir() {
+                    return Err(std::io::Error::other("link parent is not a directory"));
+                }
+                for component in missing.into_iter().rev() {
+                    resolved.push(component);
+                }
+                return Ok(resolved);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                match fs::symlink_metadata(ancestor) {
+                    Ok(_) => return Err(error),
+                    Err(metadata_error)
+                        if metadata_error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(metadata_error) => return Err(metadata_error),
+                }
+                let Some(name) = ancestor.file_name() else {
+                    return Err(error);
+                };
+                missing.push(name.to_owned());
+                ancestor = ancestor.parent().ok_or(error)?;
+            }
+            Err(error) => return Err(error),
+        }
     }
 }
 
@@ -221,6 +256,21 @@ fn failure(message: impl ToString) -> Vec<Diagnostic> {
 }
 
 pub fn compile(args: &Args) -> Result<(), Vec<Diagnostic>> {
+    // QuickJS uses the native thread stack for parsing and execution. Reserve
+    // more than its 4 MiB budget instead of relying on the platform main stack
+    // (notably smaller on Windows). Create and drop the runtime on this thread.
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("comrak-compiler".into())
+            .stack_size(16 * 1024 * 1024)
+            .spawn_scoped(scope, || compile_document(args))
+            .map_err(|error| failure(format!("cannot start compiler thread: {error}")))?
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    })
+}
+
+fn compile_document(args: &Args) -> Result<(), Vec<Diagnostic>> {
     let input =
         dunce::canonicalize(&args.input).map_err(|e| failure(format!("cannot open input: {e}")))?;
     let source =
@@ -266,6 +316,37 @@ pub fn compile(args: &Args) -> Result<(), Vec<Diagnostic>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compilation_does_not_depend_on_callers_stack_size() {
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(|| {
+                let temp = tempfile::tempdir().unwrap();
+                let input = temp.path().join("note.md");
+                let output = temp.path().join("note.html");
+                fs::write(
+                    &input,
+                    "$x^2$\n\n```js\nconst x = 1;\n```\n\n```mermaid\nflowchart LR\n A --> B\n```\n",
+                )
+                .unwrap();
+                let args = crate::cli::parse([
+                    input.to_str().unwrap().to_owned(),
+                    output.to_str().unwrap().to_owned(),
+                    "--standalone".to_owned(),
+                ])
+                .unwrap()
+                .unwrap();
+                compile(&args).unwrap();
+                let html = fs::read_to_string(output).unwrap();
+                for marker in ["katex", "hljs-keyword", "<svg"] {
+                    assert!(html.contains(marker), "missing renderer output: {marker}");
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
 
     #[test]
     fn compile_references_images_and_preserves_output_on_error() {
@@ -383,6 +464,23 @@ mod tests {
             false,
         )
         .unwrap();
+        assert!(
+            attachments
+                .resolve("linked/missing/note.md", false)
+                .unwrap_err()
+                .contains("outside root")
+        );
+        std::os::unix::fs::symlink(root.path().join("absent"), root.path().join("dangling"))
+            .unwrap();
+        assert!(attachments.resolve("dangling/note.md", false).is_err());
+        fs::create_dir(root.path().join("inside")).unwrap();
+        std::os::unix::fs::symlink(root.path().join("inside"), root.path().join("alias")).unwrap();
+        assert_eq!(
+            attachments
+                .resolve("alias/missing/note.md#part", false)
+                .unwrap(),
+            "inside/missing/note.md#part"
+        );
         assert!(
             attachments
                 .resolve("linked/secret.png", true)

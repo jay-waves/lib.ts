@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { mkdir, readFile, writeFile, readdir, cp } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, cp, rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -11,7 +11,10 @@ await build({
   entryPoints: [resolve(root, 'crates/lib-comrak/render.mjs')],
   outfile: resolve(output, 'render.js'), bundle: true, format: 'iife',
   platform: 'neutral', mainFields: ['module', 'main'], target: 'es2020',
-  minify: true, legalComments: 'inline',
+  // Syntax minification merges declarations into deeply nested expressions.
+  // Keep the parser stack bounded when QuickJS compiles the bundle on Windows.
+  minifyWhitespace: true, minifyIdentifiers: true, minifySyntax: false,
+  legalComments: 'inline',
 });
 let theme = await readFile(resolve(root, 'web/markdown/theme.css'), 'utf8');
 // Reuse the reader theme, but system monospace fonts avoid shipping Iosevka.
@@ -22,7 +25,13 @@ const css = [theme, highlight,
   await readFile(resolve(root, 'node_modules/katex/dist/katex.min.css'), 'utf8'),
   await readFile(resolve(root, 'crates/lib-comrak/style.css'), 'utf8'),
 ].join('\n');
-for (const name of await readdir(resolve(root, 'node_modules/katex/dist/fonts'))) {
+const sourceFonts = (await readdir(resolve(root, 'node_modules/katex/dist/fonts')))
+  .filter(name => name.endsWith('.woff2'));
+// Remove only obsolete generated fonts, leaving source assets untouched.
+for (const name of await readdir(resolve(output, 'fonts'))) {
+  if (!sourceFonts.includes(name)) await rm(resolve(output, 'fonts', name), { recursive: true });
+}
+for (const name of sourceFonts) {
   if (name.endsWith('.woff2')) await cp(resolve(root, 'node_modules/katex/dist/fonts', name), resolve(output, 'fonts', name));
 }
 // Keep only the preferred format. Every emitted font URL has an embedded asset.

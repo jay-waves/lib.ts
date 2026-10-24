@@ -2,10 +2,37 @@ use comrak::{
     adapters::{HeadingAdapter, HeadingMeta},
     nodes::Sourcepos,
 };
-use std::{collections::HashMap, fmt, sync::Mutex};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    sync::Mutex,
+};
 
 #[derive(Default)]
-pub(super) struct HeadingIds(Mutex<HashMap<String, usize>>);
+pub(super) struct HeadingIds(Mutex<IdState>);
+
+#[derive(Default)]
+struct IdState {
+    counts: HashMap<String, usize>,
+    used: HashSet<String>,
+}
+
+impl IdState {
+    fn next(&mut self, base: String) -> String {
+        let occurrence = self.counts.entry(base.clone()).or_default();
+        loop {
+            let id = if *occurrence == 0 {
+                base.clone()
+            } else {
+                format!("{base}-{occurrence}")
+            };
+            *occurrence += 1;
+            if self.used.insert(id.clone()) {
+                return id;
+            }
+        }
+    }
+}
 
 impl HeadingAdapter for HeadingIds {
     fn enter(
@@ -16,13 +43,7 @@ impl HeadingAdapter for HeadingIds {
     ) -> fmt::Result {
         let base = slugify(&heading.content);
         let mut ids = self.0.lock().map_err(|_| fmt::Error)?;
-        let occurrence = ids.entry(base.clone()).or_default();
-        let id = if *occurrence == 0 {
-            base
-        } else {
-            format!("{base}-{occurrence}")
-        };
-        *occurrence += 1;
+        let id = ids.next(base);
         let line = sourcepos.map(|position| position.start.line.saturating_sub(1));
         write!(output, "<h{} id=\"{}\"", heading.level, id)?;
         if let Some(line) = line {
@@ -54,5 +75,25 @@ pub(super) fn slugify(text: &str) -> String {
         "heading".into()
     } else {
         slug
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generated_suffixes_do_not_collide_with_heading_text() {
+        for headings in [
+            ["foo", "foo", "foo-1", "foo"],
+            ["foo-1", "foo", "foo", "foo-1"],
+        ] {
+            let mut state = IdState::default();
+            let ids: HashSet<_> = headings
+                .into_iter()
+                .map(|text| state.next(text.into()))
+                .collect();
+            assert_eq!(ids.len(), headings.len());
+        }
     }
 }
