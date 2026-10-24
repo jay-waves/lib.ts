@@ -70,8 +70,15 @@ impl Attachments {
         let path = url
             .to_file_path()
             .map_err(|_| format!("invalid local path {original:?}"))?;
-        let path = dunce::canonicalize(&path)
-            .map_err(|e| format!("cannot read attachment {original:?}: {e}"))?;
+        let path = match dunce::canonicalize(&path) {
+            Ok(path) => path,
+            // Links do not read their target; allow documents to reference files
+            // that will be supplied later. Images still require an existing file.
+            Err(error) if !image && error.kind() == std::io::ErrorKind::NotFound => {
+                dunce::simplified(&path).to_owned()
+            }
+            Err(error) => return Err(format!("cannot read attachment {original:?}: {error}")),
+        };
         if !path.starts_with(&self.root) {
             return Err(format!(
                 "attachment {original:?} is outside root {}; pass a wider --root",
@@ -327,6 +334,14 @@ mod tests {
             attachments.resolve("../../a%20b.png", true).unwrap(),
             "../a%20b.png"
         );
+        assert_eq!(
+            attachments
+                .resolve("license.md?download=1#license", false)
+                .unwrap(),
+            "../notes/topic/license.md?download=1#license"
+        );
+        assert!(attachments.resolve("license.md", true).is_err());
+        assert!(attachments.resolve("../../../missing.md", false).is_err());
         attachments.mode = Images::Embed;
         assert_eq!(
             attachments.resolve("../../a%20b.png#part", true).unwrap(),

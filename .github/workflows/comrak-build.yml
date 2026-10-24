@@ -32,6 +32,33 @@ jobs:
       - run: cargo test --release --locked -p lib-comrak
       - run: cargo clippy --release --locked -p lib-comrak --all-targets -- -D warnings
       - run: npm run package:comrak
+      - name: Smoke test packaged executable
+        shell: pwsh
+        run: |
+          $inputPath = Join-Path $env:RUNNER_TEMP 'comrak-smoke.md'
+          $outputPath = Join-Path $env:RUNNER_TEMP 'comrak-smoke.html'
+          @'
+          # Renderer smoke test
+
+          [License](license.md)
+
+          $x^2$
+
+          ```js
+          const x = 1;
+          ```
+
+          ```mermaid
+          flowchart LR
+            A --> B
+          ```
+          '@ | Set-Content -Encoding utf8 $inputPath
+          & ./release/lib.comrak-win32-x64/lib.comrak.exe $inputPath $outputPath --standalone
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $html = Get-Content -Raw $outputPath
+          foreach ($marker in @('katex', 'hljs-keyword', '<svg', 'license.md')) {
+            if (-not $html.Contains($marker)) { throw "Missing rendered marker: $marker" }
+          }
       - uses: actions/upload-artifact@v7
         with:
           name: lib.comrak-windows-x64

@@ -1,4 +1,4 @@
-use rquickjs::{Context, Function, Object, Runtime};
+use rquickjs::{CatchResultExt, Context, Function, Object, Runtime};
 use std::cell::OnceCell;
 
 #[derive(Default)]
@@ -15,9 +15,11 @@ impl Renderer {
         runtime.set_memory_limit(256 * 1024 * 1024);
         runtime.set_max_stack_size(4 * 1024 * 1024);
         let context = Context::full(&runtime).map_err(|e| e.to_string())?;
-        context
-            .with(|ctx| ctx.eval::<(), _>(include_str!("../generated/render.js")))
-            .map_err(|e| format!("cannot initialize embedded renderers: {e}"))?;
+        context.with(|ctx| {
+            ctx.eval::<(), _>(include_str!("../generated/render.js"))
+                .catch(&ctx)
+                .map_err(|e| format!("cannot initialize embedded renderers: {e}"))
+        })?;
         Ok(Self {
             context,
             _runtime: runtime,
@@ -31,17 +33,19 @@ impl Renderer {
         language: &str,
         index: usize,
     ) -> Result<Option<String>, String> {
-        let (error, html) = self
-            .context
-            .with(|ctx| -> rquickjs::Result<_> {
+        let (error, html) = self.context.with(|ctx| {
+            let result = (|| -> rquickjs::Result<_> {
                 let function: Function = ctx.globals().get("renderFragment")?;
                 let result: Object = function.call((kind, source, language, index as u32))?;
                 Ok((
                     result.get::<_, Option<String>>("error")?,
                     result.get::<_, Option<String>>("html")?,
                 ))
-            })
-            .map_err(|e| format!("embedded JavaScript execution failed: {e}"))?;
+            })();
+            result
+                .catch(&ctx)
+                .map_err(|e| format!("embedded JavaScript execution failed: {e}"))
+        })?;
         error.map_or(Ok(html), Err)
     }
 }
