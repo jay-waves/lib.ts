@@ -1,5 +1,5 @@
 import katex from 'katex';
-import { hljs, rawLanguage } from '../../web/raw/raw-highlight.mjs';
+import { highlightSource, rawLanguage } from '../../web/raw/raw-highlight.mjs';
 import { render } from 'pele';
 
 // Only string APIs are used: no DOM, Node runtime, network or browser globals.
@@ -19,7 +19,7 @@ globalThis.renderFragment = (kind, source, language, index) => {
       }).svg;
     } else {
       const resolved = rawLanguage(language);
-      html = resolved ? hljs.highlight(source, { language: resolved, ignoreIllegals: true }).value : null;
+      html = resolved ? highlightSource(source, resolved) : null;
     }
     return { html };
   } catch (error) {

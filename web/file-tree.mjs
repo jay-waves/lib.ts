@@ -110,3 +110,18 @@ export function fileTreeFromPaths(paths = []) {
   }
   return sort(root);
 }
+// Keep explicit collapsed entries, including groups that expand by default.
+export function collapsedFileTreePaths(nodes = [], expandedPaths = {}, groups = []) {
+  const paths = Object.fromEntries(Object.keys(expandedPaths).map(path => [path, false]));
+  for (const group of groups) paths[`history:${group.id}`] = false;
+  const visit = entries => {
+    for (const node of entries) {
+      if (node.type !== 'directory') continue;
+      paths[node.path] = false;
+      visit(node.children || []);
+    }
+  };
+  visit(nodes);
+  return paths;
+}
+

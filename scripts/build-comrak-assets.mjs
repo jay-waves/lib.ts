@@ -22,6 +22,7 @@ theme = theme.replace(/@font-face\s*\{[^}]*\}/g, '');
 let highlight = await readFile(resolve(root, 'web/markdown/highlight.css'), 'utf8');
 highlight = highlight.replace('@scope (.reader, .code-search-results)', '@scope (#content)');
 const css = [theme, highlight,
+  await readFile(resolve(root, 'web/markdown/heading-sections.css'), 'utf8'),
   await readFile(resolve(root, 'node_modules/katex/dist/katex.min.css'), 'utf8'),
   await readFile(resolve(root, 'crates/lib-comrak/style.css'), 'utf8'),
 ].join('\n');

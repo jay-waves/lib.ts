@@ -18,6 +18,11 @@
         list-style: none;
     }
 
+    #content summary.heading-summary { cursor: pointer; }
+    #content summary.heading-summary::marker { content: ""; }
+    #content details.heading-section:not([open]) > .heading-summary
+        > :is(h1, h2, h3, h4, h5, h6)::after { opacity: .58; }
+
     #content .heading-summary > :is(h1, h2, h3, h4, h5, h6)::after {
         content: '¶';
         margin-left: .35em;

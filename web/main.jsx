@@ -3,7 +3,7 @@ import { BrowserSession, SessionActivity } from './session-activity';
 import { HISTORY_GROUPS } from './history/time-labels.mjs';
 import { visibleEvents } from './visible-events.mjs';
 import { parseDocumentOpenEvent } from './session-events.mjs';
-import { sortFileTree, fileTreeForView, fileListFromPaths } from './file-tree.mjs';
+import { sortFileTree, fileTreeForView, fileListFromPaths, collapsedFileTreePaths } from './file-tree.mjs';
 import { useFileTree } from './use-file-tree';
 import { apiBase, pageBase, repoId, routeKind, fileUrl } from './urls.mjs';
 import { searchUrl, gitUrl, parseRepositoryLocation } from './paths.ts';
@@ -290,7 +290,7 @@ function App() {
             <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={FoldIcon} aria-label="Collapse all folders"
               disabled={recentOnly ? !HISTORY_GROUPS.some(group => expandedPaths[`history:${group.id}`] !== false)
                 : !Object.values(expandedPaths).some(Boolean)}
-              onClick={() => setExpandedPaths(recentOnly ? Object.fromEntries(HISTORY_GROUPS.map(group => [`history:${group.id}`, false])) : {})} />
+              onClick={() => setExpandedPaths(paths => collapsedFileTreePaths(tree?.children, paths, HISTORY_GROUPS))} />
             <IconButton unsafeDisableTooltip size="small" variant="invisible" icon={FocusCenterIcon} aria-label="Locate current file" disabled={!selectedNode}
               onClick={() => {
                 setRecentOnly(false);

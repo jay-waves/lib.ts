@@ -4,6 +4,7 @@ mod document;
 mod engine;
 #[path = "../../../src/markdown/headings.rs"]
 mod headings;
+mod markdown;
 
 fn main() -> std::process::ExitCode {
     let values: Vec<String> = std::env::args().skip(1).collect();

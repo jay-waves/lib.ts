@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sortFileTree, filterBookmarkedTree, isPlainTreeActivation, fileTreeForView, fileListFromPaths, fileTreeFromPaths, unloadedDirectory } from '../web/file-tree.mjs';
+import { sortFileTree, filterBookmarkedTree, isPlainTreeActivation, fileTreeForView, fileListFromPaths, fileTreeFromPaths, unloadedDirectory, collapsedFileTreePaths } from '../web/file-tree.mjs';
+
+test('collapse all resets nested, unloaded and default-expanded folders across views', () => {
+  const nodes = [{ path: 'docs', type: 'directory', children: [
+    { path: 'docs/nested', type: 'directory' },
+    { path: 'docs/readme.md', type: 'file' },
+  ] }];
+  const expanded = { docs: true, 'docs/nested': true, 'other/cached': true, 'history:older': true };
+  const original = structuredClone(expanded);
+  const collapsed = collapsedFileTreePaths(nodes, expanded, [{ id: 'older' }, { id: 'past-week' }]);
+  assert.deepEqual(collapsed, {
+    docs: false, 'docs/nested': false, 'other/cached': false,
+    'history:older': false, 'history:past-week': false,
+  });
+  assert.deepEqual(expanded, original);
+  assert.deepEqual(collapsedFileTreePaths(nodes, { ...collapsed, docs: true }), { ...collapsed, docs: false });
+  assert.deepEqual(collapsedFileTreePaths(), {});
+});
 
 test('modified sorting is recursive, directories first, newest first and leaves the source intact', () => {
   const older = { name: 'a.md', type: 'file', modified: '2026-01-01T00:00:00Z' };

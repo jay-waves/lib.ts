@@ -1,7 +1,17 @@
 import hljs from 'highlight.js/lib/common';
 import powershell from 'highlight.js/lib/languages/powershell';
 import excel from 'highlight.js/lib/languages/excel';
+import http from 'highlight.js/lib/languages/http';
+import nginx from 'highlight.js/lib/languages/nginx';
+import cmake from 'highlight.js/lib/languages/cmake';
+import latex from 'highlight.js/lib/languages/latex';
+import dockerfile from 'highlight.js/lib/languages/dockerfile';
 
+hljs.registerLanguage('http', http);
+hljs.registerLanguage('nginx', nginx);
+hljs.registerLanguage('cmake', cmake);
+hljs.registerLanguage('latex', latex);
+hljs.registerLanguage('dockerfile', dockerfile);
 hljs.registerLanguage('powershell', powershell);
 // Excel formula syntax only; binary workbooks are handled as file assets.
 hljs.registerLanguage('excel', excel);
@@ -25,7 +35,10 @@ hljs.registerLanguage('bibtex', hljs => ({
   ],
 }));
 
-const languages = { typ: 'typst', md: 'markdown', bib: 'bibtex', pwsh: 'powershell' };
+const languages = {
+  typ: 'typst', md: 'markdown', bib: 'bibtex', pwsh: 'powershell',
+  tex: 'latex', docker: 'dockerfile',
+};
 hljs.registerLanguage('typst', hljs => ({
   name: 'Typst',
   aliases: ['typ'],
@@ -57,14 +70,29 @@ export function highlightElement(element) {
   const className = [...element.classList].find(name => name.startsWith('language-'));
   const language = className ? className.slice('language-'.length) : '';
   if (!language || !hljs.getLanguage(languages[language] || language)) return false;
-  hljs.highlightElement(element);
+  element.innerHTML = highlightSource(element.textContent, languages[language] || language);
+  element.classList.add('hljs');
+  element.dataset.highlighted = 'yes';
   return true;
+}
+
+export function highlightSource(source, language) {
+  if (language === 'http' || language === 'https') {
+    const separator = /\r?\n\r?\n/.exec(source);
+    const contentType = separator && source.slice(0, separator.index)
+      .match(/^content-type\s*:\s*([^;\s]+)/im)?.[1];
+    if (contentType && /^application\/(?:[\w.-]+\+)?json$/i.test(contentType)) {
+      const bodyStart = separator.index + separator[0].length;
+      return hljs.highlight(source.slice(0, bodyStart), { language: 'http', ignoreIllegals: true }).value
+        + hljs.highlight(source.slice(bodyStart), { language: 'json', ignoreIllegals: true }).value;
+    }
+  }
+  return hljs.highlight(source, { language, ignoreIllegals: true }).value;
 }
 
 export function highlightRaw(source, name) {
   const language = rawLanguage(name);
-  return language ? hljs.highlight(source, { language, ignoreIllegals: true }).value
-    : hljs.highlightAuto(source).value;
+  return language ? highlightSource(source, language) : hljs.highlightAuto(source).value;
 }
 
 export { hljs };

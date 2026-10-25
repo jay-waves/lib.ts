@@ -200,6 +200,18 @@ fn raw<'a>(arena: &'a Arena<'a>, html: String) -> &'a AstNode<'a> {
 }
 
 fn add_heading_sections<'a>(arena: &'a Arena<'a>, root: &'a AstNode<'a>) {
+    add_heading_sections_with_native_details(arena, root, false);
+}
+
+pub(crate) fn add_static_heading_sections<'a>(arena: &'a Arena<'a>, root: &'a AstNode<'a>) {
+    add_heading_sections_with_native_details(arena, root, true);
+}
+
+fn add_heading_sections_with_native_details<'a>(
+    arena: &'a Arena<'a>,
+    root: &'a AstNode<'a>,
+    native_details: bool,
+) {
     let mut top = Vec::new();
     let mut node = root.first_child();
     while let Some(current) = node {
@@ -236,7 +248,15 @@ fn add_heading_sections<'a>(arena: &'a Arena<'a>, root: &'a AstNode<'a>) {
                         1,
                     );
                 }
-                current.insert_before(raw(arena, "</section>\n".into()));
+                current.insert_before(raw(
+                    arena,
+                    if native_details {
+                        "</details>\n"
+                    } else {
+                        "</section>\n"
+                    }
+                    .into(),
+                ));
             }
             let heading_id = slugify(&current.collect_text());
             let occurrence = occurrences
@@ -247,13 +267,27 @@ fn add_heading_sections<'a>(arena: &'a Arena<'a>, root: &'a AstNode<'a>) {
             let section_id = encode_component(&key);
             let open = raw(
                 arena,
-                format!(
-                    "<section class=\"heading-section\" data-heading-level=\"{level}\" data-heading-key=\"{key}\" id=\"heading-section-{section_id}\">\n"
-                ),
+                if native_details {
+                    format!(
+                        "<details class=\"heading-section\" data-heading-level=\"{level}\" data-heading-key=\"{key}\" id=\"heading-section-{section_id}\" open>\n"
+                    )
+                } else {
+                    format!(
+                        "<section class=\"heading-section\" data-heading-level=\"{level}\" data-heading-key=\"{key}\" id=\"heading-section-{section_id}\">\n"
+                    )
+                },
             );
             current.insert_before(open);
-            current.insert_before(raw(arena, "<div class=\"heading-summary\" role=\"button\" tabindex=\"0\" aria-expanded=\"true\">\n".into()));
-            current.insert_after(raw(arena, "<span class=\"heading-collapsed-indicator\" aria-hidden=\"true\">…</span></div>\n<div class=\"heading-content\">\n".into()));
+            current.insert_before(raw(arena, if native_details {
+                "<summary class=\"heading-summary\">\n".into()
+            } else {
+                "<div class=\"heading-summary\" role=\"button\" tabindex=\"0\" aria-expanded=\"true\">\n".into()
+            }));
+            current.insert_after(raw(arena, if native_details {
+                "</summary>\n<div class=\"heading-content\">\n".into()
+            } else {
+                "<span class=\"heading-collapsed-indicator\" aria-hidden=\"true\">…</span></div>\n<div class=\"heading-content\">\n".into()
+            }));
             stack.push((current, level, open, false));
         } else if let Some((_, _, _, has_content)) = stack.last_mut() {
             *has_content = true;
@@ -271,6 +305,14 @@ fn add_heading_sections<'a>(arena: &'a Arena<'a>, root: &'a AstNode<'a>) {
                 1,
             );
         }
-        root.append(raw(arena, "</div>\n</section>\n".into()));
+        root.append(raw(
+            arena,
+            if native_details {
+                "</div>\n</details>\n"
+            } else {
+                "</div>\n</section>\n"
+            }
+            .into(),
+        ));
     }
 }

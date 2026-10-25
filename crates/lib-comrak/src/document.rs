@@ -161,6 +161,7 @@ pub fn render(
     // Only our generated fragments bypass escaping; input HTML stays inert.
     options.render.r#unsafe = true;
     let root = parse_document(&arena, source, &options);
+    crate::markdown::ast::add_static_heading_sections(&arena, root);
     let headings = HeadingIds::default();
     let mut plugins = Plugins::default();
     plugins.render.heading_adapter = Some(&headings);
