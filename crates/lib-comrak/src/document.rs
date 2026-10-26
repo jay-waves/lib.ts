@@ -158,7 +158,7 @@ pub fn render(
     options.extension.front_matter_delimiter = Some("---".into());
     options.extension.math_dollars = true;
     options.extension.math_latex = true;
-    // Only our generated fragments bypass escaping; input HTML stays inert.
+    // Raw HTML is intentionally preserved for documents that use HTML elements.
     options.render.r#unsafe = true;
     let root = parse_document(&arena, source, &options);
     crate::markdown::ast::add_static_heading_sections(&arena, root);
@@ -241,11 +241,67 @@ fn transform(
             link.url = attachments.resolve(&link.url, false)?;
             return Ok(Some(NodeValue::Link(link)));
         }
-        NodeValue::HtmlInline(html) => Ok(Some(escape(html))),
-        NodeValue::HtmlBlock(html) => Ok(Some(escape(&html.literal))),
+        NodeValue::HtmlInline(html) => Ok(Some(strip_script_elements(html))),
+        NodeValue::HtmlBlock(html) => Ok(Some(strip_script_elements(&html.literal))),
         _ => Ok(None),
     }
     .map(|html| html.map(NodeValue::Raw))
+}
+
+fn strip_script_elements(html: &str) -> String {
+    let bytes = html.as_bytes();
+    let mut output = String::with_capacity(html.len());
+    let mut cursor = 0;
+    while let Some(relative) = find_ascii_case_insensitive(bytes, b"<script", cursor) {
+        let start = relative;
+        let after_name = start + b"<script".len();
+        if bytes
+            .get(after_name)
+            .is_some_and(|byte| !byte.is_ascii_whitespace() && *byte != b'>' && *byte != b'/')
+        {
+            output.push_str(&html[cursor..after_name]);
+            cursor = after_name;
+            continue;
+        }
+        output.push_str(&html[cursor..start]);
+        let Some(open_end) = html[after_name..].find('>').map(|end| after_name + end + 1) else {
+            return output;
+        };
+        let self_closing = bytes[start..open_end - 1]
+            .iter()
+            .rev()
+            .find(|byte| !byte.is_ascii_whitespace())
+            == Some(&b'/');
+        if self_closing {
+            cursor = open_end;
+            continue;
+        }
+        let Some(close_start) = find_ascii_case_insensitive(bytes, b"</script", open_end) else {
+            return output;
+        };
+        let Some(close_end) = html[close_start..]
+            .find('>')
+            .map(|end| close_start + end + 1)
+        else {
+            return output;
+        };
+        cursor = close_end;
+    }
+    output.push_str(&html[cursor..]);
+    output
+}
+
+fn find_ascii_case_insensitive(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+    haystack
+        .get(from..)?
+        .windows(needle.len())
+        .position(|window| {
+            window
+                .iter()
+                .zip(needle)
+                .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+        })
+        .map(|offset| from + offset)
 }
 
 fn failure(message: impl ToString) -> Vec<Diagnostic> {
@@ -508,8 +564,8 @@ mod tests {
         assert!(html.contains("hljs-keyword"));
         assert!(html.contains("<svg"));
         assert!(html.contains("Visible footnote"));
-        assert!(!html.contains(" hidden"));
         assert!(!html.contains("<script>"));
+        assert!(!html.contains(" hidden"));
         let errors = render("# Hi\n\n![missing](missing.png)", &engine, &attachments).unwrap_err();
         assert_eq!(errors[0].line, 3);
         assert!(errors[0].message.contains("missing.png"));
