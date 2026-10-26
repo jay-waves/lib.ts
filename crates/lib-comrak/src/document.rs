@@ -427,7 +427,11 @@ mod tests {
         let shared = fs::read_to_string(&output).unwrap();
         assert!(shared.contains("<title>&lt;Example&gt;</title>"));
         assert!(shared.contains("file:///"));
-        let image_url = assets::file_url(&temp.path().join("image.png")).unwrap();
+        // Attachment resolution canonicalizes the path. On Windows that can
+        // normalize the temporary directory's path representation, so build
+        // the expected URL from the same canonical path.
+        let image_path = dunce::canonicalize(temp.path().join("image.png")).unwrap();
+        let image_url = assets::file_url(&image_path).unwrap();
         assert!(shared.contains(&format!("src=\"{image_url}\"")));
         assert!(!temp.path().join("out/note.assets").exists());
         assert_eq!(
