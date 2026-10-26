@@ -33,15 +33,6 @@ pub fn data_url(bytes: &[u8], mime: &str) -> String {
     format!("data:{mime};base64,{}", STANDARD.encode(bytes))
 }
 
-pub fn reference_url(base: &Url, target: &Url) -> String {
-    // URL path relativization can produce an invalid cross-drive file URL
-    // (e.g. ../../D:/image.png from C:). Only keep references that resolve
-    // back to the exact target, including query and fragment.
-    base.make_relative(target)
-        .filter(|relative| base.join(relative).ok().as_ref() == Some(target))
-        .unwrap_or_else(|| target.to_string())
-}
-
 pub fn shared_base() -> Result<PathBuf, String> {
     #[cfg(target_os = "windows")]
     let base = Some(windows_local_app_data()?);
@@ -236,10 +227,6 @@ mod tests {
                     .ends_with(r"lib.comrak\assets\v1\style.css")
             );
         }
-        let base = file_url(Path::new(r"C:\out\note.html")).unwrap();
-        let different_drive = file_url(Path::new(r"D:\images\a.png")).unwrap();
-        let reference = reference_url(&base, &different_drive);
-        assert_eq!(base.join(&reference).unwrap(), different_drive);
     }
 
     #[test]
@@ -255,23 +242,6 @@ mod tests {
         let css = stylesheet(true, None).unwrap();
         assert_eq!(css.matches("data:font/woff2;base64,").count(), fonts);
         assert!(!css.contains("url(fonts/"));
-    }
-
-    #[test]
-    fn file_references_roundtrip_across_windows_drives_and_unc_hosts() {
-        let base = Url::parse("file:///C:/out/note.html").unwrap();
-        for target in [
-            "file:///D:/images/a.png",
-            "file://server/profiles/a.png",
-            "file:///C:/images/a%20b.png?size=2#part",
-        ] {
-            let target = Url::parse(target).unwrap();
-            let reference = reference_url(&base, &target);
-            assert_eq!(base.join(&reference).unwrap(), target);
-            if target.path().starts_with("/D:") {
-                assert!(reference.starts_with("file:///D:/"));
-            }
-        }
     }
 
     #[test]
