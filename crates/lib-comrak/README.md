@@ -56,7 +56,9 @@ HTML 用绝对 `file:` URL 引用共享样式，字体相对于样式引用。�
 
 Markdown 图片路径始终相对于输入 Markdown 所在目录解释，支持 `../../`、URL 编码、查询参数及片段；`--root` 不改变解析基准。默认 root 是输入 Markdown 目录，输入文件与本地附件必须位于 root 内；解析符号链接后再检查边界。共享上级图片时显式扩大 root。
 
-- `--images reference`（默认）：不复制，重算相对于输出 HTML 的图片路径；不同磁盘无法相对引用时使用 `file:` URL。
+本地 Markdown 链接也会基于输入文件所在目录解析，并输出为绝对 `file:` URL，避免链接随编译输出目录变化。远程链接保持原样。
+
+- `--images reference`（默认）：不复制，本地图片使用指向原文件的绝对 `file:` URL，输出 HTML 可放在临时目录。
 - `--images embed`：本地图片转为 data URL；样式仍共享。
 - `--standalone`：图片强制 embed，同时内嵌样式和字体。
 

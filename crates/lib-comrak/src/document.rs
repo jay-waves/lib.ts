@@ -22,7 +22,6 @@ pub struct Diagnostic {
 
 pub struct Attachments {
     input: Url,
-    output: Url,
     root: PathBuf,
     mode: Images,
     standalone: bool,
@@ -31,14 +30,13 @@ pub struct Attachments {
 impl Attachments {
     pub fn new(
         input: &Path,
-        output: &Path,
+        _output: &Path,
         root: PathBuf,
         mode: Images,
         standalone: bool,
     ) -> Result<Self, String> {
         Ok(Self {
             input: assets::file_url(input)?,
-            output: assets::file_url(output)?,
             root,
             mode,
             standalone,
@@ -105,7 +103,10 @@ impl Attachments {
         let mut target = assets::file_url(&path)?;
         target.set_query(url.query());
         target.set_fragment(url.fragment());
-        Ok(assets::reference_url(&self.output, &target))
+        // The output HTML may live in a temporary compilation directory.
+        // Keep every local attachment anchored to its source path instead of
+        // making it relative to the generated document.
+        Ok(target.to_string())
     }
 }
 
@@ -426,7 +427,8 @@ mod tests {
         let shared = fs::read_to_string(&output).unwrap();
         assert!(shared.contains("<title>&lt;Example&gt;</title>"));
         assert!(shared.contains("file:///"));
-        assert!(shared.contains("src=\"../image.png\""));
+        let image_url = assets::file_url(&temp.path().join("image.png")).unwrap();
+        assert!(shared.contains(&format!("src=\"{image_url}\"")));
         assert!(!temp.path().join("out/note.assets").exists());
         assert_eq!(
             fs::read(temp.path().join("image.png")).unwrap(),
@@ -466,17 +468,23 @@ mod tests {
             attachments
                 .resolve("../../a%20b.png?size=2#test", true)
                 .unwrap(),
-            "../a%20b.png?size=2#test"
+            format!(
+                "{}?size=2#test",
+                assets::file_url(&root.join("a b.png")).unwrap()
+            )
         );
         assert_eq!(
             attachments.resolve("../../a%20b.png", true).unwrap(),
-            "../a%20b.png"
+            assets::file_url(&root.join("a b.png")).unwrap().to_string()
         );
         assert_eq!(
             attachments
                 .resolve("license.md?download=1#license", false)
                 .unwrap(),
-            "../notes/topic/license.md?download=1#license"
+            format!(
+                "{}?download=1#license",
+                assets::file_url(&root.join("notes/topic/license.md")).unwrap()
+            )
         );
         assert!(attachments.resolve("license.md", true).is_err());
         assert!(attachments.resolve("../../../missing.md", false).is_err());
@@ -489,7 +497,10 @@ mod tests {
             attachments
                 .resolve("../../a%20b.png?size=2#part", false)
                 .unwrap(),
-            "../a%20b.png?size=2#part"
+            format!(
+                "{}?size=2#part",
+                assets::file_url(&root.join("a b.png")).unwrap()
+            )
         );
         attachments.root = root.join("notes");
         assert!(
@@ -536,7 +547,10 @@ mod tests {
             attachments
                 .resolve("alias/missing/note.md#part", false)
                 .unwrap(),
-            "inside/missing/note.md#part"
+            format!(
+                "{}#part",
+                assets::file_url(&root.path().join("inside/missing/note.md")).unwrap()
+            )
         );
         assert!(
             attachments
