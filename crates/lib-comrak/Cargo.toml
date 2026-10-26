@@ -10,6 +10,7 @@ base64 = "0.22"
 comrak = { version = "0.56", default-features = false }
 dunce = "1"
 mime_guess = "2"
+quick-xml = { version = "0.42", features = ["escape-html"] }
 rquickjs = { version = "0.14", default-features = false, features = ["std"] }
 url = "2"
 

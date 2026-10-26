@@ -242,8 +242,12 @@ fn transform(
             link.url = attachments.resolve(&link.url, false)?;
             return Ok(Some(NodeValue::Link(link)));
         }
-        NodeValue::HtmlInline(html) => Ok(Some(strip_script_elements(html))),
-        NodeValue::HtmlBlock(html) => Ok(Some(strip_script_elements(&html.literal))),
+        NodeValue::HtmlInline(html) => {
+            crate::raw_html::rewrite(&strip_script_elements(html), attachments).map(Some)
+        }
+        NodeValue::HtmlBlock(html) => {
+            crate::raw_html::rewrite(&strip_script_elements(&html.literal), attachments).map(Some)
+        }
         _ => Ok(None),
     }
     .map(|html| html.map(NodeValue::Raw))
@@ -412,7 +416,11 @@ mod tests {
         let input = temp.path().join("note.md");
         let output = temp.path().join("out/note.html");
         fs::write(temp.path().join("image.png"), b"image bytes").unwrap();
-        fs::write(&input, "# Example\n\n$x^2$\n\n![image](image.png)\n").unwrap();
+        fs::write(
+            &input,
+            "# Example\n\n$x^2$\n\n![image](image.png)\n\n<figure>\n<img src=\"image.png\">\n</figure>\n",
+        )
+        .unwrap();
         let mut args = Args {
             input: input.clone(),
             output: output.clone(),
@@ -432,7 +440,7 @@ mod tests {
         // the expected URL from the same canonical path.
         let image_path = dunce::canonicalize(temp.path().join("image.png")).unwrap();
         let image_url = assets::file_url(&image_path).unwrap();
-        assert!(shared.contains(&format!("src=\"{image_url}\"")));
+        assert_eq!(shared.matches(&format!("src=\"{image_url}\"")).count(), 2);
         assert!(!temp.path().join("out/note.assets").exists());
         assert_eq!(
             fs::read(temp.path().join("image.png")).unwrap(),
@@ -443,6 +451,7 @@ mod tests {
         compile(&args).unwrap();
         let standalone = fs::read_to_string(&output).unwrap();
         assert!(standalone.contains("data:image/png;base64,"));
+        assert_eq!(standalone.matches("data:image/png;base64,").count(), 2);
         assert!(standalone.contains("data:font/woff2;base64,"));
         assert!(!standalone.contains("file:///"));
         assert!(!standalone.contains("<script"));

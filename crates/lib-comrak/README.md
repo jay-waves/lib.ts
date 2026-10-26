@@ -70,6 +70,6 @@ Markdown 图片路径始终相对于输入 Markdown 所在目录解释，支持 
 
 Pele 使用非浏览器文字宽度估算，SVG 可缩放但不随窗口重新布局。图表内部图片关闭；需要图片时放在 Markdown 正文中。Pele 不支持的图表或 KaTeX 不支持的公式会报错，不静默丢失内容。
 
-Markdown 中的原始 HTML 标签会保留在输出中，可用于 `<figure>`、`<img>`、`<figcaption>` 等结构；`<script>` 元素及其内容会移除。原始 HTML 属性中的 URL 按输出 HTML 所在位置解释，不经过 Markdown 附件路径重算或图片内嵌；需要路径重算和打包时使用 Markdown 图片语法。无阅读器折叠、脚注弹层、视频播放器或其他应用交互。生成的页面使用现代 CSS（`@scope`、`light-dark()`），需现代浏览器。
+Markdown 中的原始 HTML 标签会保留在输出中，可用于 `<figure>`、`<img>`、`<figcaption>` 等结构；`<script>` 元素及其内容会移除。原始 HTML 的 `src`、`href`、`poster`、`srcset` 等资源属性也相对于输入 Markdown 解析，检查 `--root` 边界后改为绝对 `file:` URL；`<img>`、SVG `<image>`、视频封面及 `srcset` 图片支持内嵌。音视频和外部样式表仅引用，不内嵌；内联 CSS 的 `url()` 暂不改写。无阅读器折叠、脚注弹层、视频播放器或其他应用交互。生成的页面使用现代 CSS（`@scope`、`light-dark()`），需现代浏览器。
 
 验证仅运行 release 编译、静态检查和单元测试。请用户验证 Windows exe、实际浏览器中的共享字体、中文图表排版、打印，以及移动 HTML 后的图片引用。
