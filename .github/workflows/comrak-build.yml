@@ -3,12 +3,6 @@ name: lib.comrak build
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['crates/lib-comrak/**', 'src/markdown/headings.rs', 'web/markdown/*.css', 'web/raw/raw-highlight.mjs', 'scripts/*comrak*.mjs', 'Cargo.toml', 'Cargo.lock', 'package*.json', '.github/workflows/comrak-build.yml']
-  pull_request:
-    branches: [main]
-    paths: ['crates/lib-comrak/**', 'src/markdown/headings.rs', 'web/markdown/*.css', 'web/raw/raw-highlight.mjs', 'scripts/*comrak*.mjs', 'Cargo.toml', 'Cargo.lock', 'package*.json', '.github/workflows/comrak-build.yml']
 
 permissions:
   contents: read
