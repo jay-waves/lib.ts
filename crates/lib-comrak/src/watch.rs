@@ -77,6 +77,10 @@ fn run_inner(args: &Args) -> Result<(), String> {
     let mut engine = Engine::default();
     let mut compilations = 0usize;
     loop {
+        if preview.quit_requested() {
+            status("stopped");
+            return Ok(());
+        }
         let found = Rc::new(RefCell::new(HashSet::new()));
         let start = Instant::now();
         status("compiling ...");
@@ -134,10 +138,15 @@ fn run_inner(args: &Args) -> Result<(), String> {
             continue;
         }
         loop {
-            let event = rx
-                .recv()
-                .map_err(|e| e.to_string())?
-                .map_err(|e| format!("watch error: {e}"))?;
+            if preview.quit_requested() {
+                status("stopped");
+                return Ok(());
+            }
+            let event = match rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(event) => event.map_err(|e| format!("watch error: {e}"))?,
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(e) => return Err(e.to_string()),
+            };
             if !matches!(
                 event.kind,
                 EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) | EventKind::Any

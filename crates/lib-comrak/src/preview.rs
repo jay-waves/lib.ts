@@ -12,6 +12,9 @@ use std::{
 struct State {
     html: String,
     revision: u64,
+    navigation: u64,
+    line: u64,
+    quit: bool,
 }
 pub(crate) struct Preview {
     state: Arc<Mutex<State>>,
@@ -78,6 +81,9 @@ impl Preview {
             page,
         })
     }
+    pub fn quit_requested(&self) -> bool {
+        self.state.lock().unwrap().quit
+    }
     pub fn publish(&self, html: String) {
         let pattern = regex::Regex::new(r#"file://[^\s\"'<>]+"#).unwrap();
         let html = pattern.replace_all(&html, |captures: &regex::Captures<'_>| {
@@ -112,7 +118,7 @@ impl Preview {
         let mut state = self.state.lock().unwrap();
         state.revision += 1;
         let script = format!(
-            r#"<script>let revision={};setInterval(async()=>{{try{{const r=await fetch('/__revision',{{cache:'no-store'}});if(r.ok&&await r.text()!==String(revision))location.reload();}}catch{{}}}},750);</script>"#,
+            r#"<script>let revision={}, navigation=0;setInterval(async()=>{{try{{const r=await fetch('/__revision',{{cache:'no-store'}});if(!r.ok)return;const s=await r.json();if(s.revision!==revision){{location.reload();return;}}if(s.navigation!==navigation){{navigation=s.navigation;if(s.line){{const nodes=[...document.querySelectorAll('[data-line]')];const target=nodes.filter(n=>Number(n.dataset.line)<=s.line).pop()||nodes[0];target?.scrollIntoView({{block:'start'}});}}}}}}catch{{}}}},750);</script>"#,
             state.revision
         );
         let base = format!("<base href=\"{}\">", assets::escape(&self.page));
@@ -130,13 +136,69 @@ fn serve(
     stream.set_read_timeout(Some(Duration::from_secs(2)))?;
     stream.set_write_timeout(Some(Duration::from_secs(2)))?;
     let mut request = [0; 16384];
-    let n = stream.read(&mut request)?;
+    let mut n = stream.read(&mut request)?;
+    while !request[..n].windows(4).any(|w| w == b"\r\n\r\n") && n < request.len() {
+        let read = stream.read(&mut request[n..])?;
+        if read == 0 {
+            break;
+        }
+        n += read;
+    }
+    let header_end = request[..n]
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|p| p + 4)
+        .unwrap_or(n);
+    let headers = String::from_utf8_lossy(&request[..header_end]);
+    let length = headers
+        .lines()
+        .find_map(|line| {
+            line.split_once(':')
+                .filter(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+                .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+        })
+        .unwrap_or(0);
+    while n < header_end.saturating_add(length) && n < request.len() {
+        let read = stream.read(&mut request[n..])?;
+        if read == 0 {
+            break;
+        }
+        n += read;
+    }
     let request = String::from_utf8_lossy(&request[..n]);
     let mut words = request.split_whitespace();
     let method = words.next().unwrap_or("");
     let path = words.next().unwrap_or("");
     let mut status = "200 OK";
-    let (mime, body) = if method != "GET" && method != "HEAD" {
+    let (mime, body) = if path.split('?').next() == Some("/_control") {
+        if method != "POST" {
+            status = "405 Method Not Allowed";
+        } else if length > request.len().saturating_sub(header_end) {
+            status = "400 Bad Request";
+        } else {
+            let command = serde_json::from_slice::<serde_json::Value>(
+                &request.as_bytes()[header_end..header_end + length],
+            );
+            let mut state = state.lock().unwrap();
+            match command
+                .ok()
+                .as_ref()
+                .and_then(|v| v.get("action").and_then(|a| a.as_str()).map(|a| (a, v)))
+            {
+                Some(("quit", _)) => state.quit = true,
+                Some(("navigate", v))
+                    if v.get("line")
+                        .and_then(|l| l.as_u64())
+                        .is_some_and(|l| l > 0) =>
+                {
+                    state.line = v["line"].as_u64().unwrap();
+                    state.navigation += 1;
+                }
+                _ => status = "400 Bad Request",
+            }
+        }
+        ("text/plain".to_owned(), Vec::new())
+    } else if method != "GET" && method != "HEAD" {
         status = "405 Method Not Allowed";
         ("text/plain".to_owned(), Vec::new())
     } else if matches!(path.split('?').next(), Some("/")) || path.split('?').next() == Some(page) {
@@ -151,10 +213,14 @@ fn serve(
             html.as_bytes().to_vec(),
         )
     } else if path == "/__revision" {
-        (
-            "text/plain".to_owned(),
-            state.lock().unwrap().revision.to_string().into_bytes(),
-        )
+        ("text/plain".to_owned(), {
+            let state = state.lock().unwrap();
+            format!(
+                r#"{{"revision":{},"navigation":{},"line":{}}}"#,
+                state.revision, state.navigation, state.line
+            )
+            .into_bytes()
+        })
     } else {
         let file = site_file(path, allowed);
         if let Some(file) =
