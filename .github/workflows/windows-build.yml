@@ -1,11 +1,11 @@
 # Main builds the reusable Windows artifact; tags publish the matching commit
-# into a stable rolling release or a versioned prerelease instead of rebuilding it.
+# into a versioned release instead of rebuilding it.
 name: Windows native build
 
 on:
   push:
     branches: [main]
-    tags: ['*', '!*-latest']
+    tags: ['*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -205,9 +205,9 @@ jobs:
           retention-days: 90
 
   publish-release:
-    if: startsWith(github.ref, 'refs/tags/') && !endsWith(github.ref, '-latest')
+    if: startsWith(github.ref, 'refs/tags/')
     concurrency:
-      group: rolling-release-${{ github.repository }}
+      group: publish-release-${{ github.repository }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -215,7 +215,7 @@ jobs:
       actions: read
       contents: write
     steps:
-      - name: Resolve release series
+      - name: Resolve release version
         id: series
         uses: actions/github-script@v9
         with:
@@ -224,24 +224,10 @@ jobs:
             const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(alpha|beta)(?:\.(0|[1-9]\d*))?)?$/.exec(version);
             if (!match) throw new Error(`Expected a version tag such as 0.3.2, 0.3.2-alpha or 0.3.2-beta.1, got ${version}`);
             const prerelease = Boolean(match[4]);
-            const tag = prerelease ? version : `${match[1]}.${match[2]}-latest`;
             const repo = { owner: context.repo.owner, repo: context.repo.repo };
             // Resolve annotated tags to the commit, rather than using the tag object SHA.
             const { data: commit } = await github.rest.repos.getCommit({ ...repo, ref: version });
-            let updateLatest = !prerelease;
-            try {
-              const { data: release } = await github.rest.repos.getReleaseByTag({ ...repo, tag });
-              const current = /Actual version: \[([0-9]+\.[0-9]+\.[0-9]+)\]/.exec(release.body || '');
-              if (current && BigInt(current[1].split('.')[2]) > BigInt(match[3])) {
-                updateLatest = false;
-              }
-            } catch (error) {
-              if (error.status !== 404) throw error;
-            }
-            core.setOutput('update_latest', String(updateLatest));
             core.setOutput('prerelease', String(prerelease));
-            core.setOutput('description', prerelease ? 'This is a prerelease for testing.' : 'This release tracks the latest stable version in this series. Its download is replaced on each release.');
-            core.setOutput('tag', tag);
             core.setOutput('version', version);
             core.setOutput('sha', commit.sha);
             core.setOutput('asset', `lib.ts-${version}-windows-x86_64.tar.xz`);
@@ -342,50 +328,10 @@ jobs:
           target_commitish: ${{ steps.series.outputs.sha }}
           name: lib.ts ${{ steps.series.outputs.version }}
           prerelease: ${{ steps.series.outputs.prerelease == 'true' }}
-          make_latest: false
-          files: |
-            ${{ runner.temp }}/${{ steps.series.outputs.asset }}
-            ${{ runner.temp }}/${{ steps.series.outputs.comrak_asset }}
-            ${{ runner.temp }}/${{ steps.series.outputs.comrak_linux_asset }}
-          overwrite_files: true
-          fail_on_unmatched_files: true
-
-      - name: Publish rolling release
-        if: steps.series.outputs.update_latest == 'true'
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.series.outputs.tag }}
-          target_commitish: ${{ steps.series.outputs.sha }}
-          name: lib.ts ${{ steps.series.outputs.tag }}
-          prerelease: ${{ steps.series.outputs.prerelease == 'true' }}
           make_latest: ${{ steps.series.outputs.prerelease == 'true' && 'false' || 'true' }}
-          body: |
-            Actual version: [${{ steps.series.outputs.version }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ steps.series.outputs.version }})
-
-            ${{ steps.series.outputs.description }}
           files: |
             ${{ runner.temp }}/${{ steps.series.outputs.asset }}
             ${{ runner.temp }}/${{ steps.series.outputs.comrak_asset }}
             ${{ runner.temp }}/${{ steps.series.outputs.comrak_linux_asset }}
           overwrite_files: true
           fail_on_unmatched_files: true
-
-      - name: Point rolling tag at the published version
-        if: steps.series.outputs.update_latest == 'true'
-        uses: actions/github-script@v9
-        env:
-          ROLLING_TAG: ${{ steps.series.outputs.tag }}
-          RELEASE_SHA: ${{ steps.series.outputs.sha }}
-        with:
-          script: |
-            const repo = { owner: context.repo.owner, repo: context.repo.repo };
-            const ref = `tags/${process.env.ROLLING_TAG}`;
-            const sha = process.env.RELEASE_SHA;
-            try {
-              await github.rest.git.getRef({ ...repo, ref });
-            } catch (error) {
-              if (error.status !== 404) throw error;
-              await github.rest.git.createRef({ ...repo, ref: `refs/${ref}`, sha });
-              return;
-            }
-            await github.rest.git.updateRef({ ...repo, ref, sha, force: true });
