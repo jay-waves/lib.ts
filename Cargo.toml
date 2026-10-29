@@ -1,6 +1,6 @@
 [package]
 name = "lib-ts"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.92"
 
@@ -14,6 +14,7 @@ strip = "symbols"
 panic = "abort"
 
 [dependencies]
+lib-comrak = { path = "crates/lib-comrak" }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "original-uri", "query", "tokio", "tracing"] }
 dunce = "1"
 bytes = "1"

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 pub const HELP: &str = "lib.comrak — compile Markdown to static HTML
 
-Usage: lib.comrak compile [OPTIONS] <INPUT> [OUTPUT]
+Usage: lib.comrak <compile|watch> [OPTIONS] <INPUT> [OUTPUT]
 
 Options:
   -o, --output <PATH>                 Output HTML (default: input with .html)
@@ -17,7 +17,7 @@ Options:
 
 Shared resources default to LocalAppData/lib.comrak/assets on Windows (Known Folder API),
 ~/Library/Caches/lib.comrak/assets on macOS, or $XDG_CACHE_HOME/lib.comrak/assets
-on Linux. They are versioned automatically. Output requires no JavaScript.
+on Linux. They are versioned automatically. Interactive viz modules use browser JavaScript.
 Remote image URLs are preserved; standalone rejects them to avoid hidden network dependencies.
 ";
 
@@ -29,6 +29,7 @@ pub enum Images {
 
 #[derive(Debug)]
 pub struct Args {
+    pub watch: bool,
     pub input: PathBuf,
     pub output: PathBuf,
     pub root: Option<PathBuf>,
@@ -41,7 +42,11 @@ pub struct Args {
 
 pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, String> {
     let mut values = values.into_iter().peekable();
-    if values.peek().is_some_and(|s| s == "compile") {
+    let watch = values.peek().is_some_and(|s| s == "watch");
+    if values
+        .peek()
+        .is_some_and(|s| s == "compile" || s == "watch")
+    {
         values.next();
     }
     let mut paths = Vec::new();
@@ -112,6 +117,7 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
         .or_else(|| paths.next())
         .unwrap_or_else(|| input.with_extension("html"));
     Ok(Some(Args {
+        watch,
         input,
         output,
         root,
@@ -169,5 +175,10 @@ mod tests {
         assert_eq!(args.images, Images::Embed);
         assert!(args.short);
         assert!(parse(["a.md", "b.html", "-o", "c.html"].map(String::from)).is_err());
+        let watch = parse(["watch", "a.md", "b.html"].map(String::from))
+            .unwrap()
+            .unwrap();
+        assert!(watch.watch);
+        assert_eq!(watch.output, PathBuf::from("b.html"));
     }
 }

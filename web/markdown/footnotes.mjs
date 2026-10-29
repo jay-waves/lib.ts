@@ -1,7 +1,8 @@
+import { fragmentTarget } from './block-navigation.mjs';
 // Called by the preview's existing delegated click handler; no layout observers.
 export function toggleFootnote(root, link) {
   const target = link.getAttribute('data-footnote-ref');
-  const note = target ? [...root.querySelectorAll('.inline-footnote')].find(note => note.id === target) : link.closest('.inline-footnote');
+  const note = target ? fragmentTarget(root, `#${target}`) : link.closest('.inline-footnote');
   if (!note || (!target && !link.classList.contains('footnote-label'))) return false;
   const refs = [...root.querySelectorAll('[data-footnote-ref]')]
     .filter(ref => ref.getAttribute('data-footnote-ref') === note.id);

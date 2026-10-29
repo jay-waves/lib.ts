@@ -20,6 +20,7 @@ interface DocumentOptions {
 function hasContent(document: LibraryDocument, view: DocumentView) {
   if (view === 'raw') return true;
   if (document.type === 'markdown') return document.html !== undefined;
+  if (document.type === 'mermaid') return document.html !== undefined;
   if (document.type === 'typst') return document.compile !== null;
   return true;
 }

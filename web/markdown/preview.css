@@ -2,3 +2,7 @@
 @media (max-width: 960px) {
   .rendered-markdown { --markdown-padding: 20px; }
 }
+#content figure.graph-figure { box-sizing: border-box; display: table; width: min(100%, var(--viz-width, 640px)); max-width: 100%; margin: 1.75rem auto; }
+#content .graph-figure .diagram-view { margin: 0; }
+#content .graph-figure .viz { width: 100%; margin: 0; }
+#content .graph-figure figcaption { display: table-caption; padding-top: .5rem; color: var(--md-muted); font-size: .875rem; line-height: 1.5; text-align: center; caption-side: bottom; }

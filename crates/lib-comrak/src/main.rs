@@ -1,11 +1,4 @@
-mod assets;
-mod cli;
-mod document;
-mod engine;
-#[path = "../../../src/markdown/headings.rs"]
-mod headings;
-mod markdown;
-mod raw_html;
+use lib_comrak::{cli, document};
 
 fn main() -> std::process::ExitCode {
     let values: Vec<String> = std::env::args().skip(1).collect();
@@ -21,6 +14,15 @@ fn main() -> std::process::ExitCode {
             return std::process::ExitCode::from(2);
         }
     };
+    if args.watch {
+        return match lib_comrak::watch::run(&args) {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("error: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     match document::compile(&args) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(diagnostics) => {

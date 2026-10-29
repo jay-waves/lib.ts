@@ -88,10 +88,14 @@ enum DocumentContent {
         source: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         html: Option<String>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        graph_modules: Vec<(String, String)>,
     },
     Mermaid {
         line_count: usize,
         source: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        html: Option<String>,
     },
     Typst {
         line_count: usize,
@@ -405,21 +409,40 @@ fn load_document(
             let line_count = source.lines().count();
             match info.format.as_str() {
                 "md" | "markdown" => {
-                    let html = if view == Some("raw") {
-                        None
+                    let (html, graph_modules) = if view == Some("raw") {
+                        (None, Vec::new())
                     } else {
-                        Some(
-                            markdown::render_markdown(&source, true)
-                                .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?,
+                        let (html, modules) = markdown::render_document(
+                            &source,
+                            &checked_library_path(root, requested_path, private)?,
+                            root,
+                            private,
                         )
+                        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?;
+                        (Some(html), modules)
                     };
                     DocumentContent::Markdown {
                         line_count,
                         source,
                         html,
+                        graph_modules,
                     }
                 }
-                "mmd" => DocumentContent::Mermaid { line_count, source },
+                "mmd" => {
+                    let html = if view == Some("raw") {
+                        None
+                    } else {
+                        Some(
+                            markdown::render_diagram(&source)
+                                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?,
+                        )
+                    };
+                    DocumentContent::Mermaid {
+                        line_count,
+                        source,
+                        html,
+                    }
+                }
                 "typ" => DocumentContent::Typst {
                     line_count,
                     source,
@@ -547,7 +570,11 @@ mod tests {
             assert_eq!(value["type"], "mermaid");
             assert_eq!(value["source"], source);
             assert_eq!(value["lineCount"], 2);
-            assert!(value.get("html").is_none());
+            if view == "raw" {
+                assert!(value.get("html").is_none());
+            } else {
+                assert!(value["html"].as_str().unwrap().contains("<svg"));
+            }
         }
     }
 

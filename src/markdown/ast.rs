@@ -106,7 +106,7 @@ fn expand_footnotes<'a>(
         {
             target.clone()
         } else {
-            let target = format!("{prefix}fn{}{suffix}", note.ix);
+            let target = format!("{prefix}F{}{suffix}", note.ix);
             panels.push((note.name, target.clone(), reference_id.clone(), note.ix));
             target
         };
@@ -178,23 +178,6 @@ pub(super) fn transform<'a>(
     Ok(())
 }
 
-fn encode_component(value: &str) -> String {
-    let mut encoded = String::new();
-    for byte in value.bytes() {
-        if byte.is_ascii_alphanumeric()
-            || matches!(
-                byte,
-                b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
-            )
-        {
-            encoded.push(byte as char);
-        } else {
-            encoded.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    encoded
-}
-
 fn raw<'a>(arena: &'a Arena<'a>, html: String) -> &'a AstNode<'a> {
     arena.alloc(Ast::new(NodeValue::Raw(html), Default::default()).into())
 }
@@ -219,7 +202,12 @@ fn add_heading_sections_with_native_details<'a>(
         node = current.next_sibling();
     }
     let mut stack: Vec<(&'a AstNode<'a>, u8, &'a AstNode<'a>, bool)> = Vec::new();
-    let mut occurrences = HashMap::<String, usize>::new();
+    let mut ids = super::headings::IdState::default();
+    let heading_ids: HashMap<_, _> = root
+        .descendants()
+        .filter(|node| matches!(node.data().value, NodeValue::Heading(_)))
+        .map(|node| (node as *const _, ids.next(slugify(&node.collect_text()))))
+        .collect();
 
     for current in top {
         let heading_level = match current.data().value {
@@ -258,22 +246,16 @@ fn add_heading_sections_with_native_details<'a>(
                     .into(),
                 ));
             }
-            let heading_id = slugify(&current.collect_text());
-            let occurrence = occurrences
-                .entry(format!("H{level}:{heading_id}"))
-                .or_default();
-            let key = format!("H{level}:{heading_id}:{}", *occurrence);
-            *occurrence += 1;
-            let section_id = encode_component(&key);
+            let heading_id = &heading_ids[&(current as *const _)];
             let open = raw(
                 arena,
                 if native_details {
                     format!(
-                        "<details class=\"heading-section\" data-heading-level=\"{level}\" data-heading-key=\"{key}\" id=\"heading-section-{section_id}\" open>\n"
+                        "<details class=\"heading-section\" data-heading-level=\"{level}\" id=\"section-{heading_id}\" open>\n"
                     )
                 } else {
                     format!(
-                        "<section class=\"heading-section\" data-heading-level=\"{level}\" data-heading-key=\"{key}\" id=\"heading-section-{section_id}\">\n"
+                        "<section class=\"heading-section\" data-heading-level=\"{level}\" id=\"section-{heading_id}\">\n"
                     )
                 },
             );

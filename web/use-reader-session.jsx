@@ -17,7 +17,11 @@ export function useReaderSession({ document, root, request, view, onViewChange, 
   const [saved] = useState(() => readPosition(key));
   const [scale, setScale] = useState(saved.scale || 1);
   const [fitRequest, setFitRequest] = useState(0);
-  const latest = useRef(null), initial = useRef({ line: saved.line || 1, page: saved.page }), consumed = useRef(null), previousDocument = useRef(document);
+  const hashLine = /^#L([1-9]\d*)$/.exec(location.hash);
+  const initialLine = hashLine && Number.isSafeInteger(Number(hashLine[1])) ? Number(hashLine[1]) : null;
+  const latest = useRef(null), initial = useRef(document.type === 'markdown' && /^#F[1-9]\d*$/.test(location.hash)
+    ? null : initialLine && document.type === 'markdown'
+      ? { line: initialLine } : { line: saved.line || 1, page: saved.page }), consumed = useRef(null), previousDocument = useRef(document);
   const selectedSymbol = useRef(null);
   const [navigation] = useState(() => createReaderNavigation(requestAnimationFrame, cancelAnimationFrame));
   latest.current = { document, view, scale, active, request, onProgress };

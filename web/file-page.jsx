@@ -52,7 +52,14 @@ export function FilePage({ ref, path, request, externalRevision, visible, direct
     page: next.pending ? previous.page : next.page ?? null }));
   const prepared = useMemo(() => content.document?.type === 'markdown' && typeof content.document.html === 'string'
     ? prepareMarkdown(content.document, fileUrl) : null, [content.document]);
-  const assetVersions = useReaderWatch(path, info?.modified, prepared?.assets ?? [], active, reload, info?.type === 'typst');
+  const assetVersions = useReaderWatch(path, info?.modified, prepared?.assets ?? [], active, reload,
+    info?.type === 'typst' || Boolean(prepared?.graphAssets.length));
+  const graphVersions = useRef({});
+  useEffect(() => {
+    const changed = prepared?.graphAssets.some(file => assetVersions[file] && assetVersions[file] !== graphVersions.current[file]);
+    graphVersions.current = assetVersions;
+    if (changed) reload();
+  }, [assetVersions, prepared]);
   useDocumentLease(apiBase, confirmed && info?.type !== 'directory' ? path : null);
   const symbols = useMemo(() => content.document ? documentSymbols(content.document) : [], [content.document]);
   const file = Boolean(info && info.type !== 'directory');

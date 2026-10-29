@@ -49,7 +49,7 @@ function TypstPreview() {
 
 export function Preview() {
   const { document, viewport } = usePreview();
-  if (document.type === 'mermaid') return <DiagramPreview source={document.source} name={document.name} />;
+  if (document.type === 'mermaid') return <DiagramPreview html={document.html} name={document.name} />;
   if (document.type === 'typst') return <TypstPreview />;
   if (document.type === 'pdf') return <DocumentPreview layout={pagedDocumentLayout(document.pages)}>
     <PdfPages key={`${document.path}:${document.revision || document.modified}`} pages={document.pages}

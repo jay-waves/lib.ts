@@ -10,6 +10,7 @@ const run = (command, args, options = {}) => new Promise((done, fail) => {
   child.once('exit', code => code === 0 ? done() : fail(new Error(`${command} failed (${code})`)));
 });
 
+await run(process.execPath, [resolve(root, 'scripts/build-comrak-assets.mjs')]);
 await run(process.execPath, [resolve(root, 'node_modules/vite/bin/vite.js'), 'build']);
 await run(process.env.CARGO || 'cargo', ['build', '--release', '--locked']);
 

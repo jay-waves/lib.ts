@@ -7,10 +7,10 @@ export function useReaderWatch(path, modified, assets, active, onReload, revalid
   const [versions, setVersions] = useState({});
   const reload = useEffectEvent(onReload);
   const assetSnapshot = useRef({});
-  const connected = useRef(false);
   const checkVersion = useEffectEvent(serverModified => {
-    if ((modified && modified !== serverModified) || (connected.current && revalidateDependencies)) reload();
-    connected.current = true;
+    // Recompile after the subscription exists: a dependency may have changed
+    // between the HTTP compilation and this first SSE snapshot.
+    if ((modified && modified !== serverModified) || revalidateDependencies) reload();
   });
   const assetKey = assets.join('\0');
   useEffect(() => {

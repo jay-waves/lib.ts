@@ -1,8 +1,9 @@
+import { blockForLine } from './block-navigation.mjs';
 // Coordinates are relative to the scroll container, so scrolling never invalidates them.
 const caches = new WeakMap();
 
 function entryFor(panel) {
-  if (!caches.has(panel)) caches.set(panel, { dirty: true, byTop: [], byLine: [] });
+  if (!caches.has(panel)) caches.set(panel, { dirty: true, byTop: [] });
   return caches.get(panel);
 }
 
@@ -49,16 +50,15 @@ function positions(panel) {
   // Navigation can run in the same task as a DOM change, before observer delivery.
   if (entry.mutation?.takeRecords().length) entry.dirty = true;
   if (!entry.dirty) return entry;
-  const nodes = [...panel.querySelectorAll('[data-source-line]')];
+  const nodes = [...panel.querySelectorAll('[data-line]')];
   const origin = panel.getBoundingClientRect().top + panel.clientTop;
   const scrollTop = panel.scrollTop || 0;
   const blocks = nodes.map(element => {
     const rect = element.getBoundingClientRect();
-    return { line: Number(element.dataset.sourceLine) + 1,
+    return { line: Number(element.dataset.line),
       top: rect.top - origin + scrollTop, height: rect.height };
   }).filter(block => Number.isFinite(block.line) && block.height > 0);
   entry.byTop = blocks.slice().sort((a, b) => a.top - b.top || a.line - b.line);
-  entry.byLine = blocks.slice().sort((a, b) => a.line - b.line || a.top - b.top);
   entry.observeBlocks?.(nodes);
   entry.dirty = false;
   return entry;
@@ -79,20 +79,16 @@ export function markdownLineAtViewport(panel, lineCount, inset) {
   if (!blocks.length) return;
   const y = (panel.scrollTop || 0) + inset;
   const index = Math.max(0, upperBound(blocks, y, 'top') - 1);
-  const previous = blocks[index], next = blocks[index + 1];
-  const span = next ? next.top - previous.top : Math.max(1, previous.height);
-  const fraction = span > 0 ? Math.max(0, Math.min(1, (y - previous.top) / span)) : 0;
-  const last = next ? next.line : lineCount || previous.line;
-  return Math.max(1, Math.min(lineCount || last,
-    Math.round(previous.line + fraction * (last - previous.line))));
+  return blocks[index].line;
 }
 
 export function markdownTopForLine(panel, lineCount, line) {
-  const blocks = positions(panel).byLine;
-  if (!blocks.length) return;
-  const index = Math.max(0, upperBound(blocks, line, 'line') - 1);
-  const previous = blocks[index], next = blocks[index + 1];
-  const last = next ? next.line : lineCount || previous.line;
-  const fraction = last > previous.line ? Math.max(0, Math.min(1, (line - previous.line) / (last - previous.line))) : 0;
-  return previous.top + fraction * (next ? next.top - previous.top : previous.height);
+  const root = panel.querySelector('.rendered-markdown') || panel;
+  const target = blockForLine(root, line);
+  if (!target) return;
+  for (let node = target.parentElement; node && node !== panel; node = node.parentElement) {
+    if (node.classList.contains('heading-section')) node.classList.remove('is-collapsed');
+    if (node.tagName === 'DETAILS') node.open = true;
+  }
+  return target.getBoundingClientRect().top - panel.getBoundingClientRect().top - panel.clientTop + (panel.scrollTop || 0);
 }

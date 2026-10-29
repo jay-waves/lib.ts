@@ -1,3 +1,4 @@
+pub(super) use crate::headings;
 pub(super) use crate::headings::slugify;
 
 #[path = "../../../src/markdown/ast.rs"]

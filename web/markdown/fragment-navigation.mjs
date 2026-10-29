@@ -1,17 +1,12 @@
+import { fragmentTarget, revealBlock } from './block-navigation.mjs';
 // Scope fragment lookup to this preview: retained reader tabs may share IDs.
 export function navigateMarkdownFragment(root, link, current, updateHeadings = () => {}) {
   if (!link.hash || link.origin !== current.origin || link.pathname !== current.pathname
     || link.search !== current.search) return false;
-  let id;
-  try { id = decodeURIComponent(link.hash.slice(1)); }
-  catch { return true; }
-  const target = [...root.querySelectorAll('[id]')].find(node => node.id === id);
+  const target = fragmentTarget(root, link.hash);
   // A missing local fragment must not fall through to document navigation.
   if (!target) return true;
-  for (let section = target.closest('.heading-section'); section;
-    section = section.parentElement?.closest('.heading-section')) section.classList.remove('is-collapsed');
-  for (let details = target.parentElement?.closest('details'); details;
-    details = details.parentElement?.closest('details')) details.open = true;
+  revealBlock(target, root);
   updateHeadings(root);
   const panel = root.closest('.main-panel');
   if (panel) {

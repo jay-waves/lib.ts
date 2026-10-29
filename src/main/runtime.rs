@@ -1,4 +1,5 @@
 use super::*;
+use notify::{EventKind, RecursiveMode, Watcher};
 
 /// Mutable coordination state shared by concurrent HTTP requests.
 /// Long-lived services and configuration stay on `AppState`.
@@ -64,6 +65,54 @@ impl FileWatchSnapshot {
     }
 }
 
+fn native_file_event(
+    event: &notify::Event,
+    document: &Path,
+    assets: &[(PathBuf, String)],
+) -> Option<FileWatchEvent> {
+    if !matches!(
+        event.kind,
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) | EventKind::Any
+    ) {
+        return None;
+    }
+    let affects = |target: &Path| {
+        event.paths.is_empty()
+            || event
+                .paths
+                .iter()
+                .any(|path| target == path || target.starts_with(path))
+    };
+    let document_changed = affects(document);
+    let assets = assets
+        .iter()
+        .filter(|(path, _)| affects(path))
+        .map(|(_, name)| name.clone())
+        .collect::<Vec<_>>();
+    (document_changed || !assets.is_empty()).then_some(FileWatchEvent {
+        document_changed,
+        assets,
+    })
+}
+
+#[cfg(test)]
+mod native_watch_tests {
+    use super::*;
+    #[test]
+    fn filesystem_event_reports_changed_dependency_without_timestamp_comparison() {
+        let document = PathBuf::from("/library/note.md");
+        let assets = vec![(PathBuf::from("/library/chart.js"), "chart.js".into())];
+        let event = notify::Event::new(EventKind::Modify(notify::event::ModifyKind::Any))
+            .add_path(assets[0].0.clone());
+        let changed = native_file_event(&event, &document, &assets).unwrap();
+        assert!(!changed.document_changed);
+        assert_eq!(changed.assets, ["chart.js"]);
+        let unrelated = notify::Event::new(EventKind::Modify(notify::event::ModifyKind::Any))
+            .add_path(PathBuf::from("/library/other.js"));
+        assert!(native_file_event(&unrelated, &document, &assets).is_none());
+    }
+}
+
 #[derive(Debug)]
 pub(super) enum LeaseUpdateError {
     Busy,
@@ -115,11 +164,50 @@ impl RuntimeState {
         let runtime = self.clone();
         // Establish the baseline before returning the subscription. Changes
         // after the connected event must not become the task's initial state.
+        let (native_tx, mut native_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut native_watcher = notify::recommended_watcher(move |event| {
+            let _ = native_tx.send(event);
+        })
+        .ok();
+        if let Some(watcher) = native_watcher.as_mut() {
+            let directories: HashSet<_> = std::iter::once(&document)
+                .chain(assets.iter().map(|(path, _)| path))
+                .filter_map(|path| path.parent())
+                .collect();
+            for directory in directories {
+                if let Err(error) = watcher.watch(directory, RecursiveMode::NonRecursive) {
+                    tracing::warn!(path = %directory.display(), %error, "Native file watch unavailable; polling remains enabled");
+                }
+            }
+        }
         let mut previous = FileWatchSnapshot::capture(&document, &assets);
         tokio::spawn(async move {
+            let _native_watcher = native_watcher;
             let mut timer = tokio::time::interval(std::time::Duration::from_millis(500));
             loop {
-                timer.tick().await;
+                tokio::select! {
+                    _ = timer.tick() => {},
+                    Some(result) = native_rx.recv() => {
+                        match result {
+                            Ok(event) => {
+                                if let Some(mut changed) = native_file_event(&event, &document, &assets) {
+                                    // Fold a burst of events from an atomic editor save into one update.
+                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                                    while let Ok(Ok(event)) = native_rx.try_recv() {
+                                        if let Some(next) = native_file_event(&event, &document, &assets) {
+                                            changed.document_changed |= next.document_changed;
+                                            for path in next.assets { if !changed.assets.contains(&path) { changed.assets.push(path); } }
+                                        }
+                                    }
+                                    let _ = sender.send(changed);
+                                    previous = FileWatchSnapshot::capture(&document, &assets);
+                                }
+                            },
+                            Err(error) => tracing::warn!(%error, "Native file watch failed; polling remains enabled"),
+                        }
+                        continue;
+                    }
+                }
                 if sender.receiver_count() == 0 {
                     let mut watchers = runtime
                         .file_watchers

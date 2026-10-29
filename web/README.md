@@ -55,3 +55,5 @@ HTML 支持脚本和仓库内相对资源，但隔离预览会限制外部网络
 Markdown 的 `mermaid` 代码块和独立 `.mmd` 文件均可预览。图表支持缩放和平移，颜色跟随应用主题，保留源码指定的布局方向；不支持任意 HTML 标签及 JavaScript 回调。`.mmd` 支持 Preview / Raw 切换。
 
 文档、图像和视频的格式支持及外部工具要求见[根 README](../README.md#支持的格式)。
+
+Markdown 公式、代码高亮和图表由服务端共享的 lib.comrak 编译，浏览器直接展示结果。图表可使用完整标签 `<viz src="charts/chart.js" width="75%" caption="图注"></viz>` 或 `<mermaid src="charts/flow.mmd" caption="图注"></mermaid>`；Mermaid 也支持将源码放在标签内。路径相对于 Markdown 文件，限制在当前资料库内。JS 图表使用随包的 D3，仅支持导入 `d3`；默认导出同步绘图函数，可选导出 `hydrate` 对已有图形初始化交互，不会在浏览器重新绘制。图表 JS 在应用页面执行，应只使用可信文件。旧 Mermaid 代码块仍可预览，并在服务端日志给出弃用警告。

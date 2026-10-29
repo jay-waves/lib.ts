@@ -104,7 +104,12 @@ pub fn stylesheet(standalone: bool, directory: Option<&Path>) -> Result<String, 
     if standalone {
         let mut css = STYLE.to_owned();
         for (name, bytes) in ASSETS.iter().filter(|(name, _)| name.starts_with("fonts/")) {
-            css = css.replace(name, &data_url(bytes, "font/woff2"));
+            let mime = if name.ends_with(".otf") {
+                "font/otf"
+            } else {
+                "font/woff2"
+            };
+            css = css.replace(name, &data_url(bytes, mime));
         }
         return Ok(format!("<style>{css}</style>"));
     }
@@ -134,6 +139,65 @@ pub fn stylesheet(standalone: bool, directory: Option<&Path>) -> Result<String, 
     Ok(format!(
         "<link rel=\"stylesheet\" href=\"{}\">",
         escape(file_url(&absolute)?.as_str())
+    ))
+}
+
+pub fn viz_stylesheet(standalone: bool, directory: Option<&Path>) -> Result<String, String> {
+    if standalone {
+        return Ok(format!(
+            "<style>{}</style>",
+            include_str!("../generated/d3.css")
+        ));
+    }
+    let directory = directory
+        .map(Path::to_path_buf)
+        .map_or_else(shared_base, Ok)?;
+    let path = dunce::canonicalize(directory.join(VERSION.trim()).join("d3.css"))
+        .map_err(|e| e.to_string())?;
+    Ok(format!(
+        "<link rel=\"stylesheet\" href=\"{}\">",
+        escape(file_url(&path)?.as_str())
+    ))
+}
+
+pub fn mermaid_stylesheet(standalone: bool, directory: Option<&Path>) -> Result<String, String> {
+    if standalone {
+        return Ok(format!(
+            "<style>{}</style>",
+            include_str!("../generated/mermaid.css")
+        ));
+    }
+    let directory = directory
+        .map(Path::to_path_buf)
+        .map_or_else(shared_base, Ok)?;
+    let path = dunce::canonicalize(directory.join(VERSION.trim()).join("mermaid.css"))
+        .map_err(|e| e.to_string())?;
+    Ok(format!(
+        "<link rel=\"stylesheet\" href=\"{}\">",
+        escape(file_url(&path)?.as_str())
+    ))
+}
+
+pub fn viz_runtime(standalone: bool, directory: Option<&Path>) -> Result<String, String> {
+    let source = if standalone {
+        data_url(include_bytes!("../generated/viz.js"), "text/javascript")
+    } else {
+        let directory = directory
+            .map(Path::to_path_buf)
+            .map_or_else(shared_base, Ok)?;
+        file_url(
+            &dunce::canonicalize(directory.join(VERSION.trim()).join("viz.js"))
+                .map_err(|e| e.to_string())?,
+        )?
+        .to_string()
+    };
+    let module = data_url(
+        include_bytes!("../generated/d3-module.js"),
+        "text/javascript",
+    );
+    Ok(format!(
+        "<script src=\"{}\"></script><script type=\"importmap\">{{\"imports\":{{\"d3\":\"{module}\"}}}}</script>",
+        escape(&source)
     ))
 }
 
@@ -240,7 +304,12 @@ mod tests {
         assert!(!STYLE.contains(".woff)"));
         assert!(!STYLE.contains(".ttf)"));
         let css = stylesheet(true, None).unwrap();
-        assert_eq!(css.matches("data:font/woff2;base64,").count(), fonts);
+        assert_eq!(
+            css.matches("data:font/woff2;base64,").count()
+                + css.matches("data:font/otf;base64,").count(),
+            fonts
+        );
+        assert_eq!(css.matches("data:font/otf;base64,").count(), 2);
         assert!(!css.contains("url(fonts/"));
     }
 

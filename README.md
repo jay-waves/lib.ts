@@ -8,6 +8,7 @@
 
 ```sh
 npm ci
+npm run build:comrak-assets
 npm run build
 npm run serve -- /path/to/notes
 ```
@@ -124,6 +125,7 @@ curl -X POST http://127.0.0.1:49191/api/library/open \
 
 ```sh
 npm run typecheck
+npm run build:comrak-assets
 npm run build
 cargo build --release --locked
 ```

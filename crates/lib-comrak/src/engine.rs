@@ -1,8 +1,51 @@
-use rquickjs::{CatchResultExt, Context, Function, Object, Runtime};
-use std::cell::OnceCell;
+use rquickjs::{CatchResultExt, Context, Function, Module, Object, Runtime};
+use std::cell::{Cell, OnceCell};
+use std::collections::VecDeque;
+use std::sync::{Mutex, OnceLock};
+
+type FragmentKey = (String, String, String, usize);
+type FragmentCache = RenderCache<FragmentKey, Option<String>>;
+static SHARED_FRAGMENTS: OnceLock<Mutex<FragmentCache>> = OnceLock::new();
+type VizCache = RenderCache<(String, usize), (String, bool)>;
+static SHARED_VIZ: OnceLock<Mutex<VizCache>> = OnceLock::new();
+
+// One process-wide cache per result type. Evict the least recently used entry
+// until both the byte budget and entry budget are satisfied.
+struct RenderCache<K, V> {
+    entries: VecDeque<(K, V, usize)>,
+    bytes: usize,
+}
+impl<K: PartialEq, V> RenderCache<K, V> {
+    fn new() -> Self {
+        Self {
+            entries: VecDeque::new(),
+            bytes: 0,
+        }
+    }
+    fn get(&mut self, key: &K) -> Option<&V> {
+        let position = self.entries.iter().position(|(k, _, _)| k == key)?;
+        let entry = self.entries.remove(position)?;
+        self.entries.push_back(entry);
+        self.entries.back().map(|(_, value, _)| value)
+    }
+    fn insert(&mut self, key: K, value: V, size: usize) {
+        const LIMIT: usize = 8 * 1024 * 1024;
+        if size > LIMIT {
+            return;
+        }
+        if let Some(position) = self.entries.iter().position(|(k, _, _)| k == &key) {
+            self.bytes -= self.entries.remove(position).unwrap().2;
+        }
+        while self.bytes + size > LIMIT || self.entries.len() >= 256 {
+            self.bytes -= self.entries.pop_front().unwrap().2;
+        }
+        self.bytes += size;
+        self.entries.push_back((key, value, size));
+    }
+}
 
 #[derive(Default)]
-pub struct Engine(OnceCell<Result<Renderer, String>>);
+pub struct Engine(OnceCell<Result<Renderer, String>>, Cell<u64>);
 
 struct Renderer {
     context: Context,
@@ -20,6 +63,14 @@ impl Renderer {
                 .catch(&ctx)
                 .map_err(|e| format!("cannot initialize embedded renderers: {e}"))
         })?;
+        context
+            .with(|ctx| {
+                Module::declare(ctx.clone(), "d3", include_str!("../generated/d3-module.js"))?
+                    .eval()?
+                    .1
+                    .finish::<()>()
+            })
+            .map_err(|e| format!("cannot initialize D3 module: {e}"))?;
         Ok(Self {
             context,
             _runtime: runtime,
@@ -51,6 +102,49 @@ impl Renderer {
 }
 
 impl Engine {
+    pub fn viz(&self, source: &str, index: usize) -> Result<(String, bool), String> {
+        let key = (source.to_owned(), index);
+        let shared = SHARED_VIZ.get_or_init(|| Mutex::new(RenderCache::new()));
+        if let Some(value) = shared.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+            return Ok(value.clone());
+        }
+        let renderer = self
+            .0
+            .get_or_init(Renderer::new)
+            .as_ref()
+            .map_err(Clone::clone)?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        renderer
+            ._runtime
+            .set_interrupt_handler(Some(Box::new(move || {
+                std::time::Instant::now() >= deadline
+            })));
+        let serial = self.1.get();
+        self.1.set(serial.wrapping_add(1));
+        let result = renderer.context.with(|ctx| {
+            let result = (|| -> rquickjs::Result<(String, bool)> {
+                let prepare: Function = ctx.globals().get("prepareViz")?;
+                let container: Object = prepare.call((index as u32,))?;
+                let (module, promise) =
+                    Module::declare(ctx.clone(), format!("viz-module-{serial}"), source)?.eval()?;
+                promise.finish::<()>()?;
+                let render: Function = module.get("default")?;
+                let hydrate: Option<Function> = module.get("hydrate")?;
+                let run: Function = ctx.globals().get("runViz")?;
+                Ok((run.call((render, container))?, hydrate.is_some()))
+            })();
+            result
+                .catch(&ctx)
+                .map_err(|e| format!("viz rendering failed: {e}"))
+        });
+        renderer._runtime.set_interrupt_handler(None);
+        if let Ok(value) = &result {
+            let mut shared = shared.lock().unwrap_or_else(|e| e.into_inner());
+            shared.insert(key, value.clone(), source.len() + value.0.len());
+        }
+        result
+    }
+
     pub fn render(
         &self,
         kind: &str,
@@ -58,17 +152,52 @@ impl Engine {
         language: &str,
         index: usize,
     ) -> Result<Option<String>, String> {
-        self.0
+        let key = (
+            kind.to_owned(),
+            source.to_owned(),
+            language.to_owned(),
+            if kind == "diagram" { index } else { 0 },
+        );
+        let shared = SHARED_FRAGMENTS.get_or_init(|| Mutex::new(RenderCache::new()));
+        if let Some(value) = shared.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+            return Ok(value.clone());
+        }
+        let value = self
+            .0
             .get_or_init(Renderer::new)
             .as_ref()
             .map_err(Clone::clone)?
-            .render(kind, source, language, index)
+            .render(kind, source, language, index)?;
+        // Bound shared memory and avoid caching unusually large documents.
+        {
+            let mut shared = shared.lock().unwrap_or_else(|e| e.into_inner());
+            shared.insert(
+                (
+                    kind.to_owned(),
+                    source.to_owned(),
+                    language.to_owned(),
+                    if kind == "diagram" { index } else { 0 },
+                ),
+                value.clone(),
+                source.len() + language.len() + kind.len() + value.as_ref().map_or(0, String::len),
+            );
+        }
+        Ok(value)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_cache_reuses_fragments_across_engines() {
+        let first = Engine::default();
+        let second = Engine::default();
+        let source = "\\operatorname{sharedcachetest}_{92731}";
+        let expected = first.render("math", source, "", 1).unwrap();
+        assert_eq!(second.render("math", source, "", 99).unwrap(), expected);
+        assert!(second.0.get().is_none());
+    }
     #[test]
     fn renderer_is_initialized_on_demand() {
         let engine = Engine::default();
@@ -85,7 +214,9 @@ mod tests {
             crate::document::render("# Hello\n\n```\n<plain>\n```", &engine, &attachments).unwrap();
         assert!(html.contains("&lt;plain&gt;"));
         assert!(engine.0.get().is_none());
-        engine.render("math", "x", "", 0).unwrap();
+        engine
+            .render("math", "unique_{renderer_initialization_test}", "", 0)
+            .unwrap();
         assert!(matches!(engine.0.get(), Some(Ok(_))));
     }
 

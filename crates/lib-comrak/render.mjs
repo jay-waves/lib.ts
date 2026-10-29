@@ -1,3 +1,5 @@
+import * as d3 from 'd3';
+import { parseHTML } from 'linkedom/worker';
 import katex from 'katex';
 import { highlightSource, rawLanguage } from '../../web/raw/raw-highlight.mjs';
 import { render } from 'pele';
@@ -25,4 +27,20 @@ globalThis.renderFragment = (kind, source, language, index) => {
   } catch (error) {
     return { error: error.message || String(error) };
   }
+};
+
+globalThis.__vizD3 = d3;
+globalThis.prepareViz = index => {
+  const { document } = parseHTML('<!doctype html><html><body></body></html>');
+  globalThis.document = document;
+  const container = document.createElement('div');
+  container.id = `viz-${index}`;
+  document.body.append(container);
+  return container;
+};
+
+globalThis.runViz = (render, container) => {
+  const result = render(container);
+  if (result && typeof result.then === 'function') throw new Error('viz default export must be synchronous');
+  return container.innerHTML;
 };

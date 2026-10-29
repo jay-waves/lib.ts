@@ -46,10 +46,10 @@ export function documentSymbols(document: { type: string; html?: string; outline
   }));
   if (document.type !== 'markdown') return [];
   const dom = new DOMParser().parseFromString(document.html ?? '', 'text/html');
-  return [...dom.querySelectorAll<HTMLElement>(':is(h1,h2,h3,h4,h5,h6)[data-source-line]')]
+  return [...dom.querySelectorAll<HTMLElement>(':is(h1,h2,h3,h4,h5,h6)[data-line]')]
     .filter(heading => heading.id).map(heading => ({
       id: heading.id, name: heading.textContent.trim(), level: Number(heading.tagName.slice(1)),
-      line: Number(heading.dataset.sourceLine) + 1,
+      line: Number(heading.dataset.line),
     }));
 }
 export function SymbolsPanel({ symbols, status, onSelect, hidden, visible }: SymbolsPanelProps) {

@@ -12,13 +12,13 @@ use std::{
 pub(super) struct HeadingIds(Mutex<IdState>);
 
 #[derive(Default)]
-struct IdState {
+pub(super) struct IdState {
     counts: HashMap<String, usize>,
     used: HashSet<String>,
 }
 
 impl IdState {
-    fn next(&mut self, base: String) -> String {
+    pub(super) fn next(&mut self, base: String) -> String {
         let occurrence = self.counts.entry(base.clone()).or_default();
         loop {
             let id = if *occurrence == 0 {
@@ -27,7 +27,10 @@ impl IdState {
                 format!("{base}-{occurrence}")
             };
             *occurrence += 1;
-            if self.used.insert(id.clone()) {
+            let section = format!("section-{id}");
+            if !self.used.contains(&id) && !self.used.contains(&section) {
+                self.used.insert(id.clone());
+                self.used.insert(section);
                 return id;
             }
         }
@@ -44,10 +47,10 @@ impl HeadingAdapter for HeadingIds {
         let base = slugify(&heading.content);
         let mut ids = self.0.lock().map_err(|_| fmt::Error)?;
         let id = ids.next(base);
-        let line = sourcepos.map(|position| position.start.line.saturating_sub(1));
+        let line = sourcepos.map(|position| position.start.line.max(1));
         write!(output, "<h{} id=\"{}\"", heading.level, id)?;
         if let Some(line) = line {
-            write!(output, " data-source-line=\"{line}\"")?;
+            write!(output, " data-line=\"{line}\"")?;
         }
         output.write_str(">")
     }

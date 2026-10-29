@@ -29,6 +29,11 @@ export function prepareMarkdown(document, linkFor) {
     element.setAttribute('data-library-asset-search', search);
     element.setAttribute('data-library-asset-hash', hash);
   }
+  const graphAssets = new Set();
+  for (const graph of body.querySelectorAll('[data-graph-source]')) {
+    const resolved = resolveMarkdownUrl(graph.getAttribute('data-graph-source'), document.path);
+    if (resolved) { assets.add(resolved.path); graphAssets.add(resolved.path); }
+  }
   for (const link of body.querySelectorAll('a[href]')) {
     const resolved = resolveMarkdownUrl(link.getAttribute('href'), document.path);
     if (resolved) link.href = `${linkFor(resolved.path)}${resolved.search}${resolved.hash}`;
@@ -40,7 +45,7 @@ export function prepareMarkdown(document, linkFor) {
   // Keep the final security check after URL rewriting, without serializing and
   // reparsing HTML. The preview clones these already-sanitized nodes directly.
   DOMPurify.sanitize(body, { ...sanitizeOptions, IN_PLACE: true });
-  return { body, assets: [...assets] };
+  return { body, assets: [...assets], graphAssets: [...graphAssets], graphModules: document.graphModules || [] };
 }
 
 export function updateAssetVersions(root, versions) {

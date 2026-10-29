@@ -16,8 +16,24 @@
   font-weight: 700;
   font-display: block;
 }
+@font-face {
+  font-family: "Lib Source Han Serif";
+  src: url("../../fonts/SourceHanSerifCN-Regular.otf") format("opentype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+2E80-2FFF, U+3000-30FF, U+31C0-31EF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF, U+20000-2FA1F;
+}
+@font-face {
+  font-family: "Lib Source Han Serif";
+  src: url("../../fonts/SourceHanSerifCN-Bold.otf") format("opentype");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  unicode-range: U+2E80-2FFF, U+3000-30FF, U+31C0-31EF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF, U+20000-2FA1F;
+}
 :root {
-  --md-font-serif: Georgia, "Source Han Serif CN VF", "Source Han Serif", "Source Han Serif CN", "Source Han Serif SC", "Libertinus Serif", "New Computer Modern", "Times New Roman", serif;
+  --md-font-serif: Georgia, "Lib Source Han Serif", "Source Han Serif SC", "Source Han Serif CN VF", "Source Han Serif", "Source Han Serif CN", "Noto Serif CJK SC", "Songti SC", "SimSun", "Libertinus Serif", "New Computer Modern", "Times New Roman", serif;
   --md-font-sans: "Source Han Sans CN VF", "Source Han Sans", "Source Han Sans CN", "Source Han Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --md-font-mono: "Iosevka", ui-monospace, SFMono-Regular, Menlo, Consolas, "Source Han Sans CN VF", "Source Han Sans", "Source Han Sans CN", "Source Han Sans SC", monospace;
   --md-code-font-size: 14px;
