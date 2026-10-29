@@ -244,6 +244,7 @@ jobs:
             core.setOutput('sha', commit.sha);
             core.setOutput('asset', `lib.ts-${tag}-windows-x86_64.tar.xz`);
             core.setOutput('comrak_asset', `lib.comrak-${tag}-windows-x86_64.tar.xz`);
+            core.setOutput('comrak_linux_asset', `lib.comrak-${tag}-linux-x86_64.tar.xz`);
 
       - name: Find successful main build for this commit
         id: main-build
@@ -302,9 +303,20 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
 
+      - name: Download Linux lib.comrak build
+        uses: actions/download-artifact@v8
+        with:
+          name: lib.comrak-linux-x64
+          path: ${{ runner.temp }}/lib.comrak-linux
+          run-id: ${{ steps.main-build.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+
       - name: Verify downloaded builds
         run: |
           test -f "$RUNNER_TEMP/lib.ts/lib.ts.exe"
+          test -f "$RUNNER_TEMP/lib.comrak-linux/lib.comrak"
+          chmod +x "$RUNNER_TEMP/lib.comrak-linux/lib.comrak"
           for file in lib.comrak.exe README.md LICENSE KaTeX-LICENSE highlight.js-LICENSE Pele-LICENSE; do
             test -f "$RUNNER_TEMP/lib.comrak/$file"
           done
@@ -313,10 +325,12 @@ jobs:
         env:
           RELEASE_ASSET: ${{ steps.series.outputs.asset }}
           COMRAK_RELEASE_ASSET: ${{ steps.series.outputs.comrak_asset }}
+          COMRAK_LINUX_RELEASE_ASSET: ${{ steps.series.outputs.comrak_linux_asset }}
           XZ_OPT: "-9 -T2"
         run: |
           tar -cJf "$RUNNER_TEMP/$RELEASE_ASSET" lib.ts
           tar -cJf "$RUNNER_TEMP/$COMRAK_RELEASE_ASSET" lib.comrak
+          tar -cJf "$RUNNER_TEMP/$COMRAK_LINUX_RELEASE_ASSET" lib.comrak-linux
         working-directory: ${{ runner.temp }}
 
       - name: Publish rolling release
@@ -334,6 +348,7 @@ jobs:
           files: |
             ${{ runner.temp }}/${{ steps.series.outputs.asset }}
             ${{ runner.temp }}/${{ steps.series.outputs.comrak_asset }}
+            ${{ runner.temp }}/${{ steps.series.outputs.comrak_linux_asset }}
           overwrite_files: true
           fail_on_unmatched_files: true
 
