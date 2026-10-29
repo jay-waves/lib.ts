@@ -171,6 +171,9 @@ impl Attachments {
                 resolve_missing_link(&path)
                     .map_err(|e| format!("cannot resolve attachment {original:?}: {e}"))?
             }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(format!("attachment {original:?} is missing: {error}"));
+            }
             Err(error) => return Err(format!("cannot read attachment {original:?}: {error}")),
         };
         if !path.starts_with(&self.root) {
@@ -355,11 +358,22 @@ fn render_with_warnings(
                     None
                 }
                 Ok(None) => None,
-                Err(message) => Some(Diagnostic {
-                    line: position.line.max(1),
-                    column: position.column.max(1),
-                    message,
-                }),
+                Err(message) => {
+                    let diagnostic = Diagnostic {
+                        line: position.line.max(1),
+                        column: position.column.max(1),
+                        message,
+                    };
+                    if diagnostic.message.starts_with("attachment ")
+                        && (diagnostic.message.contains(" is outside root ")
+                            || diagnostic.message.contains(" is missing: "))
+                    {
+                        warnings.push(diagnostic);
+                        None
+                    } else {
+                        Some(diagnostic)
+                    }
+                }
             }
         })
         .collect();
@@ -1041,6 +1055,45 @@ mod tests {
     }
 
     #[test]
+    fn outside_root_link_warns_and_does_not_abort_rendering() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("notes");
+        fs::create_dir(&root).unwrap();
+        fs::write(temp.path().join("outside.md"), "outside").unwrap();
+        let root = dunce::canonicalize(root).unwrap();
+        let attachments = Attachments::new(
+            &root.join("note.md"),
+            &root.join("out.html"),
+            root,
+            Images::Reference,
+            false,
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+        let html = render_with_warnings(
+            "[outside](../outside.md)\n\n![missing](missing.png)",
+            &Engine::default(),
+            &attachments,
+            &mut warnings,
+        );
+        assert!(html.is_ok());
+        assert_eq!(warnings.len(), 2);
+        assert!(warnings[0].message.contains("outside root"));
+        assert!(warnings[1].message.contains("is missing"));
+
+        warnings.clear();
+        let html = render_with_warnings(
+            "[outside](../outside.md)",
+            &Engine::default(),
+            &attachments,
+            &mut warnings,
+        )
+        .unwrap();
+        assert!(html.contains("../outside.md"));
+        assert_eq!(warnings.len(), 1);
+    }
+
+    #[test]
     fn graph_tags_and_mermaid_fence_warning() {
         let temp = tempfile::tempdir().unwrap();
         let root = dunce::canonicalize(temp.path()).unwrap();
@@ -1418,8 +1471,16 @@ export default function(container) {
         assert!(html.contains("Visible footnote"));
         assert!(!html.contains("<script>"));
         assert!(!html.contains(" hidden"));
-        let errors = render("# Hi\n\n![missing](missing.png)", &engine, &attachments).unwrap_err();
-        assert_eq!(errors[0].line, 3);
-        assert!(errors[0].message.contains("missing.png"));
+        let mut warnings = Vec::new();
+        let html = render_with_warnings(
+            "# Hi\n\n![missing](missing.png)",
+            &engine,
+            &attachments,
+            &mut warnings,
+        )
+        .unwrap();
+        assert!(html.contains("missing.png"));
+        assert_eq!(warnings[0].line, 3);
+        assert!(warnings[0].message.contains("missing.png"));
     }
 }
