@@ -52,7 +52,7 @@ jobs:
         uses: actions/checkout@v7
 
       # Only restore the executable when all Rust build inputs match exactly.
-      # Keep embedded assets here in sync with include_str!/include_bytes! in src/.
+      # Include lib-comrak and the inputs to its embedded asset generation.
       # Bump v1 or the toolchain prefix when compiler flags or the build command change.
       # Publishing/frontend workflow edits must not invalidate this cache.
       - name: Restore Windows executable
@@ -60,7 +60,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/windows-executable
-          key: windows-executable-v1-rust-1.99.0-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock', 'build.rs', '.cargo/**', 'rust-toolchain*', 'web/media/image-theme.css', 'fonts/manifest.json') }}
+          key: windows-executable-v2-rust-1.99.0-${{ hashFiles('src/**', 'crates/lib-comrak/**', 'Cargo.toml', 'Cargo.lock', 'build.rs', '.cargo/**', 'rust-toolchain*', 'web/media/image-theme.css', 'web/markdown/**', 'web/raw/raw-highlight.mjs', 'fonts/**', 'scripts/build-comrak-assets.mjs', 'package.json', 'package-lock.json') }}
 
       - name: Report executable cache match
         shell: pwsh
@@ -73,6 +73,21 @@ jobs:
           if ($env:EXECUTABLE_CACHE_HIT -ne 'true') {
             Write-Output 'Executable cache unavailable for these Rust inputs; restoring Cargo dependencies and building once.'
           }
+
+      - name: Install Node.js for embedded assets
+        if: steps.executable-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install embedded asset dependencies
+        if: steps.executable-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Build embedded comrak assets
+        if: steps.executable-cache.outputs.cache-hit != 'true'
+        run: npm run build:comrak-assets
 
       - name: Install Rust
         if: steps.executable-cache.outputs.cache-hit != 'true'
