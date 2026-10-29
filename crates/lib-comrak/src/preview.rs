@@ -28,7 +28,7 @@ impl Preview {
         let listener =
             TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).map_err(|e| e.to_string())?;
         eprintln!(
-            "preview: http://{}/",
+            "serving at http://{}",
             listener.local_addr().map_err(|e| e.to_string())?
         );
         let state = Arc::new(Mutex::new(State::default()));

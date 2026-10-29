@@ -10,6 +10,8 @@ Options:
       --images <reference|embed>  Local image handling (default: reference)
       --standalone                    Inline CSS, fonts and local images
       --asset-dir <DIR>               Override the shared resource directory
+      --no-fullscreen                 Print normal output lines (watch)
+      --color <never|auto>             Output color (default: never)
       --diagnostic-format <short|human>  Diagnostic format (default: human)
       --title <TEXT>                  Document title (default: input filename)
   -h, --help                         Show help
@@ -87,6 +89,11 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
             "--asset-dir" => asset_dir = Some(PathBuf::from(argument()?)),
             "--title" => title = Some(argument()?),
             "--standalone" if inline.is_none() => standalone = true,
+            "--no-fullscreen" if inline.is_none() && watch => {}
+            "--color" => match argument()?.as_str() {
+                "never" | "auto" => {}
+                _ => return Err("--color must be never or auto".into()),
+            },
             "--images" => {
                 images = match argument()?.as_str() {
                     "reference" => Images::Reference,

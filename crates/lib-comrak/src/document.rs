@@ -871,7 +871,7 @@ pub fn compile(args: &Args) -> Result<(), Vec<Diagnostic>> {
             .name("comrak-compiler".into())
             .stack_size(16 * 1024 * 1024)
             .spawn_scoped(scope, || {
-                compile_document(args, &Engine::default(), Rc::default())
+                compile_document(args, &Engine::default(), Rc::default()).map(|_| ())
             })
             .map_err(|error| failure(format!("cannot start compiler thread: {error}")))?
             .join()
@@ -883,7 +883,7 @@ pub(crate) fn compile_document(
     args: &Args,
     engine: &Engine,
     dependencies: Rc<RefCell<HashSet<PathBuf>>>,
-) -> Result<(), Vec<Diagnostic>> {
+) -> Result<bool, Vec<Diagnostic>> {
     let input =
         dunce::canonicalize(&args.input).map_err(|e| failure(format!("cannot open input: {e}")))?;
     let source =
@@ -911,6 +911,7 @@ pub(crate) fn compile_document(
     attachments.dependencies = dependencies;
     let mut warnings = Vec::new();
     let rendered = render_with_warnings(&source, engine, &attachments, &mut warnings);
+    let has_warnings = !warnings.is_empty();
     for warning in warnings {
         if args.short {
             eprintln!(
@@ -961,7 +962,8 @@ pub(crate) fn compile_document(
     );
     let navigation = include_str!("../generated/navigation.js");
     let html = html.replace("</body>", &format!("<script>{navigation}</script></body>"));
-    assets::atomic_write(&output, html.as_bytes()).map_err(failure)
+    assets::atomic_write(&output, html.as_bytes()).map_err(failure)?;
+    Ok(has_warnings)
 }
 
 #[cfg(test)]

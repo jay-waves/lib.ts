@@ -7,6 +7,7 @@ build = "build.rs"
 
 [dependencies]
 base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 comrak = { version = "0.56", default-features = false }
 dunce = "1"
 mime_guess = "2"

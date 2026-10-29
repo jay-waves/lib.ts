@@ -50,23 +50,28 @@ fn run_inner(args: &Args) -> Result<(), String> {
     let mut directories = HashSet::new();
     let mut dependencies = HashSet::from([input.clone()]);
     update_watches(&mut watcher, &mut directories, &dependencies)?;
+    eprintln!("watching {}", args.input.display());
+    eprintln!("writing to {}", args.output.display());
     let preview = crate::preview::Preview::start(args)?;
     let mut engine = Engine::default();
     let mut compilations = 0usize;
     loop {
         let found = Rc::new(RefCell::new(HashSet::new()));
         let start = Instant::now();
+        status("compiling ...");
         let success = match document::compile_document(args, &engine, found.clone()) {
-            Ok(()) => {
+            Ok(has_warnings) => {
                 preview.publish(std::fs::read_to_string(&args.output).map_err(|e| e.to_string())?);
-                eprintln!(
-                    "compiled {} in {:.0?}; watching for changes",
-                    args.output.display(),
-                    start.elapsed()
-                );
+                let result = if has_warnings {
+                    "compiled with warnings"
+                } else {
+                    "compiled successfully"
+                };
+                status(&format!("{result} in {:.0?}", start.elapsed()));
                 true
             }
             Err(errors) => {
+                status("compiled with errors");
                 for error in errors {
                     if args.short {
                         eprintln!(
@@ -130,6 +135,10 @@ fn run_inner(args: &Args) -> Result<(), String> {
             }
         }
     }
+}
+
+fn status(message: &str) {
+    eprintln!("[{}] {message}", chrono::Local::now().format("%H:%M:%S"));
 }
 
 fn update_watches(
