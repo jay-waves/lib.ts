@@ -1,4 +1,4 @@
-name: lib.comrak Windows build
+name: lib.comrak build
 
 on:
   workflow_call:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -53,7 +53,7 @@ jobs:
             A --> B
           ```
           '@ | Set-Content -Encoding utf8 $inputPath
-          & ./release/lib.comrak-win32-x64/lib.comrak.exe $inputPath $outputPath --standalone
+          & ./release/lib.comrak-win32-x64/lib.comrak.exe $inputPath $outputPath --standalone --root $env:RUNNER_TEMP
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $html = Get-Content -Raw $outputPath
           foreach ($marker in @('katex', 'hljs-keyword', '<svg', 'license.md')) {
@@ -63,5 +63,56 @@ jobs:
         with:
           name: lib.comrak-windows-x64
           path: release/lib.comrak-win32-x64/
+          if-no-files-found: error
+          retention-days: 90
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - run: npm run build:comrak-assets
+      - run: cargo fmt -p lib-comrak --check
+      - run: cargo test --release --locked -p lib-comrak
+      - run: cargo clippy --release --locked -p lib-comrak --all-targets -- -D warnings
+      - run: npm run package:comrak
+      - name: Smoke test packaged executable
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/comrak-smoke.md" <<'EOF'
+          # Renderer smoke test
+
+          [License](license.md)
+
+          $x^2$
+
+          ```js
+          const x = 1;
+          ```
+
+          ```mermaid
+          flowchart LR
+            A --> B
+          ```
+          EOF
+          ./release/lib.comrak-linux-x64/lib.comrak "$RUNNER_TEMP/comrak-smoke.md" "$RUNNER_TEMP/comrak-smoke.html" --root "$RUNNER_TEMP"
+          for marker in katex hljs-keyword '<svg' license.md; do
+            if ! grep -Fq "$marker" "$RUNNER_TEMP/comrak-smoke.html"; then
+              printf 'Missing rendered marker: %s\n' "$marker" >&2
+              exit 1
+            fi
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lib.comrak-linux-x64
+          path: release/lib.comrak-linux-x64/
           if-no-files-found: error
           retention-days: 90
