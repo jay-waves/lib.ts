@@ -143,12 +143,13 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
         let root = dunce::canonicalize(root.as_deref().unwrap_or(std::path::Path::new(".")))
             .map_err(|e| e.to_string())?;
         let input_path = dunce::canonicalize(&input).map_err(|e| e.to_string())?;
-        site.join(
-            input_path
-                .strip_prefix(&root)
-                .map_err(|_| "input must be inside --root")?,
+        crate::site::page_path(
+            &site.join(
+                input_path
+                    .strip_prefix(&root)
+                    .map_err(|_| "input must be inside --root")?,
+            ),
         )
-        .with_extension("html")
     } else {
         output
     };

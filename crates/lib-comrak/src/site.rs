@@ -2,6 +2,10 @@
 use crate::assets;
 use std::{fs, path::Path};
 
+pub(crate) fn page_path(path: &Path) -> std::path::PathBuf {
+    path.with_extension("").join("index.html")
+}
+
 pub(crate) fn rewrite(
     html: &str,
     input: &Path,
@@ -31,7 +35,7 @@ pub(crate) fn rewrite(
                     .map_err(|_| "resource outside root")?;
                 let target = site.join(relative);
                 if source.extension().is_some_and(|ext| ext == "md") {
-                    target.with_extension("html")
+                    page_path(&target)
                 } else {
                     if source.is_file() && source != target {
                         fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
@@ -104,9 +108,10 @@ mod tests {
         assert!(!args.standalone);
         crate::document::compile(&args).unwrap();
         let html = fs::read_to_string(&args.output).unwrap();
-        assert!(html.contains("../../assets/example.webp"));
-        assert!(html.contains("next.html#part"));
-        assert!(html.contains("../../_shared/lib-comrak/"));
+        assert_eq!(args.output, site.join("ai/chatgpt/note/index.html"));
+        assert!(html.contains("../../../assets/example.webp"));
+        assert!(html.contains("../next/index.html#part"));
+        assert!(html.contains("../../../_shared/lib-comrak/"));
         assert!(!html.contains("file:"));
         assert_eq!(
             fs::read(site.join("assets/example.webp")).unwrap(),

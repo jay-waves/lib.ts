@@ -60,7 +60,7 @@ lib.comrak compile ai/chatgpt/note.md --site-root _site
 lib.comrak watch ai/chatgpt/note.md
 ```
 
-笔记库根目录默认当前工作目录，可通过 `--root DIR` 指定。示例输出 `_site/ai/chatgpt/note.html`，本地附件按笔记库目录结构复制，页面生成相对 URL。`/assets/example.webp` 表示笔记库根目录下的资源，生成 `../../assets/example.webp`。Markdown 链接改为对应 `.html` 链接，但不会递归编译其他笔记，也不会自动生成 index.html。
+笔记库根目录默认当前工作目录，可通过 `--root DIR` 指定。示例输出 `_site/ai/chatgpt/note/index.html`，本地附件按笔记库目录结构复制，页面生成相对 URL。`/assets/example.webp` 表示笔记库根目录下的资源，生成 `../../../assets/example.webp`。Markdown 链接改为对应的 `目录/index.html` 链接，但不会递归编译其他笔记。
 
 共享资源位于 `_site/_shared/lib-comrak/<内容版本>/`；内容一致时复用，缺失或损坏时修复，不删除其他文件。`--site-root` 决定输出位置，不与 OUTPUT、`--output` 或 `--standalone` 混用。站点图片默认复制引用，可显式 `--images embed`。
 
@@ -70,4 +70,4 @@ watch 强制使用系统缓存中的独立站点，启动本地 HTTP 预览服�
 
 相对路径基于输入 Markdown 所在目录解释，支持 `../`、URL 编码、查询参数和片段。默认 root 为当前工作目录，`--root` 可覆盖；解析符号链接后检查边界。站点模式中以 `/` 开头的路径基于笔记库 root 解释。
 
-standalone 内嵌本地图片，普通本地链接仍指向源文件。站点模式复制附件并生成页面相对链接，`.md` 链接映射为 `.html`，其他笔记须另行编译。允许普通链接目标尚不存在，悬空符号链接或越过 root 的路径报错。
+standalone 内嵌本地图片，普通本地链接仍指向源文件。站点模式复制附件并生成页面相对链接，`.md` 链接映射为对应的 `目录/index.html`，其他笔记须另行编译。允许普通链接目标尚不存在，悬空符号链接或越过 root 的路径报错。

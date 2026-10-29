@@ -59,7 +59,7 @@ fn run_inner(args: &Args) -> Result<(), String> {
                 .map_err(|e| e.to_string())?
                 .as_nanos()
         ));
-    args.output = cache.join(relative).with_extension("html");
+    args.output = crate::site::page_path(&cache.join(relative));
     args.site_root = Some(cache);
     args.standalone = false;
     let args = &args;
