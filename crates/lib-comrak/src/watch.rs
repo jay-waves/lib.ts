@@ -50,6 +50,7 @@ fn run_inner(args: &Args) -> Result<(), String> {
     let mut directories = HashSet::new();
     let mut dependencies = HashSet::from([input.clone()]);
     update_watches(&mut watcher, &mut directories, &dependencies)?;
+    let preview = crate::preview::Preview::start(args)?;
     let mut engine = Engine::default();
     let mut compilations = 0usize;
     loop {
@@ -57,6 +58,7 @@ fn run_inner(args: &Args) -> Result<(), String> {
         let start = Instant::now();
         let success = match document::compile_document(args, &engine, found.clone()) {
             Ok(()) => {
+                preview.publish(std::fs::read_to_string(&args.output).map_err(|e| e.to_string())?);
                 eprintln!(
                     "compiled {} in {:.0?}; watching for changes",
                     args.output.display(),

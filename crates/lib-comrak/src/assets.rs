@@ -309,7 +309,7 @@ mod tests {
                 + css.matches("data:font/otf;base64,").count(),
             fonts
         );
-        assert_eq!(css.matches("data:font/otf;base64,").count(), 2);
+        assert_eq!(css.matches("data:font/otf;base64,").count(), 0);
         assert!(!css.contains("url(fonts/"));
     }
 

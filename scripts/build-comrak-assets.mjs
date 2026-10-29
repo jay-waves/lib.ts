@@ -26,9 +26,8 @@ await build({
   target: 'es2020', minify: true, legalComments: 'inline',
 });
 let theme = await readFile(resolve(root, 'web/markdown/theme.css'), 'utf8');
-// Keep the CJK web fonts; use system monospace fonts in the standalone compiler.
-theme = theme.replace(/@font-face\s*\{[^}]*font-family:\s*"Iosevka";[^}]*\}/g, '')
-  .replaceAll('../../fonts/SourceHanSerifCN-', 'fonts/SourceHanSerifCN-');
+// Use system text and monospace fonts in the standalone compiler.
+theme = theme.replace(/@font-face\s*\{[^}]*font-family:\s*"(?:Iosevka|Lib Source Han Serif)";[^}]*\}/g, '');
 let highlight = await readFile(resolve(root, 'web/markdown/highlight.css'), 'utf8');
 highlight = highlight.replace('@scope (.reader, .code-search-results)', '@scope (#content)');
 const css = [theme, highlight,
@@ -38,15 +37,13 @@ const css = [theme, highlight,
 ].join('\n');
 const sourceFonts = (await readdir(resolve(root, 'node_modules/katex/dist/fonts')))
   .filter(name => name.endsWith('.woff2'));
-const serifFonts = ['SourceHanSerifCN-Regular.otf', 'SourceHanSerifCN-Bold.otf'];
 // Remove only obsolete generated fonts, leaving source assets untouched.
 for (const name of await readdir(resolve(output, 'fonts'))) {
-  if (![...sourceFonts, ...serifFonts].includes(name)) await rm(resolve(output, 'fonts', name), { recursive: true });
+  if (!sourceFonts.includes(name)) await rm(resolve(output, 'fonts', name), { recursive: true });
 }
 for (const name of sourceFonts) {
   if (name.endsWith('.woff2')) await cp(resolve(root, 'node_modules/katex/dist/fonts', name), resolve(output, 'fonts', name));
 }
-for (const name of serifFonts) await cp(resolve(root, 'fonts', name), resolve(output, 'fonts', name));
 // Keep only the preferred format. Every emitted font URL has an embedded asset.
 const compact = css.replace(/src:([^;}]+)/g, (declaration, sources) => {
   const preferred = sources.match(/url\(([^)]*\.woff2)\)/);
@@ -70,6 +67,5 @@ for (const [name, path] of [
   ['D3-LICENSE', 'node_modules/d3/LICENSE'],
   ['LinkeDOM-LICENSE', 'node_modules/linkedom/LICENSE'],
   ['Pele-LICENSE', 'node_modules/pele/LICENSE'],
-  ['SourceHanSerif-LICENSE', 'fonts/LICENSE-SourceHanSerif.txt'],
 ]) await cp(resolve(root, path), resolve(output, name));
 console.log(`Prepared lib.comrak assets: ${output}`);

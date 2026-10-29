@@ -35,7 +35,7 @@ lib.comrak compile note.md output.html --standalone
 lib.comrak watch note.md output.html --standalone
 ```
 
-`watch` 接受与 `compile` 相同的选项，启动后立即编译，并监听 Markdown、引用的 D3/Mermaid 文件以及内嵌图片；保存后自动重新编译，按 Ctrl+C 停止。编辑器连续保存会合并处理，编译失败保留上次成功的 HTML，并在文件修复后继续重试。watch 不启动 HTTP 服务，也不会自动刷新浏览器。渲染结果在进程内缓存，因此修改普通正文时可以复用未改变的公式、高亮和图表。
+`watch` 接受与 `compile` 相同的选项，启动后立即编译，并监听 Markdown、引用的 D3/Mermaid 文件以及内嵌图片；保存后自动重新编译，按 Ctrl+C 停止。编辑器连续保存会合并处理，编译失败保留上次成功的 HTML，并在文件修复后继续重试。watch 启动仅监听 127.0.0.1 的 HTTP 预览服务，并在终端显示地址。浏览器每 750 毫秒检查成功编译的版本并整页刷新；编译失败保留上次成功的页面。静态输出仍可直接打开。预览通过 HTTP 加载本地资源，资源请求要求重新验证缓存，避免图片更新后显示旧内容。渲染结果在进程内缓存，因此修改普通正文时可以复用未改变的公式、高亮和图表。
 
 图表的编译结果按脚本内容复用；请让绘图输出仅由脚本和内置数据决定，避免依赖随机数或时间。修改脚本会使缓存失效。
 
@@ -57,7 +57,7 @@ lib.comrak watch note.md output.html --standalone
 - macOS：`~/Library/Caches/lib.comrak/assets/<内容版本>/`
 - Linux：`$XDG_CACHE_HOME/lib.comrak/assets/<内容版本>/`，未设置时使用 `~/.cache/`
 
-HTML 用绝对 `file:` URL 引用共享样式，字体相对于样式引用。旧版本不会自动删除，避免旧 HTML 失效。`--asset-dir DIR` 可指定资源基目录。西文优先使用系统 Georgia；中文使用随包的思源宋体，不需要系统安装。
+HTML 用绝对 `file:` URL 引用共享样式，字体相对于样式引用。旧版本不会自动删除，避免旧 HTML 失效。`--asset-dir DIR` 可指定资源基目录。西文优先使用系统 Georgia；中文和代码字体使用系统字体及回退字体。
 
 默认资源目录必须是绝对路径。Windows 无法获取 LocalAppData 或无权限写入时直接报错，不回退到当前工作目录、exe 所在目录、临时目录、Roaming、ProgramData 或 Windows 系统目录。仅在显式指定 `--asset-dir` 时使用自定义位置（允许相对路径）。临时写入文件放在目标文件旁边，完成后原子替换；输出 HTML 位于用户指定的位置，图片默认保留在原地。
 

@@ -8,3 +8,5 @@ mod markdown;
 mod raw_html;
 pub mod source_lines;
 pub mod watch;
+
+mod preview;

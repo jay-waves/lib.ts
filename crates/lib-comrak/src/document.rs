@@ -129,7 +129,7 @@ impl Attachments {
     }
 
     pub fn resolve(&self, original: &str, image: bool) -> Result<String, String> {
-        if image && self.mode == Images::Embed {
+        if image {
             self.track(original);
         }
         if original.is_empty() || original.starts_with('#') {
