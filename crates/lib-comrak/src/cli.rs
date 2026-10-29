@@ -6,10 +6,10 @@ Usage: lib.comrak <compile|watch> [OPTIONS] <INPUT> [OUTPUT]
 
 Options:
   -o, --output <PATH>                 Output HTML (default: input with .html)
-      --root <DIR>                    Allowed local attachment root (default: input directory)
-      --images <reference|embed>  Local image handling (default: reference)
-      --standalone                    Inline CSS, fonts and local images
-      --asset-dir <DIR>               Override the shared resource directory
+      --root <DIR>                    Allowed local attachment root (default: current directory)
+      --images <reference|embed>  Local image handling (default: embed; reference in site mode)
+      --standalone                    Inline CSS, fonts and local images (default)
+      --site-root <DIR>               Site output directory (typically _site); preserve root-relative paths
       --no-fullscreen                 Print normal output lines (watch)
       --color <never|auto>             Output color (default: never)
       --diagnostic-format <short|human>  Diagnostic format (default: human)
@@ -17,10 +17,8 @@ Options:
   -h, --help                         Show help
   -V, --version                      Show version
 
-Shared resources default to LocalAppData/lib.comrak/assets on Windows (Known Folder API),
-~/Library/Caches/lib.comrak/assets on macOS, or $XDG_CACHE_HOME/lib.comrak/assets
-on Linux. They are versioned automatically. Interactive viz modules use browser JavaScript.
-Remote image URLs are preserved; standalone rejects them to avoid hidden network dependencies.
+Site resources are versioned under <site-root>/_shared/lib-comrak. Existing matching files are reused.
+Remote image URLs are preserved in all modes and loaded by the browser.
 ";
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -32,6 +30,7 @@ pub enum Images {
 #[derive(Debug)]
 pub struct Args {
     pub watch: bool,
+    pub site_root: Option<PathBuf>,
     pub input: PathBuf,
     pub output: PathBuf,
     pub root: Option<PathBuf>,
@@ -56,6 +55,7 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
     let mut root = None;
     let mut images = Images::Reference;
     let mut standalone = false;
+    let mut site_root = None;
     let mut asset_dir = None;
     let mut title = None;
     let mut short = false;
@@ -85,6 +85,7 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
                 return Ok(None);
             }
             "-o" | "--output" => output = Some(PathBuf::from(argument()?)),
+            "--site-root" => site_root = Some(PathBuf::from(argument()?)),
             "--root" => root = Some(PathBuf::from(argument()?)),
             "--asset-dir" => asset_dir = Some(PathBuf::from(argument()?)),
             "--title" => title = Some(argument()?),
@@ -118,12 +119,36 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
     if paths.len() > 2 || (paths.len() == 2 && output.is_some()) {
         return Err("provide one input and one output".into());
     }
+    if site_root.is_some() && (paths.len() == 2 || output.is_some()) {
+        return Err("--site-root determines output paths; omit OUTPUT and --output".into());
+    }
+    if asset_dir.is_some() {
+        return Err("--asset-dir is no longer needed; use --site-root for shared resources".into());
+    }
     let mut paths = paths.into_iter();
     let input = paths.next().unwrap();
+    if standalone && site_root.is_some() {
+        return Err("--standalone conflicts with --site-root".into());
+    }
+    let standalone = site_root.is_none();
     let output = output
         .or_else(|| paths.next())
         .unwrap_or_else(|| input.with_extension("html"));
+    let output = if let Some(site) = &site_root {
+        let root = dunce::canonicalize(root.as_deref().unwrap_or(std::path::Path::new(".")))
+            .map_err(|e| e.to_string())?;
+        let input_path = dunce::canonicalize(&input).map_err(|e| e.to_string())?;
+        site.join(
+            input_path
+                .strip_prefix(&root)
+                .map_err(|_| "input must be inside --root")?,
+        )
+        .with_extension("html")
+    } else {
+        output
+    };
     Ok(Some(Args {
+        site_root,
         watch,
         input,
         output,
@@ -144,7 +169,7 @@ mod tests {
         let parse_args = |values: &[&str]| parse(values.iter().map(|value| (*value).to_owned()));
         assert_eq!(
             parse_args(&["a.md"]).unwrap().unwrap().images,
-            Images::Reference
+            Images::Embed
         );
         assert_eq!(
             parse_args(&["a.md", "--images=embed"])

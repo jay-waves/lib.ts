@@ -81,9 +81,9 @@ pub struct Diagnostic {
 
 pub struct Attachments {
     input: Url,
+    site: bool,
     root: PathBuf,
     mode: Images,
-    standalone: bool,
     private: Option<PathBuf>,
     dependencies: Rc<RefCell<HashSet<PathBuf>>>,
 }
@@ -94,13 +94,13 @@ impl Attachments {
         _output: &Path,
         root: PathBuf,
         mode: Images,
-        standalone: bool,
+        _standalone: bool,
     ) -> Result<Self, String> {
         Ok(Self {
             input: assets::file_url(input)?,
+            site: false,
             root,
             mode,
-            standalone,
             private: None,
             dependencies: Rc::default(),
         })
@@ -111,8 +111,18 @@ impl Attachments {
         self
     }
 
+    fn join(&self, original: &str) -> Result<Url, url::ParseError> {
+        if self.site && original.starts_with('/') && !original.starts_with("//") {
+            Url::from_directory_path(&self.root)
+                .unwrap()
+                .join(original.trim_start_matches('/'))
+        } else {
+            self.input.join(original)
+        }
+    }
+
     fn track(&self, original: &str) {
-        if let Ok(url) = self.input.join(original)
+        if let Ok(url) = self.join(original)
             && let Ok(path) = url.to_file_path()
         {
             if !path.starts_with(&self.root) {
@@ -135,9 +145,11 @@ impl Attachments {
         if original.is_empty() || original.starts_with('#') {
             return Ok(original.to_owned());
         }
+        let network_url = original
+            .starts_with("//")
+            .then(|| format!("https:{original}"));
         let url = self
-            .input
-            .join(original)
+            .join(network_url.as_deref().unwrap_or(original))
             .map_err(|e| format!("invalid URL {original:?}: {e}"))?;
         if url.scheme() != "file" {
             if !matches!(url.scheme(), "http" | "https" | "mailto" | "tel" | "data") {
@@ -145,11 +157,6 @@ impl Attachments {
             }
             if image && !matches!(url.scheme(), "http" | "https" | "data") {
                 return Err(format!("unsupported image URL {original:?}"));
-            }
-            if image && self.standalone && url.scheme() != "data" {
-                return Err(format!(
-                    "remote image {original:?} cannot be embedded offline; download it and use a local path"
-                ));
             }
             return Ok(original.to_owned());
         }
@@ -888,7 +895,7 @@ pub(crate) fn compile_document(
         dunce::canonicalize(&args.input).map_err(|e| failure(format!("cannot open input: {e}")))?;
     let source =
         fs::read_to_string(&input).map_err(|e| failure(format!("cannot read UTF-8 input: {e}")))?;
-    let root = dunce::canonicalize(args.root.as_deref().unwrap_or(input.parent().unwrap()))
+    let root = dunce::canonicalize(args.root.as_deref().unwrap_or(Path::new(".")))
         .map_err(|e| failure(format!("cannot open root: {e}")))?;
     if !root.is_dir() || !input.starts_with(&root) {
         return Err(failure("input must be inside the --root directory"));
@@ -906,8 +913,14 @@ pub(crate) fn compile_document(
     if output == input || dunce::canonicalize(&output).ok().as_ref() == Some(&input) {
         return Err(failure("output would overwrite the Markdown input"));
     }
+    let site_assets = args
+        .site_root
+        .as_ref()
+        .map(|site| site.join("_shared/lib-comrak"));
+    let asset_dir = site_assets.as_deref().or(args.asset_dir.as_deref());
     let mut attachments =
         Attachments::new(&input, &output, root, args.images, args.standalone).map_err(failure)?;
+    attachments.site = args.site_root.is_some();
     attachments.dependencies = dependencies;
     let mut warnings = Vec::new();
     let rendered = render_with_warnings(&source, engine, &attachments, &mut warnings);
@@ -933,19 +946,20 @@ pub(crate) fn compile_document(
     }
     let body = rendered?;
     let stylesheet =
-        assets::stylesheet(args.standalone, args.asset_dir.as_deref()).map_err(failure)?;
+        assets::stylesheet_for_math(args.standalone, asset_dir, body.contains("class=\"katex"))
+            .map_err(failure)?;
     let viz_style = if body.contains("<div class=\"viz\"") {
-        assets::viz_stylesheet(args.standalone, args.asset_dir.as_deref()).map_err(failure)?
+        assets::viz_stylesheet(args.standalone, asset_dir).map_err(failure)?
     } else {
         String::new()
     };
     let mermaid_style = if body.contains("class=\"diagram\"") {
-        assets::mermaid_stylesheet(args.standalone, args.asset_dir.as_deref()).map_err(failure)?
+        assets::mermaid_stylesheet(args.standalone, asset_dir).map_err(failure)?
     } else {
         String::new()
     };
     let viz_runtime = if body.contains("<script type=\"module\">") {
-        assets::viz_runtime(args.standalone, args.asset_dir.as_deref()).map_err(failure)?
+        assets::viz_runtime(args.standalone, asset_dir).map_err(failure)?
     } else {
         String::new()
     };
@@ -962,6 +976,19 @@ pub(crate) fn compile_document(
     );
     let navigation = include_str!("../generated/navigation.js");
     let html = html.replace("</body>", &format!("<script>{navigation}</script></body>"));
+    let html = if let Some(site) = &args.site_root {
+        crate::site::rewrite(
+            &html,
+            &input,
+            &output,
+            &attachments.root,
+            site,
+            asset_dir.unwrap(),
+        )
+        .map_err(failure)?
+    } else {
+        html
+    };
     assets::atomic_write(&output, html.as_bytes()).map_err(failure)?;
     Ok(has_warnings)
 }
@@ -984,9 +1011,10 @@ mod tests {
         .unwrap();
         let args = Args {
             watch: true,
-            input,
+            site_root: None,
+            input: input.clone(),
             output: root.join("out.html"),
-            root: None,
+            root: Some(input.parent().unwrap().to_path_buf()),
             images: Images::Reference,
             standalone: true,
             asset_dir: None,
@@ -1071,6 +1099,7 @@ export default function(container) {
         )
         .unwrap()
         .unwrap();
+        args.root = Some(temp.path().to_path_buf());
         fs::write(&input, "```viz\nchart.js\n```\n").unwrap();
         compile(&args).unwrap();
         let html = fs::read_to_string(&output).unwrap();
@@ -1151,13 +1180,14 @@ export default function(container) {
                     "$x^2$\n\n```js\nconst x = 1;\n```\n\n```mermaid\nflowchart LR\n A --> B\n```\n",
                 )
                 .unwrap();
-                let args = crate::cli::parse([
+                let mut args = crate::cli::parse([
                     input.to_str().unwrap().to_owned(),
                     output.to_str().unwrap().to_owned(),
                     "--standalone".to_owned(),
                 ])
                 .unwrap()
                 .unwrap();
+                args.root = Some(temp.path().to_path_buf());
                 compile(&args).unwrap();
                 let html = fs::read_to_string(output).unwrap();
                 for marker in ["katex", "hljs-keyword", "<svg"] {
@@ -1182,6 +1212,7 @@ export default function(container) {
         fs::write(&input, "<figure>\n  <img src=\"../assets/vision/waveform-spectrogram.webp\">\n  <figcaption>Source: <a href=\"https://speechprocessingbook.aalto.fi/representations/spectrogram-and-the-stft/\">Tom Bäckström</a>, Waveform &amp; Spectrogram</figcaption>\n</figure>\n").unwrap();
         let args = Args {
             watch: false,
+            site_root: None,
             input,
             output: output.clone(),
             root: Some(root.clone()),
@@ -1214,9 +1245,10 @@ export default function(container) {
         .unwrap();
         let mut args = Args {
             watch: false,
+            site_root: None,
             input: input.clone(),
             output: output.clone(),
-            root: None,
+            root: Some(input.parent().unwrap().to_path_buf()),
             images: Images::Reference,
             standalone: false,
             asset_dir: Some(temp.path().join("shared")),
@@ -1314,12 +1346,13 @@ export default function(container) {
                 .unwrap_err()
                 .contains("outside root")
         );
-        attachments.standalone = true;
-        assert!(
-            attachments
-                .resolve("https://example.com/a.png", true)
-                .is_err()
-        );
+        for original in [
+            "https://example.com/a.png",
+            "http://example.com/a.png",
+            "//example.com/a.png",
+        ] {
+            assert_eq!(attachments.resolve(original, true).unwrap(), original);
+        }
     }
 
     #[cfg(unix)]

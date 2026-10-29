@@ -7,6 +7,7 @@ use url::Url;
 
 include!(concat!(env!("OUT_DIR"), "/assets.rs"));
 const VERSION: &str = include_str!("../generated/version.txt");
+const KATEX: &str = include_str!("../generated/katex.css");
 const STYLE: &str = include_str!("../generated/style.css");
 
 pub fn escape(value: &str) -> String {
@@ -100,9 +101,21 @@ fn windows_local_app_data() -> Result<PathBuf, String> {
     result
 }
 
+#[cfg(test)]
 pub fn stylesheet(standalone: bool, directory: Option<&Path>) -> Result<String, String> {
+    stylesheet_for_math(standalone, directory, true)
+}
+
+pub fn stylesheet_for_math(
+    standalone: bool,
+    directory: Option<&Path>,
+    math: bool,
+) -> Result<String, String> {
     if standalone {
         let mut css = STYLE.to_owned();
+        if math {
+            css.push_str(KATEX);
+        }
         for (name, bytes) in ASSETS.iter().filter(|(name, _)| name.starts_with("fonts/")) {
             let mime = if name.ends_with(".otf") {
                 "font/otf"
@@ -136,10 +149,17 @@ pub fn stylesheet(standalone: bool, directory: Option<&Path>) -> Result<String, 
         }
     }
     let absolute = dunce::canonicalize(directory.join("style.css")).map_err(|e| e.to_string())?;
-    Ok(format!(
+    let mut links = format!(
         "<link rel=\"stylesheet\" href=\"{}\">",
         escape(file_url(&absolute)?.as_str())
-    ))
+    );
+    if math {
+        links.push_str(&format!(
+            "<link rel=\"stylesheet\" href=\"{}\">",
+            escape(file_url(&directory.join("katex.css"))?.as_str())
+        ));
+    }
+    Ok(links)
 }
 
 pub fn viz_stylesheet(standalone: bool, directory: Option<&Path>) -> Result<String, String> {
@@ -300,7 +320,7 @@ mod tests {
             .filter(|(name, _)| name.starts_with("fonts/"))
             .count();
         assert!(fonts > 10);
-        assert_eq!(STYLE.matches("@font-face").count(), fonts);
+        assert_eq!(KATEX.matches("@font-face").count(), fonts);
         assert!(!STYLE.contains(".woff)"));
         assert!(!STYLE.contains(".ttf)"));
         let css = stylesheet(true, None).unwrap();
@@ -311,6 +331,19 @@ mod tests {
         );
         assert_eq!(css.matches("data:font/otf;base64,").count(), 0);
         assert!(!css.contains("url(fonts/"));
+    }
+
+    #[test]
+    fn pages_without_math_omit_katex_and_fonts() {
+        let css = stylesheet_for_math(true, None, false).unwrap();
+        assert!(!css.contains("data:font/"));
+        assert!(!css.contains("@font-face"));
+        assert!(css.len() < 30_000);
+        let temp = tempfile::tempdir().unwrap();
+        let links = stylesheet_for_math(false, Some(temp.path()), false).unwrap();
+        assert!(!links.contains("katex.css"));
+        let links = stylesheet_for_math(false, Some(temp.path()), true).unwrap();
+        assert!(links.contains("katex.css"));
     }
 
     #[test]

@@ -32,7 +32,6 @@ let highlight = await readFile(resolve(root, 'web/markdown/highlight.css'), 'utf
 highlight = highlight.replace('@scope (.reader, .code-search-results)', '@scope (#content)');
 const css = [theme, highlight,
   await readFile(resolve(root, 'web/markdown/heading-sections.css'), 'utf8'),
-  await readFile(resolve(root, 'node_modules/katex/dist/katex.min.css'), 'utf8'),
   await readFile(resolve(root, 'crates/lib-comrak/style.css'), 'utf8'),
 ].join('\n');
 const sourceFonts = (await readdir(resolve(root, 'node_modules/katex/dist/fonts')))
@@ -45,16 +44,19 @@ for (const name of sourceFonts) {
   if (name.endsWith('.woff2')) await cp(resolve(root, 'node_modules/katex/dist/fonts', name), resolve(output, 'fonts', name));
 }
 // Keep only the preferred format. Every emitted font URL has an embedded asset.
-const compact = css.replace(/src:([^;}]+)/g, (declaration, sources) => {
+const katex = await readFile(resolve(root, 'node_modules/katex/dist/katex.min.css'), 'utf8');
+const compactKatex = katex.replace(/src:([^;}]+)/g, (declaration, sources) => {
   const preferred = sources.match(/url\(([^)]*\.woff2)\)/);
   return preferred ? `src:url(${preferred[1]}) format("woff2")` : declaration;
 });
+const compact = css;
 await writeFile(resolve(output, 'style.css'), compact);
+await writeFile(resolve(output, 'katex.css'), compactKatex);
 const vizCss = await readFile(resolve(root, 'crates/lib-comrak/d3.css'), 'utf8');
 await writeFile(resolve(output, 'd3.css'), vizCss);
 const mermaidCss = await readFile(resolve(root, 'crates/lib-comrak/mermaid.css'), 'utf8');
 await writeFile(resolve(output, 'mermaid.css'), mermaidCss);
-const hash = createHash('sha256').update(compact).update(vizCss);
+const hash = createHash('sha256').update(compact).update(compactKatex).update(vizCss);
 hash.update(moduleSource).update(await readFile(resolve(output, 'viz.js'))).update(mermaidCss);
 hash.update(await readFile(resolve(output, 'navigation.js')));
 for (const name of (await readdir(resolve(output, 'fonts'))).sort()) {

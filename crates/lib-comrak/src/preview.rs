@@ -17,33 +17,65 @@ pub(crate) struct Preview {
     state: Arc<Mutex<State>>,
     root: PathBuf,
     assets: PathBuf,
+    page: String,
 }
 impl Preview {
     pub fn start(args: &Args) -> Result<Self, String> {
+        let notebook =
+            dunce::canonicalize(args.root.as_deref().unwrap_or(std::path::Path::new(".")))
+                .map_err(|e| e.to_string())?;
         let input = dunce::canonicalize(&args.input).map_err(|e| e.to_string())?;
-        let root = dunce::canonicalize(args.root.as_deref().unwrap_or(input.parent().unwrap()))
-            .map_err(|e| e.to_string())?;
-        let assets = std::path::absolute(args.asset_dir.clone().unwrap_or(assets::shared_base()?))
-            .map_err(|e| e.to_string())?;
+        let (root, document) = if let Some(site) = &args.site_root {
+            std::fs::create_dir_all(site).map_err(|e| e.to_string())?;
+            (
+                dunce::canonicalize(site).map_err(|e| e.to_string())?,
+                std::path::absolute(&args.output).map_err(|e| e.to_string())?,
+            )
+        } else {
+            (
+                notebook.clone(),
+                notebook
+                    .join(
+                        input
+                            .strip_prefix(&notebook)
+                            .map_err(|_| "input must be inside root")?,
+                    )
+                    .with_extension("html"),
+            )
+        };
+        let assets = if args.site_root.is_some() {
+            root.join("_shared")
+        } else {
+            std::path::absolute(args.asset_dir.clone().unwrap_or(root.join("_shared")))
+                .map_err(|e| e.to_string())?
+        };
+        let base = url::Url::from_directory_path(&root).map_err(|_| "invalid root")?;
+        let page = format!(
+            "/{}",
+            base.make_relative(&assets::file_url(&document)?)
+                .ok_or("invalid page URL")?
+        );
         let listener =
             TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).map_err(|e| e.to_string())?;
         eprintln!(
-            "serving at http://{}",
+            "serving at http://{}{page}",
             listener.local_addr().map_err(|e| e.to_string())?
         );
         let state = Arc::new(Mutex::new(State::default()));
         let shared = state.clone();
         let allowed = [root.clone(), assets.clone()];
+        let served_page = page.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 // Short requests only; timeouts bound stalled local clients.
-                let _ = serve(stream, &shared, &allowed);
+                let _ = serve(stream, &shared, &allowed, &served_page);
             }
         });
         Ok(Self {
             state,
             root,
             assets,
+            page,
         })
     }
     pub fn publish(&self, html: String) {
@@ -60,7 +92,22 @@ impl Preview {
             if !path.starts_with(&self.root) && !path.starts_with(&self.assets) {
                 return original.to_owned();
             }
-            format!("/__file/{}", original)
+            let (base, prefix) = if path.starts_with(&self.root) {
+                (&self.root, "/")
+            } else {
+                (&self.assets, "/_shared/")
+            };
+            let base = url::Url::from_directory_path(base).unwrap();
+            let relative = base.make_relative(&url).unwrap();
+            let target = url::Url::parse("http://localhost/")
+                .unwrap()
+                .join(&format!("{prefix}{relative}"))
+                .unwrap();
+            let page = url::Url::parse("http://localhost/")
+                .unwrap()
+                .join(&self.page)
+                .unwrap();
+            page.make_relative(&target).unwrap()
         });
         let mut state = self.state.lock().unwrap();
         state.revision += 1;
@@ -71,7 +118,12 @@ impl Preview {
         state.html = html.replace("</body>", &(script + "</body>"));
     }
 }
-fn serve(mut stream: TcpStream, state: &Mutex<State>, allowed: &[PathBuf]) -> std::io::Result<()> {
+fn serve(
+    mut stream: TcpStream,
+    state: &Mutex<State>,
+    allowed: &[PathBuf],
+    page: &str,
+) -> std::io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(2)))?;
     stream.set_write_timeout(Some(Duration::from_secs(2)))?;
     let mut request = [0; 16384];
@@ -84,7 +136,7 @@ fn serve(mut stream: TcpStream, state: &Mutex<State>, allowed: &[PathBuf]) -> st
     let (mime, body) = if method != "GET" && method != "HEAD" {
         status = "405 Method Not Allowed";
         ("text/plain".to_owned(), Vec::new())
-    } else if path == "/" {
+    } else if path.split('?').next() == Some(page) {
         let state = state.lock().unwrap();
         let html = if state.html.is_empty() {
             "<p>Waiting for successful compilation…</p><script>setTimeout(()=>location.reload(),1000)</script>"
@@ -101,12 +153,7 @@ fn serve(mut stream: TcpStream, state: &Mutex<State>, allowed: &[PathBuf]) -> st
             state.lock().unwrap().revision.to_string().into_bytes(),
         )
     } else {
-        let file = path
-            .strip_prefix("/__file/")
-            .and_then(|s| url::Url::parse(s).ok())
-            .filter(|u| u.scheme() == "file")
-            .and_then(|u| u.to_file_path().ok())
-            .and_then(|p| dunce::canonicalize(p).ok());
+        let file = site_file(path, allowed);
         if let Some(file) =
             file.filter(|p| allowed.iter().any(|root| p.starts_with(root)) && p.is_file())
         {
@@ -126,7 +173,7 @@ fn serve(mut stream: TcpStream, state: &Mutex<State>, allowed: &[PathBuf]) -> st
     body.hash(&mut hash);
     let etag = format!("\"{:x}\"", hash.finish());
     if status == "200 OK"
-        && path.starts_with("/__file/")
+        && path != "/__revision"
         && request.lines().any(|line| {
             line.split_once(':').is_some_and(|(name, value)| {
                 name.eq_ignore_ascii_case("if-none-match") && value.trim() == etag
@@ -150,25 +197,46 @@ fn serve(mut stream: TcpStream, state: &Mutex<State>, allowed: &[PathBuf]) -> st
     Ok(())
 }
 
+fn site_file(request: &str, allowed: &[PathBuf]) -> Option<PathBuf> {
+    let url = url::Url::parse("http://localhost/")
+        .ok()?
+        .join(request)
+        .ok()?;
+    let (root, path) = if let Some(path) = url.path().strip_prefix("/_shared/") {
+        (&allowed[1], path)
+    } else {
+        (&allowed[0], url.path().strip_prefix('/')?)
+    };
+    let base = url::Url::from_directory_path(root).ok()?;
+    let file = base.join(path).ok()?.to_file_path().ok()?;
+    let file = dunce::canonicalize(file).ok()?;
+    file.starts_with(root).then_some(file)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn preview_rewrites_allowed_urls_and_retains_static_output() {
+    fn relative_resource_urls_keep_queries_and_fragments() {
         let temp = tempfile::tempdir().unwrap();
         let root = dunce::canonicalize(temp.path()).unwrap();
         let preview = Preview {
             state: Arc::default(),
             root: root.clone(),
-            assets: root.join("assets"),
+            assets: root.join("shared"),
+            page: "/ai/chatgpt/note.html".into(),
         };
-        let url = assets::file_url(&root.join("a b.png")).unwrap();
-        let html = format!("<img src=\"{url}\"></body>");
-        preview.publish(html.clone());
+        let url = assets::file_url(&root.join("assets/example.webp")).unwrap();
+        preview.publish(format!("<img src=\"{url}?v=2#image\"></body>"));
         let state = preview.state.lock().unwrap();
-        assert!(state.html.contains(&format!("/__file/{url}")));
-        assert!(state.html.contains("/__revision"));
-        assert_eq!(state.revision, 1);
-        assert!(!html.contains("/__file/"));
+        assert!(state.html.contains("../../assets/example.webp?v=2#image"));
+        assert!(!state.html.contains("file:"));
+    }
+    #[test]
+    fn serving_rejects_escaped_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(temp.path()).unwrap();
+        let allowed = [root.clone(), root.join("shared")];
+        assert!(site_file("/%2e%2e/etc/passwd", &allowed).is_none());
     }
 }
