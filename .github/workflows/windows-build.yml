@@ -228,23 +228,25 @@ jobs:
             const repo = { owner: context.repo.owner, repo: context.repo.repo };
             // Resolve annotated tags to the commit, rather than using the tag object SHA.
             const { data: commit } = await github.rest.repos.getCommit({ ...repo, ref: version });
+            let updateLatest = !prerelease;
             try {
               const { data: release } = await github.rest.repos.getReleaseByTag({ ...repo, tag });
               const current = /Actual version: \[([0-9]+\.[0-9]+\.[0-9]+)\]/.exec(release.body || '');
               if (current && BigInt(current[1].split('.')[2]) > BigInt(match[3])) {
-                throw new Error(`Refusing to replace ${current[1]} with older version ${version}`);
+                updateLatest = false;
               }
             } catch (error) {
               if (error.status !== 404) throw error;
             }
+            core.setOutput('update_latest', String(updateLatest));
             core.setOutput('prerelease', String(prerelease));
             core.setOutput('description', prerelease ? 'This is a prerelease for testing.' : 'This release tracks the latest stable version in this series. Its download is replaced on each release.');
             core.setOutput('tag', tag);
             core.setOutput('version', version);
             core.setOutput('sha', commit.sha);
-            core.setOutput('asset', `lib.ts-${tag}-windows-x86_64.tar.xz`);
-            core.setOutput('comrak_asset', `lib.comrak-${tag}-windows-x86_64.tar.xz`);
-            core.setOutput('comrak_linux_asset', `lib.comrak-${tag}-linux-x86_64.tar.xz`);
+            core.setOutput('asset', `lib.ts-${version}-windows-x86_64.tar.xz`);
+            core.setOutput('comrak_asset', `lib.comrak-${version}-windows-x86_64.tar.xz`);
+            core.setOutput('comrak_linux_asset', `lib.comrak-${version}-linux-x86_64.tar.xz`);
 
       - name: Find successful main build for this commit
         id: main-build
@@ -333,7 +335,23 @@ jobs:
           tar -cJf "$RUNNER_TEMP/$COMRAK_LINUX_RELEASE_ASSET" lib.comrak-linux
         working-directory: ${{ runner.temp }}
 
+      - name: Publish versioned release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.series.outputs.version }}
+          target_commitish: ${{ steps.series.outputs.sha }}
+          name: lib.ts ${{ steps.series.outputs.version }}
+          prerelease: ${{ steps.series.outputs.prerelease == 'true' }}
+          make_latest: false
+          files: |
+            ${{ runner.temp }}/${{ steps.series.outputs.asset }}
+            ${{ runner.temp }}/${{ steps.series.outputs.comrak_asset }}
+            ${{ runner.temp }}/${{ steps.series.outputs.comrak_linux_asset }}
+          overwrite_files: true
+          fail_on_unmatched_files: true
+
       - name: Publish rolling release
+        if: steps.series.outputs.update_latest == 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.series.outputs.tag }}
@@ -353,7 +371,7 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Point rolling tag at the published version
-        if: steps.series.outputs.prerelease == 'false'
+        if: steps.series.outputs.update_latest == 'true'
         uses: actions/github-script@v9
         env:
           ROLLING_TAG: ${{ steps.series.outputs.tag }}

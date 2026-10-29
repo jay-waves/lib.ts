@@ -27,7 +27,7 @@ pub enum Images {
     Embed,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Args {
     pub watch: bool,
     pub site_root: Option<PathBuf>,
@@ -119,6 +119,11 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
     if paths.len() > 2 || (paths.len() == 2 && output.is_some()) {
         return Err("provide one input and one output".into());
     }
+    if watch && (paths.len() > 1 || output.is_some() || site_root.is_some() || standalone) {
+        return Err(
+            "watch uses a cached site; omit OUTPUT, --output, --site-root and --standalone".into(),
+        );
+    }
     if site_root.is_some() && (paths.len() == 2 || output.is_some()) {
         return Err("--site-root determines output paths; omit OUTPUT and --output".into());
     }
@@ -130,7 +135,7 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
     if standalone && site_root.is_some() {
         return Err("--standalone conflicts with --site-root".into());
     }
-    let standalone = site_root.is_none();
+    let standalone = site_root.is_none() && !watch;
     let output = output
         .or_else(|| paths.next())
         .unwrap_or_else(|| input.with_extension("html"));
@@ -207,10 +212,10 @@ mod tests {
         assert_eq!(args.images, Images::Embed);
         assert!(args.short);
         assert!(parse(["a.md", "b.html", "-o", "c.html"].map(String::from)).is_err());
-        let watch = parse(["watch", "a.md", "b.html"].map(String::from))
-            .unwrap()
-            .unwrap();
+        let watch = parse(["watch", "a.md"].map(String::from)).unwrap().unwrap();
         assert!(watch.watch);
-        assert_eq!(watch.output, PathBuf::from("b.html"));
+        assert_eq!(watch.output, PathBuf::from("a.html"));
+        assert!(!watch.standalone);
+        assert!(parse(["watch", "a.md", "b.html"].map(String::from)).is_err());
     }
 }

@@ -40,6 +40,29 @@ pub fn run(args: &Args) -> Result<(), String> {
 }
 
 fn run_inner(args: &Args) -> Result<(), String> {
+    let mut args = args.clone();
+    let root = dunce::canonicalize(args.root.as_deref().unwrap_or(Path::new(".")))
+        .map_err(|e| e.to_string())?;
+    let input_path = dunce::canonicalize(&args.input).map_err(|e| e.to_string())?;
+    let relative = input_path
+        .strip_prefix(&root)
+        .map_err(|_| "input must be inside --root")?;
+    let cache = crate::assets::shared_base()?
+        .parent()
+        .ok_or("invalid cache directory")?
+        .join("watch")
+        .join(format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| e.to_string())?
+                .as_nanos()
+        ));
+    args.output = cache.join(relative).with_extension("html");
+    args.site_root = Some(cache);
+    args.standalone = false;
+    let args = &args;
     let input = std::path::absolute(&args.input).map_err(|e| e.to_string())?;
     let input = dunce::canonicalize(&input).unwrap_or(input);
     let (tx, rx) = mpsc::channel();
@@ -50,8 +73,6 @@ fn run_inner(args: &Args) -> Result<(), String> {
     let mut directories = HashSet::new();
     let mut dependencies = HashSet::from([input.clone()]);
     update_watches(&mut watcher, &mut directories, &dependencies)?;
-    eprintln!("watching {}", args.input.display());
-    eprintln!("writing to {}", args.output.display());
     let preview = crate::preview::Preview::start(args)?;
     let mut engine = Engine::default();
     let mut compilations = 0usize;

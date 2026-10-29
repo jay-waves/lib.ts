@@ -56,9 +56,9 @@ impl Preview {
                 .ok_or("invalid page URL")?
         );
         let listener =
-            TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).map_err(|e| e.to_string())?;
+            TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 3000)).map_err(|e| e.to_string())?;
         eprintln!(
-            "serving at http://{}{page}",
+            "Preview: http://{}/",
             listener.local_addr().map_err(|e| e.to_string())?
         );
         let state = Arc::new(Mutex::new(State::default()));
@@ -115,7 +115,10 @@ impl Preview {
             r#"<script>let revision={};setInterval(async()=>{{try{{const r=await fetch('/__revision',{{cache:'no-store'}});if(r.ok&&await r.text()!==String(revision))location.reload();}}catch{{}}}},750);</script>"#,
             state.revision
         );
-        state.html = html.replace("</body>", &(script + "</body>"));
+        let base = format!("<base href=\"{}\">", assets::escape(&self.page));
+        state.html = html
+            .replace("<head>", &format!("<head>{base}"))
+            .replace("</body>", &(script + "</body>"));
     }
 }
 fn serve(
@@ -136,7 +139,7 @@ fn serve(
     let (mime, body) = if method != "GET" && method != "HEAD" {
         status = "405 Method Not Allowed";
         ("text/plain".to_owned(), Vec::new())
-    } else if path.split('?').next() == Some(page) {
+    } else if matches!(path.split('?').next(), Some("/")) || path.split('?').next() == Some(page) {
         let state = state.lock().unwrap();
         let html = if state.html.is_empty() {
             "<p>Waiting for successful compilation…</p><script>setTimeout(()=>location.reload(),1000)</script>"
@@ -202,10 +205,11 @@ fn site_file(request: &str, allowed: &[PathBuf]) -> Option<PathBuf> {
         .ok()?
         .join(request)
         .ok()?;
-    let (root, path) = if let Some(path) = url.path().strip_prefix("/_shared/") {
+    let request_path = url.path();
+    let (root, path) = if let Some(path) = request_path.strip_prefix("/_shared/") {
         (&allowed[1], path)
     } else {
-        (&allowed[0], url.path().strip_prefix('/')?)
+        (&allowed[0], request_path.strip_prefix('/')?)
     };
     let base = url::Url::from_directory_path(root).ok()?;
     let file = base.join(path).ok()?.to_file_path().ok()?;
@@ -227,10 +231,11 @@ mod tests {
             page: "/ai/chatgpt/note.html".into(),
         };
         let url = assets::file_url(&root.join("assets/example.webp")).unwrap();
-        preview.publish(format!("<img src=\"{url}?v=2#image\"></body>"));
+        preview.publish(format!("<head></head><img src=\"{url}?v=2#image\"></body>"));
         let state = preview.state.lock().unwrap();
         assert!(state.html.contains("../../assets/example.webp?v=2#image"));
         assert!(!state.html.contains("file:"));
+        assert!(state.html.contains("<base href=\"/ai/chatgpt/note.html\">"));
     }
     #[test]
     fn serving_rejects_escaped_root() {

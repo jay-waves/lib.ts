@@ -32,10 +32,10 @@ lib.comrak compile notes/topic/note.md output.html --root .
 lib.comrak compile note.md -o output.html --diagnostic-format short
 lib.comrak compile note.md --site-root _site
 lib.comrak compile note.md output.html --standalone
-lib.comrak watch note.md output.html --standalone
+lib.comrak watch note.md
 ```
 
-`watch` 接受与 `compile` 相同的选项，启动后立即编译，并监听 Markdown、引用的 D3/Mermaid 文件以及引用的本地图片；保存后自动重新编译，按 Ctrl+C 停止。编辑器连续保存会合并处理，编译失败保留上次成功的 HTML，并在文件修复后继续重试。watch 启动仅监听 127.0.0.1 的 HTTP 预览服务，并用 `serving at http://...` 显示地址。编译状态使用 Typst 风格的带时间行；支持 `--no-fullscreen --color never --diagnostic-format short`。浏览器每 750 毫秒检查成功编译的版本并整页刷新；编译失败保留上次成功的页面。静态输出仍可直接打开。预览通过 HTTP 加载本地资源，资源请求要求重新验证缓存，避免图片更新后显示旧内容。渲染结果在进程内缓存，因此修改普通正文时可以复用未改变的公式、高亮和图表。
+`watch` 接受与 `compile` 相同的选项，启动后立即编译，并监听 Markdown、引用的 D3/Mermaid 文件以及引用的本地图片；保存后自动重新编译，按 Ctrl+C 停止。编辑器连续保存会合并处理，编译失败保留上次成功的 HTML，并在文件修复后继续重试。watch 启动仅监听 127.0.0.1 的 HTTP 预览服务，并用 `Preview: http://127.0.0.1:3000/` 显示地址。编译状态使用 Typst 风格的带时间行；支持 `--no-fullscreen --color never --diagnostic-format short`。浏览器每 750 毫秒检查成功编译的版本并整页刷新；编译失败保留上次成功的页面。静态输出仍可直接打开。预览通过 HTTP 加载本地资源，资源请求要求重新验证缓存，避免图片更新后显示旧内容。渲染结果在进程内缓存，因此修改普通正文时可以复用未改变的公式、高亮和图表。
 
 图表的编译结果按脚本内容复用；请让绘图输出仅由脚本和内置数据决定，避免依赖随机数或时间。修改脚本会使缓存失效。
 
@@ -57,14 +57,14 @@ lib.comrak watch note.md output.html --standalone
 
 ```sh
 lib.comrak compile ai/chatgpt/note.md --site-root _site
-lib.comrak watch ai/chatgpt/note.md --site-root _site
+lib.comrak watch ai/chatgpt/note.md
 ```
 
 笔记库根目录默认当前工作目录，可通过 `--root DIR` 指定。示例输出 `_site/ai/chatgpt/note.html`，本地附件按笔记库目录结构复制，页面生成相对 URL。`/assets/example.webp` 表示笔记库根目录下的资源，生成 `../../assets/example.webp`。Markdown 链接改为对应 `.html` 链接，但不会递归编译其他笔记，也不会自动生成 index.html。
 
 共享资源位于 `_site/_shared/lib-comrak/<内容版本>/`；内容一致时复用，缺失或损坏时修复，不删除其他文件。`--site-root` 决定输出位置，不与 OUTPUT、`--output` 或 `--standalone` 混用。站点图片默认复制引用，可显式 `--images embed`。
 
-watch 使用同样的输出目录和 URL，启动本地 HTTP 预览服务。请使用终端显示的完整页面地址访问。
+watch 强制使用系统缓存中的独立站点，启动本地 HTTP 预览服务；使用终端显示的 URL 访问。watch 不接受输出路径、`--site-root` 或 `--standalone`。
 
 ## 图片和路径
 
