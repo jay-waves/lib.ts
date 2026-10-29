@@ -1,5 +1,7 @@
 import { fragmentTarget, revealBlock } from '../../web/markdown/block-navigation.mjs';
+import { prepareFootnotes } from './footnotes.mjs';
 const root = document.getElementById('content');
+prepareFootnotes(root);
 let generation = 0;
 function navigate() {
   const token = ++generation;
