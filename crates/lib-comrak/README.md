@@ -29,17 +29,17 @@ cargo test --release --locked -p lib-comrak
 lib.comrak compile note.md
 lib.comrak compile note.md output.html
 lib.comrak compile notes/topic/note.md output.html --root .
-lib.comrak compile note.md -o output.html --diagnostic-format short
+lib.comrak compile note.md -o output.html
 lib.comrak compile note.md --site-root _site
 lib.comrak compile note.md output.html --standalone
 lib.comrak watch note.md
 ```
 
-`watch` 接受与 `compile` 相同的选项，启动后立即编译，并监听 Markdown、引用的 D3/Mermaid 文件以及引用的本地图片；保存后自动重新编译，按 Ctrl+C 停止。编辑器连续保存会合并处理，编译失败保留上次成功的 HTML，并在文件修复后继续重试。watch 启动仅监听 127.0.0.1 的 HTTP 预览服务，并用 `Preview: http://127.0.0.1:3000/` 显示地址。编译状态使用 Typst 风格的带时间行；支持 `--no-fullscreen --color never --diagnostic-format short`。浏览器每 750 毫秒检查成功编译的版本并整页刷新；编译失败保留上次成功的页面。静态输出仍可直接打开。预览通过 HTTP 加载本地资源，资源请求要求重新验证缓存，避免图片更新后显示旧内容。渲染结果在进程内缓存，因此修改普通正文时可以复用未改变的公式、高亮和图表。
+`watch` 接受与 `compile` 相同的选项，启动后立即编译，并监听 Markdown、引用的 D3/Mermaid 文件以及引用的本地图片；保存后自动重新编译。编辑器连续保存会合并处理，编译失败保留上次成功的 HTML，并在文件修复后继续重试。watch 的 stdout 是逐行 JSON：首先输出 `{"type":"ready","input":"..."}` 和 `{"type":"preview","url":"..."}`，后续输出 `type=compile` 的状态、耗时及诊断对象。stderr 仅用于启动或致命错误。stdin 每行接受 JSON 命令：`{"action":"navigate","line":12}` 让预览滚动到对应源代码行，`{"action":"quit"}` 优雅退出；stdin 关闭也会优雅退出。浏览器每 750 毫秒检查成功编译的版本并整页刷新；编译失败保留上次成功的页面。静态输出仍可直接打开。预览通过 HTTP 加载本地资源，资源请求要求重新验证缓存，避免图片更新后显示旧内容。渲染结果在进程内缓存，因此修改普通正文时可以复用未改变的公式、高亮和图表。
 
 图表的编译结果按脚本内容复用；请让绘图输出仅由脚本和内置数据决定，避免依赖随机数或时间。修改脚本会使缓存失效。
 
-watch 的同一 HTTP 服务提供 `POST /_control`，请求体为 JSON：`{"action":"navigate","line":12}` 让打开的预览滚动到对应源代码行；`{"action":"quit"}` 优雅结束 watch。行号从 1 开始，成功返回 200，非法请求返回 400，其他方法返回 405。状态和诊断继续输出到 stderr。
+行号从 1 开始。watch 已不再提供 HTTP 控制端点。
 
 仓库提供可选 HTTP 预览脚本：`node scripts/preview-comrak.mjs output.html 8765`，仅监听 `127.0.0.1`。HTML 使用 ETag 条件缓存，刷新时内容未变则返回 304；此脚本不自动刷新或执行 DOM 复用，也不会由编译器自动启动。
 

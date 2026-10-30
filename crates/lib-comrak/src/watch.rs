@@ -9,6 +9,16 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Debug)]
+enum Input {
+    Command(serde_json::Value),
+    Closed,
+}
+
+fn emit(value: serde_json::Value) {
+    println!("{value}");
+}
+
 // Watch parent directories, not file handles: editors commonly save by rename.
 fn watch_directory(path: &Path) -> Option<PathBuf> {
     let mut parent = path.parent()?;
@@ -74,48 +84,50 @@ fn run_inner(args: &Args) -> Result<(), String> {
     let mut dependencies = HashSet::from([input.clone()]);
     update_watches(&mut watcher, &mut directories, &dependencies)?;
     let preview = crate::preview::Preview::start(args)?;
+    let (input_tx, input_rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        for line in std::io::stdin().lock().lines() {
+            match line {
+                Ok(line) => {
+                    let parsed = serde_json::from_str(&line).unwrap_or(serde_json::Value::Null);
+                    if input_tx.send(Input::Command(parsed)).is_err() {
+                        return;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = input_tx.send(Input::Closed);
+    });
+    emit(serde_json::json!({"type":"ready","input":input.display().to_string()}));
+    emit(serde_json::json!({"type":"preview","url":preview.url()}));
     let mut engine = Engine::default();
     let mut compilations = 0usize;
     loop {
-        if preview.quit_requested() {
-            status("stopped");
+        if handle_inputs(&input_rx, &preview) {
+            emit(serde_json::json!({"type":"stopped","reason":"stdin_closed"}));
             return Ok(());
         }
         let found = Rc::new(RefCell::new(HashSet::new()));
         let start = Instant::now();
-        status("compiling ...");
         let success = match document::compile_document(args, &engine, found.clone()) {
-            Ok(has_warnings) => {
+            Ok(warnings) => {
                 preview.publish(std::fs::read_to_string(&args.output).map_err(|e| e.to_string())?);
-                let result = if has_warnings {
-                    "compiled with warnings"
-                } else {
-                    "compiled successfully"
-                };
-                status(&format!("{result} in {:.0?}", start.elapsed()));
+                let diagnostics: Vec<_> = warnings
+                    .into_iter()
+                    .map(|warning| serde_json::json!({"severity":"warning","line":warning.line,"column":warning.column,"message":warning.message}))
+                    .collect();
+                emit(
+                    serde_json::json!({"type":"compile","status":if diagnostics.is_empty() {"success"} else {"warning"},"input":input.display().to_string(),"duration_ms":start.elapsed().as_millis(),"diagnostics":diagnostics}),
+                );
                 true
             }
             Err(errors) => {
-                status("compiled with errors");
-                for error in errors {
-                    if args.short {
-                        eprintln!(
-                            "{}:{}:{}: error: {}",
-                            args.input.display(),
-                            error.line,
-                            error.column,
-                            error.message.replace(['\r', '\n'], " ")
-                        );
-                    } else {
-                        eprintln!(
-                            "error: {}\n  --> {}:{}:{}",
-                            error.message,
-                            args.input.display(),
-                            error.line,
-                            error.column
-                        );
-                    }
-                }
+                let diagnostics: Vec<_> = errors.into_iter().map(|error| serde_json::json!({"severity":"error","line":error.line,"column":error.column,"message":error.message})).collect();
+                emit(
+                    serde_json::json!({"type":"compile","status":"error","input":input.display().to_string(),"duration_ms":start.elapsed().as_millis(),"diagnostics":diagnostics}),
+                );
                 false
             }
         };
@@ -138,8 +150,8 @@ fn run_inner(args: &Args) -> Result<(), String> {
             continue;
         }
         loop {
-            if preview.quit_requested() {
-                status("stopped");
+            if handle_inputs(&input_rx, &preview) {
+                emit(serde_json::json!({"type":"stopped","reason":"stdin_closed"}));
                 return Ok(());
             }
             let event = match rx.recv_timeout(Duration::from_millis(200)) {
@@ -157,6 +169,10 @@ fn run_inner(args: &Args) -> Result<(), String> {
                 // Coalesce editor save bursts. A bounded window prevents starvation.
                 let until = Instant::now() + Duration::from_millis(200);
                 while Instant::now() < until {
+                    if handle_inputs(&input_rx, &preview) {
+                        emit(serde_json::json!({"type":"stopped","reason":"stdin_closed"}));
+                        return Ok(());
+                    }
                     if rx.recv_timeout(Duration::from_millis(50)).is_err() {
                         break;
                     }
@@ -167,8 +183,28 @@ fn run_inner(args: &Args) -> Result<(), String> {
     }
 }
 
-fn status(message: &str) {
-    eprintln!("[{}] {message}", chrono::Local::now().format("%H:%M:%S"));
+fn handle_inputs(input_rx: &mpsc::Receiver<Input>, preview: &crate::preview::Preview) -> bool {
+    loop {
+        match input_rx.try_recv() {
+            Ok(Input::Closed) | Err(mpsc::TryRecvError::Disconnected) => return true,
+            Ok(Input::Command(value)) => match value.get("action").and_then(|v| v.as_str()) {
+                Some("quit") => return true,
+                Some("navigate") => {
+                    if let Some(line) = value
+                        .get("line")
+                        .and_then(|v| v.as_u64())
+                        .filter(|line| *line > 0)
+                    {
+                        preview.navigate(line);
+                    }
+                }
+                _ => emit(
+                    serde_json::json!({"type":"protocol_error","message":"expected navigate with positive line or quit"}),
+                ),
+            },
+            Err(mpsc::TryRecvError::Empty) => return false,
+        }
+    }
 }
 
 fn update_watches(

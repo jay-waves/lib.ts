@@ -14,7 +14,6 @@ struct State {
     revision: u64,
     navigation: u64,
     line: u64,
-    quit: bool,
 }
 pub(crate) struct Preview {
     state: Arc<Mutex<State>>,
@@ -60,10 +59,7 @@ impl Preview {
         );
         let listener =
             TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 3000)).map_err(|e| e.to_string())?;
-        eprintln!(
-            "Preview: http://{}/",
-            listener.local_addr().map_err(|e| e.to_string())?
-        );
+        let _ = listener.local_addr().map_err(|e| e.to_string())?;
         let state = Arc::new(Mutex::new(State::default()));
         let shared = state.clone();
         let allowed = [root.clone(), assets.clone()];
@@ -81,8 +77,16 @@ impl Preview {
             page,
         })
     }
-    pub fn quit_requested(&self) -> bool {
-        self.state.lock().unwrap().quit
+    pub fn url(&self) -> String {
+        format!(
+            "http://127.0.0.1:3000/{}",
+            self.page.trim_start_matches('/')
+        )
+    }
+    pub fn navigate(&self, line: u64) {
+        let mut state = self.state.lock().unwrap();
+        state.line = line;
+        state.navigation += 1;
     }
     pub fn publish(&self, html: String) {
         let pattern = regex::Regex::new(r#"file://[^\s\"'<>]+"#).unwrap();
@@ -170,35 +174,7 @@ fn serve(
     let method = words.next().unwrap_or("");
     let path = words.next().unwrap_or("");
     let mut status = "200 OK";
-    let (mime, body) = if path.split('?').next() == Some("/_control") {
-        if method != "POST" {
-            status = "405 Method Not Allowed";
-        } else if length > request.len().saturating_sub(header_end) {
-            status = "400 Bad Request";
-        } else {
-            let command = serde_json::from_slice::<serde_json::Value>(
-                &request.as_bytes()[header_end..header_end + length],
-            );
-            let mut state = state.lock().unwrap();
-            match command
-                .ok()
-                .as_ref()
-                .and_then(|v| v.get("action").and_then(|a| a.as_str()).map(|a| (a, v)))
-            {
-                Some(("quit", _)) => state.quit = true,
-                Some(("navigate", v))
-                    if v.get("line")
-                        .and_then(|l| l.as_u64())
-                        .is_some_and(|l| l > 0) =>
-                {
-                    state.line = v["line"].as_u64().unwrap();
-                    state.navigation += 1;
-                }
-                _ => status = "400 Bad Request",
-            }
-        }
-        ("text/plain".to_owned(), Vec::new())
-    } else if method != "GET" && method != "HEAD" {
+    let (mime, body) = if method != "GET" && method != "HEAD" {
         status = "405 Method Not Allowed";
         ("text/plain".to_owned(), Vec::new())
     } else if matches!(path.split('?').next(), Some("/")) || path.split('?').next() == Some(page) {

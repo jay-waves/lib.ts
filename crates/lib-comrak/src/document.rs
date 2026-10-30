@@ -904,7 +904,7 @@ pub(crate) fn compile_document(
     args: &Args,
     engine: &Engine,
     dependencies: Rc<RefCell<HashSet<PathBuf>>>,
-) -> Result<bool, Vec<Diagnostic>> {
+) -> Result<Vec<Diagnostic>, Vec<Diagnostic>> {
     let input =
         dunce::canonicalize(&args.input).map_err(|e| failure(format!("cannot open input: {e}")))?;
     let source =
@@ -938,26 +938,6 @@ pub(crate) fn compile_document(
     attachments.dependencies = dependencies;
     let mut warnings = Vec::new();
     let rendered = render_with_warnings(&source, engine, &attachments, &mut warnings);
-    let has_warnings = !warnings.is_empty();
-    for warning in warnings {
-        if args.short {
-            eprintln!(
-                "{}:{}:{}: warning: {}",
-                args.input.display(),
-                warning.line,
-                warning.column,
-                warning.message
-            );
-        } else {
-            eprintln!(
-                "warning: {}\n  --> {}:{}:{}",
-                warning.message,
-                args.input.display(),
-                warning.line,
-                warning.column
-            );
-        }
-    }
     let body = rendered?;
     let stylesheet =
         assets::stylesheet_for_math(args.standalone, asset_dir, body.contains("class=\"katex"))
@@ -1004,7 +984,7 @@ pub(crate) fn compile_document(
         html
     };
     assets::atomic_write(&output, html.as_bytes()).map_err(failure)?;
-    Ok(has_warnings)
+    Ok(warnings)
 }
 
 #[cfg(test)]
@@ -1033,7 +1013,6 @@ mod tests {
             standalone: true,
             asset_dir: None,
             title: None,
-            short: true,
         };
         let engine = Engine::default();
         let dependencies = Rc::new(RefCell::new(HashSet::new()));
@@ -1273,7 +1252,6 @@ export default function(container) {
             standalone: false,
             asset_dir: Some(root.join("shared")),
             title: None,
-            short: true,
         };
         compile(&args).unwrap();
         let html = fs::read_to_string(output).unwrap();
@@ -1306,7 +1284,6 @@ export default function(container) {
             standalone: false,
             asset_dir: Some(temp.path().join("shared")),
             title: Some("<Example>".into()),
-            short: true,
         };
         compile(&args).unwrap();
         let shared = fs::read_to_string(&output).unwrap();

@@ -1,12 +1,7 @@
 use lib_comrak::{cli, document};
 
 fn main() -> std::process::ExitCode {
-    let values: Vec<String> = std::env::args().skip(1).collect();
-    let short = values.iter().any(|v| v == "--diagnostic-format=short")
-        || values
-            .windows(2)
-            .any(|v| v == ["--diagnostic-format", "short"]);
-    let args = match cli::parse(values) {
+    let args = match cli::parse(std::env::args().skip(1)) {
         Ok(Some(args)) => args,
         Ok(None) => return std::process::ExitCode::SUCCESS,
         Err(message) => {
@@ -27,23 +22,13 @@ fn main() -> std::process::ExitCode {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(diagnostics) => {
             for diagnostic in diagnostics {
-                if short || args.short {
-                    eprintln!(
-                        "{}:{}:{}: error: {}",
-                        args.input.display(),
-                        diagnostic.line,
-                        diagnostic.column,
-                        diagnostic.message.replace(['\r', '\n'], " ")
-                    );
-                } else {
-                    eprintln!(
-                        "error: {}\n  --> {}:{}:{}",
-                        diagnostic.message,
-                        args.input.display(),
-                        diagnostic.line,
-                        diagnostic.column
-                    );
-                }
+                eprintln!(
+                    "error: {}\n  --> {}:{}:{}",
+                    diagnostic.message,
+                    args.input.display(),
+                    diagnostic.line,
+                    diagnostic.column
+                );
             }
             std::process::ExitCode::FAILURE
         }

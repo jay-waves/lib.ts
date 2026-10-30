@@ -12,7 +12,6 @@ Options:
       --site-root <DIR>               Site output directory (typically _site); preserve root-relative paths
       --no-fullscreen                 Print normal output lines (watch)
       --color <never|auto>             Output color (default: never)
-      --diagnostic-format <short|human>  Diagnostic format (default: human)
       --title <TEXT>                  Document title (default: input filename)
   -h, --help                         Show help
   -V, --version                      Show version
@@ -38,7 +37,6 @@ pub struct Args {
     pub standalone: bool,
     pub asset_dir: Option<PathBuf>,
     pub title: Option<String>,
-    pub short: bool,
 }
 
 pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, String> {
@@ -58,7 +56,6 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
     let mut site_root = None;
     let mut asset_dir = None;
     let mut title = None;
-    let mut short = false;
     let mut positional = false;
     while let Some(value) = values.next() {
         if positional {
@@ -103,11 +100,7 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
                 }
             }
             "--diagnostic-format" => {
-                short = match argument()?.as_str() {
-                    "short" => true,
-                    "human" => false,
-                    _ => return Err("--diagnostic-format must be short or human".into()),
-                }
+                return Err("--diagnostic-format is no longer supported".into());
             }
             s if s.starts_with('-') => return Err(format!("unknown option {s}")),
             _ => paths.push(PathBuf::from(value)),
@@ -163,7 +156,6 @@ pub fn parse(values: impl IntoIterator<Item = String>) -> Result<Option<Args>, S
         standalone,
         asset_dir,
         title,
-        short,
     }))
 }
 
@@ -194,24 +186,14 @@ mod tests {
     }
 
     #[test]
-    fn typst_style_and_inline_arguments() {
-        let args = parse(
-            [
-                "compile",
-                "a.md",
-                "b.html",
-                "--root=..",
-                "--diagnostic-format",
-                "short",
-                "--standalone",
-            ]
-            .map(String::from),
-        )
-        .unwrap()
-        .unwrap();
+    fn parses_compile_and_watch_arguments() {
+        let args =
+            parse(["compile", "a.md", "b.html", "--root=..", "--standalone"].map(String::from))
+                .unwrap()
+                .unwrap();
         assert_eq!(args.output, PathBuf::from("b.html"));
         assert_eq!(args.images, Images::Embed);
-        assert!(args.short);
+        assert!(parse(["a.md", "--diagnostic-format", "short"].map(String::from)).is_err());
         assert!(parse(["a.md", "b.html", "-o", "c.html"].map(String::from)).is_err());
         let watch = parse(["watch", "a.md"].map(String::from)).unwrap().unwrap();
         assert!(watch.watch);
