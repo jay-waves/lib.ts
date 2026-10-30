@@ -100,10 +100,9 @@ fn run_inner(args: &Args) -> Result<(), String> {
         }
         let _ = input_tx.send(Input::Closed);
     });
-    emit(serde_json::json!({"type":"ready","input":input.display().to_string()}));
-    emit(serde_json::json!({"type":"preview","url":preview.url()}));
     let mut engine = Engine::default();
     let mut compilations = 0usize;
+    let mut preview_emitted = false;
     loop {
         if handle_inputs(&input_rx, &preview) {
             emit(serde_json::json!({"type":"stopped","reason":"stdin_closed"}));
@@ -121,6 +120,10 @@ fn run_inner(args: &Args) -> Result<(), String> {
                 emit(
                     serde_json::json!({"type":"compile","status":if diagnostics.is_empty() {"success"} else {"warning"},"input":input.display().to_string(),"duration_ms":start.elapsed().as_millis(),"diagnostics":diagnostics}),
                 );
+                if !preview_emitted {
+                    emit(serde_json::json!({"type":"preview","url":preview.url()}));
+                    preview_emitted = true;
+                }
                 true
             }
             Err(errors) => {
