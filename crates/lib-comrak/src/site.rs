@@ -34,7 +34,9 @@ pub(crate) fn rewrite(
                     .strip_prefix(root)
                     .map_err(|_| "resource outside root")?;
                 let target = site.join(relative);
-                if source.extension().is_some_and(|ext| ext == "md") {
+                if source.extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown")
+                }) {
                     page_path(&target)
                 } else {
                     if source.is_file() && source != target {
@@ -79,6 +81,38 @@ pub(crate) fn rewrite(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn site_rebases_links_and_resources_from_the_source_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("docs/images")).unwrap();
+        fs::write(root.join("docs/images/pic.png"), b"image").unwrap();
+        let input = root.join("docs/a.md");
+        fs::write(&input, "[next](b.md?x=1&y=2#part)\n\n[other](../other.markdown#top)\n\n[local](#here)\n\n[external](https://example.com/b.md#part)\n\n![image](images/pic.png?size=2#view)\n\n[download](images/pic.png)\n").unwrap();
+        let site = root.join("_site");
+        let args = crate::cli::parse([
+            "compile".to_owned(),
+            input.to_str().unwrap().into(),
+            "--root".into(),
+            root.to_str().unwrap().into(),
+            "--site-root".into(),
+            site.to_str().unwrap().into(),
+        ])
+        .unwrap()
+        .unwrap();
+        crate::document::compile(&args).unwrap();
+        let html = fs::read_to_string(&args.output).unwrap();
+        assert!(html.contains("href=\"../b/index.html?x=1&amp;y=2#part\""));
+        assert!(html.contains("href=\"../../other/index.html#top\""));
+        assert!(html.contains("href=\"#here\""));
+        assert!(html.contains("href=\"https://example.com/b.md#part\""));
+        assert!(html.contains("src=\"../images/pic.png?size=2#view\""));
+        assert!(html.contains("href=\"../images/pic.png\""));
+        assert_eq!(
+            fs::read(site.join("docs/images/pic.png")).unwrap(),
+            b"image"
+        );
+    }
     #[test]
     fn site_preserves_layout_and_reuses_shared_resources() {
         let temp = tempfile::tempdir().unwrap();
