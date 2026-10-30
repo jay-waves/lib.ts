@@ -9,6 +9,13 @@ body { margin: 0; background: var(--md-bg); }
 @media print { :root { color-scheme: light; } #content { width: auto; margin: 0; } }
 /* Keep document headings on the same Latin/CJK serif stack. */
 #content h1, #content h2, #content h3, #content h4, #content h5, #content h6 { font-family: var(--md-font-serif); }
+/* Static headings are wrapped in a summary; keep h2 styled like a normal heading. */
+#content details.heading-section > .heading-summary > h2 {
+  width: 100%;
+  box-sizing: border-box;
+  font-weight: 600;
+  border-bottom: 1px solid var(--md-border-muted);
+}
 #content :is(pre, code, kbd, samp, tt) { font-synthesis-weight: none; }
 #content .inline-footnote {
   display: block;
